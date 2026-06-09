@@ -49,10 +49,10 @@ The system is split into two decoupled layers: an **offline data pipeline** (Pyt
 │  linkedin.com/company/{slug}                                        │
 │       │  content.js extracts slug from URL                          │
 │       ▼                                                             │
-│  matcher.js loads + decompresses index (DecompressionStream)          │
-│       │  multi-stage entity resolution                              │
+│  matcher.js loads index + learned slugs (chrome.storage.local)      │
+│       │  session cache → overrides → learned → exact → fuzzy        │
 │       ▼                                                             │
-│  Badge UI injected into page (LCA count, H-1B count, top roles)     │
+│  Badge UI (confidence, warnings, match method, FEIN)                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,12 +123,91 @@ When multiple employers share a key (e.g., `"meta"` matching both Meta Platforms
 
 | Component | Role |
 |-----------|------|
-| `content.js` | Runs on `linkedin.com/company/*`; extracts slug from URL; handles LinkedIn SPA navigation via `MutationObserver` + `popstate` |
-| `lib/matcher.js` | Singleton lookup engine; lazy-loads and caches decompressed index |
-| `styles.css` | Fixed-position badge overlay (z-index 99999) |
-| `data/employers.json.gz` | Web-accessible resource declared in `manifest.json` |
+| `content.js` | Runs on LinkedIn company/job pages; extracts slug; handles SPA navigation |
+| `lib/matcher.js` | Lookup engine with session cache + learned slug persistence |
+| `styles.css` | Fixed-position badge overlay with confidence color coding |
+| `data/employers.json.gz` | Web-accessible compressed employer index |
+| `chrome.storage.local` | Device-local learned slug → FEIN mappings (not in git) |
 
-No background service worker, no `host_permissions` beyond LinkedIn, no network calls — fully offline after install.
+Requires `storage` permission for learned slug persistence only. No network calls — fully offline after install.
+
+### Lookup Cascade
+
+Each page view resolves a company through a fixed-order pipeline. Earlier stages are cheaper and more reliable; later stages are fallbacks.
+
+```
+1. Session cache          slug + page name seen earlier this browser session?
+2. Manual overrides       slug_overrides.json curated mappings
+3. Learned slugs          chrome.storage.local entries from past high-confidence hits
+4. Exact key index        normalize(slug / page name) → key_index → FEIN
+5. Whole-word fuzzy       all slug tokens must match as complete words in employer name
+6. Not found              no result ≥ confidence threshold
+```
+
+After stage 4 or 5 produces a **high-confidence exact match**, the slug may be written to `learned_slugs` (stage 3 on future visits). Fuzzy matches and low-confidence hits are never learned.
+
+### Session Cache
+
+An in-memory `Map` keyed by `slug|normalized_page_name` stores both hits and misses for the current browser session.
+
+| Property | Detail |
+|----------|--------|
+| Scope | Current tab session only; cleared when the extension reloads |
+| Stores | Full match results and `null` (not-found) |
+| Purpose | Avoid repeated fuzzy scans when LinkedIn SPA navigation or DOM mutations re-trigger lookup for the same company |
+| Cost | O(1) hash lookup vs. O(74K) fuzzy scoring |
+
+Typical win: navigating between a job posting and a company page for the same employer, or LinkedIn re-rendering the page several times without a URL change.
+
+### Learned Slug Memory
+
+High-confidence exact matches are persisted to `chrome.storage.local` under `learned_slugs`:
+
+```json
+{
+  "typeface": {
+    "fein": "88-2469676",
+    "employer_name": "Typeface Inc.",
+    "learned_at": "2026-06-08T...",
+    "method": "exact_key",
+    "score": 95
+  }
+}
+```
+
+**Write criteria (all must pass):**
+
+| Rule | Reason |
+|------|--------|
+| `confidence === "high"` | No medium/low results stored |
+| Method is `exact_key` or `exact_page_name` | Fuzzy guesses are never learned |
+| LinkedIn name overlap ≥ 34% with LCA legal name | Prevents learning mismatched pairs |
+| No "looks different" warning | Name disagreement blocks persistence |
+
+**Why this improves accuracy:** fuzzy matching is heuristic and can false-positive (e.g., `coppersmith` once matched `rsm` via substring). Learned slugs convert a verified slug into an O(1) exact lookup on subsequent visits — the same path `google` uses on first load.
+
+**Why this improves speed:** learned hits skip the O(74K) fuzzy scan entirely, even across browser sessions (unlike session cache).
+
+Manual overrides in `slug_overrides.json` take precedence and ship with the extension. Learned slugs are device-local corrections discovered during normal use.
+
+### Match Verification on the Badge
+
+The badge surfaces enough signal to judge correctness without external tools:
+
+| UI element | Meaning |
+|------------|---------|
+| **Green badge** | High confidence — safe to trust initially |
+| **Yellow badge** | Medium/low confidence or name mismatch — verify manually |
+| **Red badge** | Not found — no confident match in index |
+| **LinkedIn vs LCA legal name** | Side-by-side comparison; unrelated names indicate a false positive |
+| **Match method** | `Exact slug` > `Learned slug` > `Fuzzy` in reliability |
+| **Score / 100** | ≥90 high · 60–89 medium · fuzzy floor is 60 |
+| **Warnings list** | Explicit reasons to distrust the result |
+| **FEIN** | Cross-check against DOL disclosure or local SQLite |
+
+**False positive signals:** yellow badge, fuzzy method, LinkedIn name ≠ LCA legal name, implausible employer for the industry (e.g., a furniture company resolving to an accounting firm).
+
+**False negative signals:** red badge on a company known to sponsor — likely slug/legal-name mismatch; add a manual override or wait for a learned mapping after verifying FEIN.
 
 ### Entity Resolution Pipeline
 
@@ -141,17 +220,18 @@ LCA:    "Dun & Bradstreet, Inc."  (FEIN 22-3582360)
 LinkedIn slug ≠ legal name ≠ DBA ≠ subsidiary name
 ```
 
-The matcher applies a **cascading resolution strategy**:
+The matcher applies a **cascading resolution strategy** (see Lookup Cascade above). Whole-word token matching replaced naive substring matching after a documented false positive where `coppersmith` contained the character sequence `rsm`, incorrectly resolving to RSM US LLP.
 
 ```
-1. Slug override table     slug_overrides["dun-bradstreet"] → FEIN → employer record
-2. Exact key index lookup  normalize(slug) → key_index → feinMap
-3. H1 fallback             read page <h1> company name, repeat step 2
-4. Substring fuzzy match   bidirectional contains on normalized tokens;
-                           tie-break by highest lca_count
+1. Session cache hit       return immediately
+2. slug_overrides          manual curated slug → FEIN
+3. learned_slugs           device-local verified slug → FEIN
+4. Exact key index         normalize(slug / h1) → key_index
+5. Whole-word fuzzy        every slug token must appear as a complete word
+6. Not found
 ```
 
-This is intentionally conservative: false positives (wrong company) are reduced by preferring high-volume filers; false negatives (company not found) occur when slug and legal name diverge with no override entry.
+This is intentionally conservative: false positives are reduced by preferring exact paths and never learning fuzzy results; false negatives occur when slug and legal name diverge with no override or learned entry.
 
 ---
 

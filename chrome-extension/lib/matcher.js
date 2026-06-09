@@ -1,10 +1,18 @@
 /**
  * LCA employer lookup — loads compressed index and matches LinkedIn slugs/names.
+ *
+ * lookup() returns:
+ *   { employer, confidence, score, method, matchedOn, warnings[], fromCache? } | null
  */
 const LcaMatcher = (() => {
+  const STORAGE_KEY = "learned_slugs";
+  const LEARNABLE_METHODS = new Set(["exact_key", "exact_page_name"]);
+  const SESSION_CACHE = new Map();
+
   let payload = null;
   let feinMap = null;
   let keyIndex = null;
+  let learnedSlugs = {};
   let loadPromise = null;
 
   function normalize(text) {
@@ -14,9 +22,83 @@ const LcaMatcher = (() => {
       .replace(/[^\w\s-]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
-      .replace(/\b(incorporated|corporation|company|limited|llc|inc|corp|ltd|co|llp|lp|plc|usa|us)\b/g, "")
+      .replace(
+        /\b(incorporated|corporation|company|limited|llc|inc|corp|ltd|co|llp|lp|plc|usa|us)\b/g,
+        ""
+      )
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function tokens(text) {
+    return normalize(String(text).replace(/-/g, " "))
+      .split(" ")
+      .filter(Boolean);
+  }
+
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function hasWord(haystack, word) {
+    if (!haystack || !word) return false;
+    const re = new RegExp(`\\b${escapeRegExp(word)}\\b`, "i");
+    return re.test(haystack);
+  }
+
+  function nameOverlap(a, b) {
+    const ta = new Set(tokens(a));
+    const tb = new Set(tokens(b));
+    if (!ta.size || !tb.size) return 0;
+    let shared = 0;
+    for (const t of ta) if (tb.has(t) && t.length >= 3) shared += 1;
+    return shared / Math.max(ta.size, tb.size);
+  }
+
+  function cacheKey(slug, pageName) {
+    return `${slug}|${normalize(pageName || "")}`;
+  }
+
+  function buildResult(employer, score, method, matchedOn, pageName) {
+    const warnings = [];
+    let confidence = "high";
+
+    if (score < 90) confidence = "medium";
+    if (score < 70) confidence = "low";
+
+    if (method === "fuzzy_token" || method === "fuzzy_single") {
+      warnings.push("Fuzzy match — verify the legal name before trusting this result.");
+    }
+
+    if (pageName) {
+      const overlap = nameOverlap(pageName, employer.name);
+      if (overlap < 0.34) {
+        confidence = confidence === "high" ? "medium" : "low";
+        warnings.push(
+          `LinkedIn name "${pageName}" looks different from LCA name "${employer.name}".`
+        );
+      }
+    }
+
+    if (employer.lca_count <= 2) {
+      warnings.push("Very few LCA filings — treat as weak signal.");
+    }
+
+    return { employer, confidence, score, method, matchedOn, warnings };
+  }
+
+  function cloneResult(result, extras = {}) {
+    return {
+      ...result,
+      warnings: [...(result.warnings || [])],
+      ...extras,
+    };
+  }
+
+  async function loadLearnedSlugs() {
+    if (!chrome.storage?.local) return;
+    const stored = await chrome.storage.local.get(STORAGE_KEY);
+    learnedSlugs = stored[STORAGE_KEY] || {};
   }
 
   async function load() {
@@ -30,11 +112,14 @@ const LcaMatcher = (() => {
 
       const buf = await resp.arrayBuffer();
       const ds = new DecompressionStream("gzip");
-      const decompressed = await new Response(new Blob([buf]).stream().pipeThrough(ds)).text();
+      const decompressed = await new Response(
+        new Blob([buf]).stream().pipeThrough(ds)
+      ).text();
       payload = JSON.parse(decompressed);
 
       feinMap = Object.fromEntries(payload.employers.map((e) => [e.fein, e]));
       keyIndex = payload.key_index || {};
+      await loadLearnedSlugs();
       return payload;
     })();
 
@@ -45,49 +130,178 @@ const LcaMatcher = (() => {
     return feinMap[fein] || null;
   }
 
-  function lookup(slug, h1Name) {
-    if (!payload) return null;
+  function employerHaystacks(employer) {
+    return [
+      normalize(employer.name),
+      ...(employer.names || []).map(normalize),
+      ...(employer.search_keys || []).map(normalize),
+    ].filter(Boolean);
+  }
 
-    const overrides = payload.slug_overrides || {};
-    const cleanSlug = (slug || "").toLowerCase().replace(/^\/+|\/+$/g, "");
+  function scoreEmployer(employer, slugTokens, slugNorm) {
+    const haystacks = employerHaystacks(employer);
 
-    if (overrides[cleanSlug]) {
-      return lookupByFein(overrides[cleanSlug]);
+    for (const hay of haystacks) {
+      if (hay === slugNorm) return 100;
     }
 
-    const candidates = new Set([
-      cleanSlug,
-      cleanSlug.replace(/-/g, " "),
-      normalize(cleanSlug.replace(/-/g, " ")),
-    ]);
+    const tokenHits = slugTokens.map((token) =>
+      haystacks.some((hay) => hasWord(hay, token))
+    );
+    if (tokenHits.length > 0 && tokenHits.every(Boolean)) {
+      return 70 + slugTokens.length * 10;
+    }
 
-    if (h1Name) {
-      candidates.add(normalize(h1Name));
-      candidates.add(normalize(h1Name).replace(/\s+/g, "-"));
+    if (slugTokens.length === 1) {
+      const t = slugTokens[0];
+      if (t.length >= 4) {
+        for (const hay of haystacks) {
+          if (hay === t || hasWord(hay, t)) return 60;
+        }
+      }
+    }
+
+    return 0;
+  }
+
+  function shouldLearn(result, pageName) {
+    if (result.confidence !== "high") return false;
+    if (!LEARNABLE_METHODS.has(result.method)) return false;
+    if (result.warnings.some((w) => w.includes("looks different"))) return false;
+    if (pageName && nameOverlap(pageName, result.employer.name) < 0.34) return false;
+    return true;
+  }
+
+  async function persistLearnedSlug(slug, result) {
+    if (!chrome.storage?.local) return;
+    learnedSlugs[slug] = {
+      fein: result.employer.fein,
+      employer_name: result.employer.name,
+      learned_at: new Date().toISOString(),
+      method: result.method,
+      score: result.score,
+    };
+    await chrome.storage.local.set({ [STORAGE_KEY]: learnedSlugs });
+  }
+
+  function resolveLearned(slug, pageName) {
+    const entry = learnedSlugs[slug];
+    if (!entry?.fein) return null;
+    const employer = lookupByFein(entry.fein);
+    if (!employer) return null;
+    const result = buildResult(employer, 100, "learned_slug", slug, pageName);
+    result.warnings.push("Matched from a previously verified slug mapping on this device.");
+    return result;
+  }
+
+  function lookupExact(cleanSlug, slugNorm, slugTokenList, pageName) {
+    const overrides = payload.slug_overrides || {};
+    if (overrides[cleanSlug]) {
+      const employer = lookupByFein(overrides[cleanSlug]);
+      if (!employer) return null;
+      return buildResult(employer, 100, "manual_override", cleanSlug, pageName);
+    }
+
+    const learned = resolveLearned(cleanSlug, pageName);
+    if (learned) return learned;
+
+    const candidates = new Map();
+    const addCandidate = (key, source) => {
+      if (key) candidates.set(key, source);
+    };
+
+    addCandidate(cleanSlug, "slug");
+    addCandidate(cleanSlug.replace(/-/g, " "), "slug");
+    addCandidate(slugNorm, "slug");
+    addCandidate(slugNorm.replace(/\s+/g, "-"), "slug");
+
+    if (pageName) {
+      addCandidate(normalize(pageName), "page_name");
+      addCandidate(normalize(pageName).replace(/\s+/g, "-"), "page_name");
     }
 
     let best = null;
-    for (const key of candidates) {
-      if (!key) continue;
+    let bestKey = null;
+    let bestSource = null;
+
+    for (const [key, source] of candidates.entries()) {
       const fein = keyIndex[key];
       if (!fein) continue;
       const emp = lookupByFein(fein);
-      if (emp && (!best || emp.lca_count > best.lca_count)) best = emp;
-    }
-
-    if (best) return best;
-
-    const slugNorm = normalize(cleanSlug.replace(/-/g, " "));
-    if (slugNorm.length < 4) return null;
-
-    for (const [key, fein] of Object.entries(keyIndex)) {
-      if (key.includes(slugNorm) || slugNorm.includes(key)) {
-        const emp = lookupByFein(fein);
-        if (emp && (!best || emp.lca_count > best.lca_count)) best = emp;
+      if (emp && (!best || emp.lca_count > best.lca_count)) {
+        best = emp;
+        bestKey = key;
+        bestSource = source;
       }
     }
-    return best;
+
+    if (best) {
+      const method = bestSource === "page_name" ? "exact_page_name" : "exact_key";
+      return buildResult(best, 95, method, bestKey, pageName);
+    }
+
+    let bestScore = 0;
+    let bestEmp = null;
+    for (const employer of payload.employers) {
+      const score = scoreEmployer(employer, slugTokenList, slugNorm);
+      if (score > bestScore) {
+        bestScore = score;
+        bestEmp = employer;
+      } else if (score === bestScore && score > 0 && bestEmp) {
+        if (employer.lca_count > bestEmp.lca_count) bestEmp = employer;
+      }
+    }
+
+    if (bestScore < 60 || !bestEmp) return null;
+
+    const method = slugTokenList.length === 1 ? "fuzzy_single" : "fuzzy_token";
+    return buildResult(bestEmp, bestScore, method, slugTokenList.join(" + "), pageName);
   }
 
-  return { load, lookup };
+  async function lookup(slug, pageName) {
+    await load();
+
+    const cleanSlug = (slug || "").toLowerCase().replace(/^\/+|\/+$/g, "");
+    if (!cleanSlug) return null;
+
+    const key = cacheKey(cleanSlug, pageName);
+    if (SESSION_CACHE.has(key)) {
+      const cached = SESSION_CACHE.get(key);
+      if (cached === null) return null;
+      return cloneResult(cached, { fromCache: true });
+    }
+
+    const slugNorm = normalize(cleanSlug.replace(/-/g, " "));
+    const slugTokenList = tokens(cleanSlug);
+    const result = lookupExact(cleanSlug, slugNorm, slugTokenList, pageName);
+
+    if (result && shouldLearn(result, pageName)) {
+      await persistLearnedSlug(cleanSlug, result);
+    }
+
+    SESSION_CACHE.set(key, result);
+    return result;
+  }
+
+  async function clearLearnedSlugs() {
+    learnedSlugs = {};
+    SESSION_CACHE.clear();
+    if (chrome.storage?.local) {
+      await chrome.storage.local.remove(STORAGE_KEY);
+    }
+  }
+
+  async function getLearnedSlugs() {
+    await load();
+    return { ...learnedSlugs };
+  }
+
+  return {
+    load,
+    lookup,
+    normalize,
+    nameOverlap,
+    clearLearnedSlugs,
+    getLearnedSlugs,
+  };
 })();
