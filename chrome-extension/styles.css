@@ -1,0 +1,96 @@
+#lca-sponsor-checker-badge {
+  position: fixed;
+  top: 72px;
+  right: 16px;
+  z-index: 99999;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  padding: 14px 16px 12px;
+  color: #111;
+}
+
+.lca-badge.lca-found {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+}
+
+.lca-badge.lca-miss {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+}
+
+.lca-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+}
+
+.lca-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+  padding-right: 20px;
+}
+
+.lca-company {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.lca-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.lca-stats span {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lca-meta,
+.lca-muted,
+.lca-foot {
+  color: #555;
+  font-size: 12px;
+}
+
+.lca-muted {
+  margin-bottom: 4px;
+}
+
+.lca-jobs {
+  margin: 8px 0 4px;
+  padding-left: 18px;
+  color: #333;
+}
+
+.lca-jobs li {
+  margin-bottom: 2px;
+}
+
+.lca-foot {
+  margin-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 6px;
+}
+
+.lca-foot code {
+  font-size: 11px;
+}

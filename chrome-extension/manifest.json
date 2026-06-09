@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "LCA Sponsor Checker",
+  "version": "1.0.0",
+  "description": "Check if a LinkedIn company appears in DOL H-1B LCA disclosure data.",
+  "permissions": [],
+  "host_permissions": ["https://www.linkedin.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/company/*"],
+      "js": ["lib/matcher.js", "content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["data/employers.json.gz"],
+      "matches": ["https://www.linkedin.com/*"]
+    }
+  ]
+}
