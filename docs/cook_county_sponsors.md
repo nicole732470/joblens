@@ -16,9 +16,9 @@ Companies with H-1B LCA filings where the **worksite** is in **Cook County, Illi
 | File | Rows | Description |
 |------|-----:|-------------|
 | [`data/cook_county_lca_full.csv`](../data/cook_county_lca_full.csv) | **9,708** | **Full LCA records, all 98 DOL columns** (one row per filing) |
-| [`data/cook_county_companies.csv`](../data/cook_county_companies.csv) | 2,635 | Employer summary (aggregated by FEIN) |
+| [`data/cook_county_companies.csv`](../data/cook_county_companies.csv) | 2,635 | Employer summary (aggregated by FEIN) + `website` column |
 
-Regenerate: `python export_cook_county.py`
+Regenerate: `python export_cook_county.py` · Enrich websites: `python enrich_company_websites.py`
 
 ---
 
