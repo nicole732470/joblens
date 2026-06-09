@@ -15,15 +15,28 @@ Counties included (Chicago-Naperville-Elgin MSA core):
 | Kane | 219 |
 | McHenry | 52 |
 
-**Totals:** 3,730 unique employers · 14,343 H-1B LCA filings
+**Totals (all visa types):** 14,555 LCA filings · 3,807 unique employers (by FEIN)
 
-> Excludes downstate Illinois worksites (e.g., Bloomington, Peoria, Champaign).
+| Visa Class | Filings |
+|------------|--------:|
+| H-1B | 14,343 |
+| E-3 Australian | 160 |
+| H-1B1 Chile | 26 |
+| H-1B1 Singapore | 26 |
 
-## Full Company List
+**H-1B only:** 3,730 unique employers (aggregated summary)
 
-Download: [`data/chicago_metro_companies.csv`](../data/chicago_metro_companies.csv)
+> Excludes downstate Illinois worksites (e.g., Bloomington, Peoria, Champaign).  
+> 3,730 is **not** every company in Chicagoland — only employers that filed at least one H-1B LCA with a worksite in these six counties during FY2026 Q2.
 
-Columns: `fein`, `employer_name`, `lca_count`, `certified_count`, `worksite_cities`, `worksite_counties`
+## Data Files
+
+| File | Rows | Description |
+|------|-----:|-------------|
+| [`data/chicago_metro_lca_full.csv`](../data/chicago_metro_lca_full.csv) | **14,555** | **Full LCA records, all 98 DOL columns** (one row per filing) |
+| [`data/chicago_metro_companies.csv`](../data/chicago_metro_companies.csv) | 3,730 | H-1B employer summary (aggregated by FEIN) |
+
+Regenerate: `python export_chicago_metro.py`
 
 ---
 

@@ -12,6 +12,7 @@ A local-first system that cross-references LinkedIn company pages against U.S. D
 ├── export_employer_index.py      # Index builder: SQLite → compressed JSON
 ├── slug_overrides.json           # Curated LinkedIn slug → FEIN mappings
 ├── requirements.txt
+├── export_chicago_metro.py       # Export Chicago metro full LCA + employer summary
 ├── data/                         # Derived datasets (job distribution, Chicago sponsors)
 ├── docs/                         # H-1B distribution summaries and metro sponsor lists
 ├── chrome-extension/             # Chrome Manifest V3 extension
