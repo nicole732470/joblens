@@ -1,110 +1,217 @@
 # LCA Sponsor Checker
 
-在 LinkedIn 公司页自动查询该公司是否出现在 **DOL H-1B LCA Disclosure** 数据中。
+A local-first system that cross-references LinkedIn company pages against U.S. Department of Labor (DOL) H-1B Labor Condition Application (LCA) disclosure data. The project combines an offline data pipeline with a Chrome extension that performs in-browser entity matching — no backend server, no cloud dependency.
 
-打开 `linkedin.com/company/...` 时，插件从 URL slug 匹配本地 LCA 雇主索引，在页面右上角显示 badge（LCA 数量、H-1B 数量、Certified 比例、常见岗位）。
+---
 
-## 项目结构
+## Repository Layout
 
 ```
 .
-├── convert_to_sqlite.py          # Excel → SQLite（本地数据处理）
-├── export_employer_index.py      # SQLite → 插件用 JSON/Gzip 索引
-├── slug_overrides.json           # LinkedIn slug → FEIN 手工映射
+├── convert_to_sqlite.py          # Ingestion: Excel → SQLite
+├── export_employer_index.py      # Index builder: SQLite → compressed JSON
+├── slug_overrides.json           # Curated LinkedIn slug → FEIN mappings
 ├── requirements.txt
-├── chrome-extension/             # Chrome 插件（Manifest V3）
+├── chrome-extension/             # Chrome Manifest V3 extension
 │   ├── manifest.json
-│   ├── content.js
+│   ├── content.js                # DOM injection + SPA navigation handling
 │   ├── styles.css
-│   ├── lib/matcher.js
-│   └── data/employers.json.gz    # 预构建索引（~7MB）
+│   ├── lib/matcher.js            # Client-side lookup engine
+│   └── data/employers.json.gz    # Pre-built employer index (~7 MB)
 └── README.md
 ```
 
-> **注意：** 原始 Excel（~440MB）和 SQLite（~940MB）体积过大，**不包含在 Git 仓库中**。请自行从 DOL 下载 LCA 数据后本地转换，或使用仓库内已提交的 `employers.json.gz` 直接使用插件。
+Raw source files (440 MB `.xlsx`, 940 MB `.db`) are excluded from version control due to size.
 
-## 快速开始（只用插件）
+---
 
-1. 克隆仓库
-2. Chrome 打开 `chrome://extensions`
-3. 开启 **开发者模式**
-4. **加载已解压的扩展程序** → 选择 `chrome-extension/` 文件夹
-5. 打开任意 LinkedIn 公司页，例如：
-   - https://www.linkedin.com/company/microsoft/
-   - https://www.linkedin.com/company/typeface/
+## System Architecture
 
-## 更新数据（完整流程）
+The system is split into two decoupled layers: an **offline data pipeline** (Python) and a **client-side lookup runtime** (Chrome extension). They communicate only through a versioned, compressed JSON artifact.
 
-### 1. 安装依赖
-
-```bash
-pip install -r requirements.txt
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        OFFLINE DATA PIPELINE                        │
+│                                                                     │
+│  DOL LCA Excel (.xlsx)                                              │
+│       │  python-calamine (Rust-backed reader)                       │
+│       ▼                                                             │
+│  SQLite (lca_cases table, ~807K rows, indexed)                      │
+│       │  SQL aggregation + entity resolution by FEIN              │
+│       ▼                                                             │
+│  employers.json.gz (~7 MB, 74K employers, 173K search keys)         │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ bundled into extension
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     CLIENT RUNTIME (Chrome MV3)                     │
+│                                                                     │
+│  linkedin.com/company/{slug}                                        │
+│       │  content.js extracts slug from URL                          │
+│       ▼                                                             │
+│  matcher.js loads + decompresses index (DecompressionStream)          │
+│       │  multi-stage entity resolution                              │
+│       ▼                                                             │
+│  Badge UI injected into page (LCA count, H-1B count, top roles)     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. 下载 LCA Excel
+---
 
-从 DOL 下载 LCA Disclosure 数据，放到项目根目录，默认文件名：
+## Layer 1: Data Ingestion (Excel → SQLite)
 
-`LCA_Dislclosure_Data_FY2026_Q2.xlsx`
+### Problem
 
-如需更换文件，修改 `convert_to_sqlite.py` 中的 `XLSX_PATH`。
+DOL publishes LCA data as flat Excel files. The FY2026 Q2 file is ~440 MB on disk, ~807K rows × 98 columns, with ~1.9M shared strings and ~2.6 GB of decompressed XML internally. Standard Python readers (`openpyxl`, `pandas` default engine) take 5–15 minutes; the dataset is too large for in-browser or in-memory analytics without preprocessing.
 
-### 3. Excel → SQLite
+### Design
 
-```bash
-python3 convert_to_sqlite.py
+| Decision | Rationale |
+|----------|-----------|
+| **python-calamine** over openpyxl | Rust bindings via PyO3; reads 807K rows in ~47 s vs. minutes. Read-only path is sufficient — no write-back needed. |
+| **SQLite** over Parquet/CSV | Random lookups by `EMPLOYER_NAME`, `EMPLOYER_FEIN`, `JOB_TITLE` during exploration; SQL aggregation for index export; single-file portability. |
+| **Batch insert (10K rows)** | Reduces transaction overhead; total write ~21 s for 807K rows. |
+| **Post-load indexing** | 13 indexes on high-cardinality filter columns (`EMPLOYER_FEIN`, `CASE_STATUS`, `VISA_CLASS`, etc.); built after bulk insert to avoid per-row index maintenance cost (~6 s). |
+| **WAL journal mode** | Faster concurrent reads during export while ingestion completes. |
+| **TEXT columns throughout** | LCA fields mix formats (dates as strings, empty wage fields, OES year strings in wage-level columns); schema-on-read avoids silent type coercion errors. |
+
+### Schema
+
+One fact table `lca_cases` (98 columns, one row per LCA filing) plus pre-aggregated summary tables and metadata. Employers are deduplicated at query time by **FEIN** (Federal Employer Identification Number): 85,847 distinct `EMPLOYER_NAME` values collapse to **74,732** legal entities — ~9,264 FEINs map to multiple name variants (subsidiaries, DBA names, typos).
+
+---
+
+## Layer 2: Index Export (SQLite → Compressed JSON)
+
+### Problem
+
+A Chrome extension cannot read a 940 MB SQLite file from disk. The browser sandbox permits only packaged extension resources or network requests. The lookup surface needed at runtime is not 807K LCA rows — it is **"does this LinkedIn company correspond to any LCA-filing entity, and what are the headline stats?"**
+
+### Design
+
+The export step performs **server-side aggregation** (in Python/SQL) and ships a **read-optimized denormalized index** to the client.
+
+| Field per employer | Purpose |
+|--------------------|---------|
+| `fein` | Stable primary key for legal entity |
+| `name` / `names[]` | Primary and alias employer names from LCA filings |
+| `search_keys[]` | Precomputed normalized lookup tokens |
+| `lca_count`, `h1b_count`, `certified_count` | Headline sponsorship signals |
+| `top_jobs[]` | Top 3 `(title, wage_level, wage_from)` by filing frequency |
+| `key_index` | Inverted map: `normalized_key → fein` for O(1) client lookup |
+| `slug_overrides` | Curated `linkedin_slug → fein` for known mismatches |
+
+**Top-jobs aggregation** uses a single SQL window-function query (`ROW_NUMBER() OVER (PARTITION BY EMPLOYER_FEIN ...)`) rather than 74K per-FEIN queries — export completes in ~7 s instead of 10+ minutes.
+
+**Compression:** raw JSON ~36 MB → gzip ~7 MB. Loaded once per session via `fetch()` + native `DecompressionStream` (no third-party library).
+
+### Search Key Generation
+
+Each employer name is normalized (lowercase, strip legal suffixes like LLC/Inc/Corp, replace `&` → `and`, remove punctuation) and expanded into multiple keys:
+
+- Full normalized name: `"google llc"` → `"google"`
+- Slug form: `"Google LLC"` → `"google-llc"`
+- First token (≥3 chars): `"Google LLC"` → `"google"`
+
+When multiple employers share a key (e.g., `"meta"` matching both Meta Platforms and unrelated `"META IT CORP"`), the export resolves collisions by keeping the employer with the **highest `lca_count`** — a frequency-based disambiguation heuristic.
+
+---
+
+## Layer 3: Chrome Extension (Client Runtime)
+
+### Manifest V3 Structure
+
+| Component | Role |
+|-----------|------|
+| `content.js` | Runs on `linkedin.com/company/*`; extracts slug from URL; handles LinkedIn SPA navigation via `MutationObserver` + `popstate` |
+| `lib/matcher.js` | Singleton lookup engine; lazy-loads and caches decompressed index |
+| `styles.css` | Fixed-position badge overlay (z-index 99999) |
+| `data/employers.json.gz` | Web-accessible resource declared in `manifest.json` |
+
+No background service worker, no `host_permissions` beyond LinkedIn, no network calls — fully offline after install.
+
+### Entity Resolution Pipeline
+
+Matching LinkedIn identity to LCA identity is an **entity resolution** problem, not exact string equality:
+
+```
+Input:  linkedin.com/company/dun-bradstreet
+LCA:    "Dun & Bradstreet, Inc."  (FEIN 22-3582360)
+
+LinkedIn slug ≠ legal name ≠ DBA ≠ subsidiary name
 ```
 
-约 1–2 分钟，生成 `lca_fy2026_q2.db`。
+The matcher applies a **cascading resolution strategy**:
 
-### 4. 导出插件索引
-
-```bash
-python3 export_employer_index.py
+```
+1. Slug override table     slug_overrides["dun-bradstreet"] → FEIN → employer record
+2. Exact key index lookup  normalize(slug) → key_index → feinMap
+3. H1 fallback             read page <h1> company name, repeat step 2
+4. Substring fuzzy match   bidirectional contains on normalized tokens;
+                           tie-break by highest lca_count
 ```
 
-生成 `chrome-extension/data/employers.json.gz`。
+This is intentionally conservative: false positives (wrong company) are reduced by preferring high-volume filers; false negatives (company not found) occur when slug and legal name diverge with no override entry.
 
-### 5. 测试匹配
+---
 
-```bash
-python3 export_employer_index.py --test microsoft
-python3 export_employer_index.py --test dun-bradstreet
-python3 export_employer_index.py --test typeface
-```
+## Key Design Trade-offs (Interview Talking Points)
 
-### 6. 重载插件
+### Why not query SQLite from the extension?
 
-在 `chrome://extensions` 点击插件的 **重新加载** 按钮。
+Browser extensions cannot access the local filesystem. Options considered:
 
-## 匹配逻辑
+| Approach | Pros | Cons | Verdict |
+|----------|------|------|---------|
+| Localhost FastAPI | Full SQL, always fresh | Must run server; friction for daily use | Rejected for v1 |
+| Cloud DB (Supabase) | Accessible anywhere | Upload PII-adjacent data; latency; cost | Rejected |
+| **Bundled JSON index** | Zero ops, offline, instant | Stale until re-export; ~7 MB install size | **Chosen** |
 
-1. 从 URL 提取 slug（如 `linkedin.com/company/google/` → `google`）
-2. 查 `slug_overrides.json` 手工映射（如 `dun-bradstreet` → Dun & Bradstreet FEIN）
-3. 在预构建 `key_index` 中精确匹配
-4. 失败则读页面 `h1` 公司名再匹配
-5. 最后做 substring 模糊匹配（按 LCA 数量取最高）
+### Why deduplicate by FEIN, not employer name?
 
-## 数据来源
+Same company appears under multiple names (`Google LLC`, `Google Public Sector LLC`, `Meta Platforms, Inc.` vs `Meta Platforms, Inc.` with trailing period). FEIN is the legal entity identifier; name is a display attribute. Aggregation by FEIN prevents splitting stats across aliases.
 
-- **LCA 数据：** [DOL Office of Foreign Labor Certification](https://www.dol.gov/agencies/eta/foreign-labor/performance)
-- **数据周期：** FY2026 Q2（脚本默认）
-- **索引规模：** 74,732 家公司（按 FEIN 去重），806,939 条 LCA
+### Why precompute `key_index` instead of scanning 74K records client-side?
 
-## 常见问题
+74K linear scans per page load would work (~1–5 ms in JS) but 173K key lookups with hash-map access is O(1) per candidate and simpler to reason about. The inverted index is built once at export time; the client only reads.
 
-**Q: 为什么 LinkedIn 有公司但插件显示未找到？**
+### Why not ship all 807K LCA rows?
 
-公司法定名与 LinkedIn slug 不一致，或该公司确实未 file LCA。可在 `slug_overrides.json` 添加映射。
+Full row set is ~36 MB+ JSON, mostly redundant for the UX question ("does this company sponsor?"). The aggregated index answers the question in <50 KB per lookup result. Raw rows remain in local SQLite for ad-hoc SQL analysis outside the extension.
 
-**Q: LCA 有记录 = 一定招 H-1B 吗？**
+### LinkedIn as a single-page application (SPA)
 
-不是。LCA 是合规备案，可能是续签、transfer 或 amendment。仅作参考。
+LinkedIn does not trigger full page reloads on in-app navigation. `content.js` uses a `MutationObserver` on `document.body` and resets state on `popstate` to re-run matching when the URL slug changes — otherwise the badge would show stale results from the previous company.
 
-**Q: 插件需要联网吗？**
+---
 
-不需要。查询完全在本地浏览器内完成（读取打包的 `employers.json.gz`）。
+## Data Provenance
+
+| Attribute | Value |
+|-----------|-------|
+| Source | DOL Office of Foreign Labor Certification — LCA Disclosure Data |
+| Period | FY2026 Q2 |
+| Raw filings | 806,939 LCA records |
+| Unique employers (FEIN) | 74,732 |
+| Unique employer names | 85,847 |
+| Index search keys | 173,406 |
+
+LCA filings represent employer **attestations** of intent to employ H-1B workers at a stated wage — not confirmed hires, not H-1B lottery outcomes. A company with LCA records has historically engaged the sponsorship process; absence of records does not prove non-sponsorship (may file under a parent entity or PEO).
+
+---
+
+## Technology Stack
+
+| Layer | Technology | Why |
+|-------|------------|-----|
+| Excel ingestion | python-calamine | Rust performance for large xlsx |
+| Storage | SQLite 3 | Embedded, indexed, zero-config |
+| Index serialization | JSON + gzip | Browser-native decompression; git-friendly size |
+| Extension | Chrome Manifest V3 | Content scripts, no persistent background page |
+| Matching | Custom normalizer + inverted index | Domain-specific entity resolution without ML overhead |
+
+---
 
 ## License
 
-MIT — 数据版权归美国劳工部（DOL），请遵守其公开数据使用条款。
+MIT — DOL public data subject to federal open-data terms.
