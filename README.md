@@ -12,9 +12,10 @@ A local-first system that cross-references LinkedIn company pages against U.S. D
 ├── export_employer_index.py      # Index builder: SQLite → compressed JSON
 ├── slug_overrides.json           # Curated LinkedIn slug → FEIN mappings
 ├── requirements.txt
-├── export_chicago_metro.py       # Export Chicago metro full LCA + employer summary
-├── data/                         # Derived datasets (job distribution, Chicago sponsors)
-├── docs/                         # H-1B distribution summaries and metro sponsor lists
+├── export_cook_county.py         # Export Cook County IL full LCA + employer summary
+├── export_distribution.py        # Regenerate national job/SOC distribution CSVs
+├── data/                         # Derived datasets (job distribution, Cook County sponsors)
+├── docs/                         # H-1B distribution summaries and Cook County sponsor lists
 ├── chrome-extension/             # Chrome Manifest V3 extension
 │   ├── manifest.json
 │   ├── content.js                # DOM injection + SPA navigation handling
@@ -39,7 +40,7 @@ The system is split into two decoupled layers: an **offline data pipeline** (Pyt
 │  DOL LCA Excel (.xlsx)                                              │
 │       │  python-calamine (Rust-backed reader)                       │
 │       ▼                                                             │
-│  SQLite (lca_cases table, ~807K rows, indexed)                      │
+│  SQLite (lca_cases table, ~786K H-1B rows, indexed)                 │
 │       │  SQL aggregation + entity resolution by FEIN              │
 │       ▼                                                             │
 │  employers.json.gz (~7 MB, 74K employers, 173K search keys)         │
@@ -65,22 +66,23 @@ The system is split into two decoupled layers: an **offline data pipeline** (Pyt
 
 ### Problem
 
-DOL publishes LCA data as flat Excel files. The FY2026 Q2 file is ~440 MB on disk, ~807K rows × 98 columns, with ~1.9M shared strings and ~2.6 GB of decompressed XML internally. Standard Python readers (`openpyxl`, `pandas` default engine) take 5–15 minutes; the dataset is too large for in-browser or in-memory analytics without preprocessing.
+DOL publishes LCA data as flat Excel files. The FY2026 Q2 file is ~440 MB on disk, ~807K rows × 98 columns (import filters to **785,687 H-1B** only), with ~1.9M shared strings and ~2.6 GB of decompressed XML internally. Standard Python readers (`openpyxl`, `pandas` default engine) take 5–15 minutes; the dataset is too large for in-browser or in-memory analytics without preprocessing.
 
 ### Design
 
 | Decision | Rationale |
 |----------|-----------|
 | **python-calamine** over openpyxl | Rust bindings via PyO3; reads 807K rows in ~47 s vs. minutes. Read-only path is sufficient — no write-back needed. |
+| **H-1B-only import** | Filters out E-3 Australian and H-1B1 Chile/Singapore at ingest; DB stores 785,687 rows. |
 | **SQLite** over Parquet/CSV | Random lookups by `EMPLOYER_NAME`, `EMPLOYER_FEIN`, `JOB_TITLE` during exploration; SQL aggregation for index export; single-file portability. |
-| **Batch insert (10K rows)** | Reduces transaction overhead; total write ~21 s for 807K rows. |
+| **Batch insert (10K rows)** | Reduces transaction overhead; total write ~21 s for 786K rows. |
 | **Post-load indexing** | 13 indexes on high-cardinality filter columns (`EMPLOYER_FEIN`, `CASE_STATUS`, `VISA_CLASS`, etc.); built after bulk insert to avoid per-row index maintenance cost (~6 s). |
 | **WAL journal mode** | Faster concurrent reads during export while ingestion completes. |
 | **TEXT columns throughout** | LCA fields mix formats (dates as strings, empty wage fields, OES year strings in wage-level columns); schema-on-read avoids silent type coercion errors. |
 
 ### Schema
 
-One fact table `lca_cases` (98 columns, one row per LCA filing) plus pre-aggregated summary tables and metadata. Employers are deduplicated at query time by **FEIN** (Federal Employer Identification Number): 85,847 distinct `EMPLOYER_NAME` values collapse to **74,732** legal entities — ~9,264 FEINs map to multiple name variants (subsidiaries, DBA names, typos).
+One fact table `lca_cases` (98 columns, one row per H-1B LCA filing) plus pre-aggregated summary tables and metadata. Employers are deduplicated at query time by **FEIN** (Federal Employer Identification Number): 79,492 distinct `EMPLOYER_NAME` values collapse to **69,250** legal entities.
 
 ---
 
@@ -88,7 +90,7 @@ One fact table `lca_cases` (98 columns, one row per LCA filing) plus pre-aggrega
 
 ### Problem
 
-A Chrome extension cannot read a 940 MB SQLite file from disk. The browser sandbox permits only packaged extension resources or network requests. The lookup surface needed at runtime is not 807K LCA rows — it is **"does this LinkedIn company correspond to any LCA-filing entity, and what are the headline stats?"**
+A Chrome extension cannot read a 940 MB SQLite file from disk. The browser sandbox permits only packaged extension resources or network requests. The lookup surface needed at runtime is not 786K LCA rows — it is **"does this LinkedIn company correspond to any LCA-filing entity, and what are the headline stats?"**
 
 ### Design
 
@@ -258,7 +260,7 @@ Same company appears under multiple names (`Google LLC`, `Google Public Sector L
 
 74K linear scans per page load would work (~1–5 ms in JS) but 173K key lookups with hash-map access is O(1) per candidate and simpler to reason about. The inverted index is built once at export time; the client only reads.
 
-### Why not ship all 807K LCA rows?
+### Why not ship all 786K LCA rows?
 
 Full row set is ~36 MB+ JSON, mostly redundant for the UX question ("does this company sponsor?"). The aggregated index answers the question in <50 KB per lookup result. Raw rows remain in local SQLite for ad-hoc SQL analysis outside the extension.
 
@@ -274,10 +276,10 @@ LinkedIn does not trigger full page reloads on in-app navigation. `content.js` u
 |-----------|-------|
 | Source | DOL Office of Foreign Labor Certification — LCA Disclosure Data |
 | Period | FY2026 Q2 |
-| Raw filings | 806,939 LCA records |
-| Unique employers (FEIN) | 74,732 |
-| Unique employer names | 85,847 |
-| Index search keys | 173,406 |
+| Raw filings | 785,687 H-1B LCA records |
+| Unique employers (FEIN) | 69,250 |
+| Unique employer names | 79,492 |
+| Index search keys | 161,314 |
 
 LCA filings represent employer **attestations** of intent to employ H-1B workers at a stated wage — not confirmed hires, not H-1B lottery outcomes. A company with LCA records has historically engaged the sponsorship process; absence of records does not prove non-sponsorship (may file under a parent entity or PEO).
 

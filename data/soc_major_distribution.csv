@@ -1,10 +1,10 @@
 soc_major,group_name,cnt,pct
-15,"Computer & Mathematical",486523,61.92
-17,"Architecture & Engineering",76617,9.75
-13,"Business & Financial",62595,7.97
+15,Computer & Mathematical,486523,61.92
+17,Architecture & Engineering,76617,9.75
+13,Business & Financial,62595,7.97
 11,Management,41342,5.26
 19,"Life, Physical & Social Science",35911,4.57
-29,"Healthcare Practitioners",32494,4.14
+29,Healthcare Practitioners,32494,4.14
 25,Education,30917,3.94
 27,Other,6474,0.82
 23,Other,4125,0.53

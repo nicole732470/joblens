@@ -2,9 +2,13 @@
 """
 Convert LCA Disclosure Excel file to SQLite for fast querying.
 
+Imports H-1B filings only (excludes E-3 Australian, H-1B1 Chile/Singapore).
+
 Usage:
     python3 convert_to_sqlite.py
 """
+
+VISA_CLASS_FILTER = "H-1B"
 
 from __future__ import annotations
 
@@ -98,6 +102,7 @@ def create_metadata(conn: sqlite3.Connection, row_count: int, columns: list[str]
         "row_count": str(row_count),
         "column_count": str(len(columns)),
         "columns_json": ",".join(columns),
+        "visa_class_filter": VISA_CLASS_FILTER,
     }
     conn.executemany(
         "INSERT OR REPLACE INTO _metadata (key, value) VALUES (?, ?)",
@@ -195,8 +200,15 @@ def main() -> None:
     sheet = wb.get_sheet_by_index(0)
     data = sheet.to_python()
     headers = [str(h) for h in data[0]]
-    rows = data[1:]
-    print(f"Loaded {len(rows):,} rows x {len(headers)} columns in {time.time() - t0:.1f}s")
+    visa_idx = headers.index("VISA_CLASS")
+    all_rows = data[1:]
+    rows = [r for r in all_rows if sanitize(r[visa_idx]) == VISA_CLASS_FILTER]
+    skipped = len(all_rows) - len(rows)
+    print(
+        f"Loaded {len(all_rows):,} rows x {len(headers)} columns in {time.time() - t0:.1f}s",
+        flush=True,
+    )
+    print(f"Keeping {len(rows):,} {VISA_CLASS_FILTER} rows (skipped {skipped:,} other visa classes)", flush=True)
 
     t1 = time.time()
     print(f"Writing SQLite database to {DB_PATH.name}...", flush=True)
@@ -226,9 +238,6 @@ def main() -> None:
     # Useful views for quick exploration
     conn.executescript(
         """
-        CREATE VIEW IF NOT EXISTS v_h1b_cases AS
-        SELECT * FROM lca_cases WHERE VISA_CLASS = 'H-1B';
-
         CREATE VIEW IF NOT EXISTS v_certified AS
         SELECT * FROM lca_cases WHERE CASE_STATUS = 'Certified';
         """

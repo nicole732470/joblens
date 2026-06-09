@@ -1,24 +1,23 @@
 # H-1B LCA Distribution Summary (FY2026 Q2)
 
-Source: DOL LCA Disclosure Data · 806,939 total filings · 785,687 H-1B
+Source: DOL LCA Disclosure Data · **785,687 H-1B filings** (E-3 / H-1B1 excluded)
 
 ---
 
 ## Overall Status
 
-| Status | Count | % of All LCA |
-|--------|------:|-------------:|
-| Certified | 742,188 | 91.98% |
-| Certified - Withdrawn | 47,036 | 5.83% |
-| Withdrawn | 12,809 | 1.59% |
-| Denied | 4,906 | 0.61% |
+| Status | Count | % of H-1B |
+|--------|------:|----------:|
+| Certified | 723,437 | 92.08% |
+| Certified - Withdrawn | 45,589 | 5.80% |
+| Withdrawn | 12,374 | 1.57% |
+| Denied | 4,287 | 0.55% |
 
 | Metric | Value |
 |--------|------:|
-| Unique employers (FEIN) | 74,732 |
-| Unique employer names | 85,847 |
+| Unique employers (FEIN) | 69,250 |
+| Unique employer names | 79,492 |
 | H-1B filings | 785,687 |
-| H-1B sponsoring employers | 69,250 |
 
 ---
 
@@ -70,10 +69,10 @@ Full list: [`data/top_jobs_distribution.csv`](../data/top_jobs_distribution.csv)
 | NAICS Industry Group | H-1B Count | % of H-1B |
 |----------------------|----------:|----------:|
 | Computer Systems Design (5415) | 253,486 | **32.26%** |
-| Finance & Insurance (522–524) | 65,481 | 8.33% |
+| Finance & Insurance (522–524) | 67,544 | 8.60% |
+| Information / Tech Publishing (513–519) | 65,295 | 8.31% |
 | Educational Services (611) | 63,324 | 8.06% |
 | Manufacturing – Electronics/Equipment (334–336) | 58,842 | 7.49% |
-| Information / Tech Publishing (513–519) | 57,353 | 7.30% |
 | Retail Trade (44–45) | 40,141 | 5.11% |
 | Healthcare (621–622) | 34,325 | 4.37% |
 | Management & Consulting (5416) | 31,250 | 3.98% |
@@ -102,6 +101,7 @@ Full list: [`data/top_jobs_distribution.csv`](../data/top_jobs_distribution.csv)
 
 ## Notes
 
-- Percentages are computed over **H-1B filings** unless noted otherwise.
+- Dataset contains **H-1B only**; E-3 Australian and H-1B1 Chile/Singapore filings are excluded.
+- Percentages are computed over all 785,687 H-1B filings.
 - SOC/NAICS describe the filed role and employer industry, not confirmed hires.
 - One employer may file under multiple NAICS codes or job titles.
