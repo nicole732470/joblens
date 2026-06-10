@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from generic_tokens import GENERIC_TOKENS, MAX_SHORT_TOKEN_COLLISIONS
 from naics_sectors import naics_sector_label
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -70,24 +71,60 @@ def slugify_raw(text: str) -> str:
     return re.sub(r"\s+", "-", text)
 
 
-def search_keys_for(name: str, all_names: list[str]) -> list[str]:
-    """Build lookup keys from full legal names (no bare single-word shortcuts)."""
+def brand_tokens_from_raw(raw: str) -> set[str]:
+    """Candidate short brand tokens (ornua, coforge) from a legal name."""
+    found: set[str] = set()
+    raw_slug = slugify_raw(raw)
+    parts = [p for p in raw_slug.split("-") if p]
+    if len(parts) >= 2:
+        lead = parts[0]
+        if len(lead) >= 4 and lead not in GENERIC_TOKENS:
+            found.add(lead)
+    norm = normalize(raw)
+    if not norm or len(norm) < 4:
+        return found
+    n_parts = norm.split()
+    if n_parts[0] not in GENERIC_TOKENS and len(n_parts[0]) >= 4:
+        if len(n_parts) >= 2 or len(n_parts[0]) >= 5:
+            found.add(n_parts[0])
+    return found
+
+
+def compute_token_collision_counts(all_names: list[list[str]]) -> dict[str, int]:
+    from collections import Counter
+
+    counts: Counter[str] = Counter()
+    for names in all_names:
+        seen: set[str] = set()
+        for raw in names:
+            for token in brand_tokens_from_raw(raw):
+                if token not in seen:
+                    counts[token] += 1
+                    seen.add(token)
+    return dict(counts)
+
+
+def search_keys_for(name: str, all_names: list[str], token_counts: dict[str, int]) -> list[str]:
+    """Build lookup keys — multi-word names always; short brand tokens if low collision."""
     keys: set[str] = set()
     for raw in {name, *all_names}:
         raw_slug = slugify_raw(raw)
-        if raw_slug.count("-") >= 1 or len(raw_slug) >= 10:
+        if raw_slug.count("-") >= 1:
             keys.add(raw_slug)
 
         norm = normalize(raw)
         if not norm or len(norm) < 4:
             continue
-        token_count = len(norm.split())
-        if token_count < 2 and len(norm) < 10:
-            continue
-        keys.add(norm)
-        slug = slugify(raw)
-        if slug.count("-") >= 1 or len(slug) >= 10:
-            keys.add(slug)
+        if len(norm.split()) >= 2:
+            keys.add(norm)
+            slug = slugify(raw)
+            if slug.count("-") >= 1:
+                keys.add(slug)
+
+        for token in brand_tokens_from_raw(raw):
+            if token_counts.get(token, 99) <= MAX_SHORT_TOKEN_COLLISIONS:
+                keys.add(token)
+
     return sorted(keys)
 
 
@@ -173,28 +210,35 @@ def fetch_employers(conn: sqlite3.Connection) -> list[dict]:
 
     jobs_by_fein = fetch_top_jobs(conn)
     naics_by_fein = fetch_naics_by_fein(conn)
-    employers: list[dict] = []
+    raw_employers: list[dict] = []
     for row in rows:
         fein, primary_name, names_csv, lca, h1b, certified, city, state = row
         all_names = sorted({n.strip() for n in (names_csv or "").split(",") if n.strip()})
         if primary_name not in all_names:
             all_names.insert(0, primary_name)
-
-        naics_code = naics_by_fein.get(fein, "")
-        employers.append(
+        raw_employers.append(
             {
                 "fein": fein,
                 "name": primary_name,
                 "names": all_names,
-                "search_keys": search_keys_for(primary_name, all_names),
                 "lca_count": lca,
                 "h1b_count": h1b,
                 "certified_count": certified,
                 "city": city,
                 "state": state,
-                "naics_code": naics_code,
-                "naics_sector": naics_sector_label(naics_code),
+                "naics_code": naics_by_fein.get(fein, ""),
                 "top_jobs": jobs_by_fein.get(fein, []),
+            }
+        )
+
+    token_counts = compute_token_collision_counts([e["names"] for e in raw_employers])
+    employers: list[dict] = []
+    for emp in raw_employers:
+        employers.append(
+            {
+                **emp,
+                "naics_sector": naics_sector_label(emp["naics_code"]),
+                "search_keys": search_keys_for(emp["name"], emp["names"], token_counts),
             }
         )
     return employers
@@ -252,7 +296,7 @@ def export() -> Path:
     key_index = build_index(employers)
 
     payload = {
-        "version": "1.1",
+        "version": "1.2",
         "source_file": meta_row[0] if meta_row else DB_PATH.name,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "employer_count": len(employers),

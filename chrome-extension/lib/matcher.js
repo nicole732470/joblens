@@ -258,7 +258,7 @@ const LcaMatcher = (() => {
 
     if (slugTokens.length === 1) {
       const t = slugTokens[0];
-      if (t.length >= 6) {
+      if (t.length >= 5) {
         for (const hay of haystacks) {
           if (hay === t || hasWord(hay, t)) return 70;
         }

@@ -131,12 +131,11 @@ Fuzzy matches are **never learned**. Only high-confidence exact paths with suffi
 
 ### Search key policy (export time)
 
-Earlier versions generated single-token keys like `gamma` or `american`, causing thousands of collisions. Index v1.1 tightens key generation:
+Earlier versions generated single-token keys like `gamma` or `american`, causing thousands of collisions. Index v1.2 key policy:
 
-- Multi-word normalized legal names always become keys
-- Single-token keys only when the token is ≥10 characters
-- Hyphenated slug forms when the slug has ≥1 hyphen or length ≥10
-- **No bare short single-word shortcuts**
+- Multi-word legal names and hyphenated slugs (`ornua-foods-north-america-inc`) always indexed
+- Short brand tokens (≥4 chars, e.g. `ornua`, `coforge`) indexed only when **≤5 employers** share that token — avoids `american` / `university` collisions
+- Generic words (`gamma`, `hiring`, `global`, …) never indexed as single-token keys
 
 Collisions on the same key resolve to the employer with the **highest `lca_count`**.
 
