@@ -18,6 +18,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from naics_sectors import naics_sector_label
+
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "lca_fy2026_q2.db"
 SLUG_OVERRIDES_PATH = BASE_DIR / "slug_overrides.json"
@@ -60,17 +62,19 @@ def slugify(text: str) -> str:
 
 
 def search_keys_for(name: str, all_names: list[str]) -> list[str]:
+    """Build lookup keys from full legal names (no bare single-word shortcuts)."""
     keys: set[str] = set()
     for raw in {name, *all_names}:
         norm = normalize(raw)
-        if not norm:
+        if not norm or len(norm) < 4:
+            continue
+        token_count = len(norm.split())
+        if token_count < 2 and len(norm) < 10:
             continue
         keys.add(norm)
-        keys.add(slugify(raw))
-        # First significant token (e.g. "google" from "google llc")
-        first = norm.split()[0] if norm.split() else ""
-        if len(first) >= 3:
-            keys.add(first)
+        slug = slugify(raw)
+        if slug.count("-") >= 1 or len(slug) >= 10:
+            keys.add(slug)
     return sorted(keys)
 
 
@@ -114,6 +118,28 @@ def fetch_top_jobs(conn: sqlite3.Connection) -> dict[str, list[dict]]:
     return jobs_by_fein
 
 
+def fetch_naics_by_fein(conn: sqlite3.Connection) -> dict[str, str]:
+    rows = conn.execute(
+        """
+        WITH ranked AS (
+            SELECT
+                EMPLOYER_FEIN AS fein,
+                NAICS_CODE AS naics,
+                COUNT(*) AS cnt,
+                ROW_NUMBER() OVER (
+                    PARTITION BY EMPLOYER_FEIN
+                    ORDER BY COUNT(*) DESC
+                ) AS rn
+            FROM lca_cases
+            WHERE NAICS_CODE IS NOT NULL AND TRIM(NAICS_CODE) != ''
+            GROUP BY EMPLOYER_FEIN, NAICS_CODE
+        )
+        SELECT fein, naics FROM ranked WHERE rn = 1
+        """
+    ).fetchall()
+    return {fein: naics for fein, naics in rows}
+
+
 def fetch_employers(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """
@@ -133,6 +159,7 @@ def fetch_employers(conn: sqlite3.Connection) -> list[dict]:
     ).fetchall()
 
     jobs_by_fein = fetch_top_jobs(conn)
+    naics_by_fein = fetch_naics_by_fein(conn)
     employers: list[dict] = []
     for row in rows:
         fein, primary_name, names_csv, lca, h1b, certified, city, state = row
@@ -140,6 +167,7 @@ def fetch_employers(conn: sqlite3.Connection) -> list[dict]:
         if primary_name not in all_names:
             all_names.insert(0, primary_name)
 
+        naics_code = naics_by_fein.get(fein, "")
         employers.append(
             {
                 "fein": fein,
@@ -151,6 +179,8 @@ def fetch_employers(conn: sqlite3.Connection) -> list[dict]:
                 "certified_count": certified,
                 "city": city,
                 "state": state,
+                "naics_code": naics_code,
+                "naics_sector": naics_sector_label(naics_code),
                 "top_jobs": jobs_by_fein.get(fein, []),
             }
         )
@@ -192,16 +222,6 @@ def lookup(index: dict[str, dict], overrides: dict[str, str], slug: str, h1: str
         if hit and (best is None or hit["lca_count"] > best["lca_count"]):
             best = hit
 
-    if best:
-        return best
-
-    # Substring fallback on slug tokens
-    slug_norm = normalize(slug.replace("-", " "))
-    if len(slug_norm) >= 4:
-        for key, emp in index.items():
-            if slug_norm in key or key in slug_norm:
-                if best is None or emp["lca_count"] > best["lca_count"]:
-                    best = emp
     return best
 
 
@@ -219,7 +239,7 @@ def export() -> Path:
     key_index = build_index(employers)
 
     payload = {
-        "version": "1.0",
+        "version": "1.1",
         "source_file": meta_row[0] if meta_row else DB_PATH.name,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "employer_count": len(employers),

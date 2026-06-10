@@ -21,14 +21,40 @@
     },
   };
 
-  const METHOD_LABELS = {
-    manual_override: "Manual slug mapping",
-    learned_slug: "Previously verified slug (this device)",
-    exact_key: "Exact slug / key match",
-    exact_page_name: "Exact page name match",
-    fuzzy_token: "Fuzzy token match (all words)",
-    fuzzy_single: "Fuzzy single-word match",
-  };
+  function sourceLabel(ctx) {
+    if (ctx.source === "job page") {
+      return `Detected from job posting · slug: <code>${escapeHtml(ctx.slug || "")}</code>`;
+    }
+    if (ctx.source === "company page") {
+      return `Detected from company page · slug: <code>${escapeHtml(ctx.slug || "")}</code>`;
+    }
+    return "";
+  }
+
+  function industryLine(employer) {
+    if (!employer.naics_sector && !employer.naics_code) return "";
+    const parts = [];
+    if (employer.naics_sector) parts.push(employer.naics_sector);
+    if (employer.naics_code) parts.push(`NAICS ${employer.naics_code}`);
+    return `<div class="lca-industry"><span class="lca-label">Industry</span> ${escapeHtml(parts.join(" · "))}</div>`;
+  }
+
+  function renderAlternatives(alternatives) {
+    if (!alternatives?.length) return "";
+    const items = alternatives
+      .map(({ employer, score }) => {
+        const loc = [employer.city, employer.state].filter(Boolean).join(", ");
+        const industry = employer.naics_sector || "";
+        const meta = [loc, industry, `${employer.lca_count} LCA`].filter(Boolean).join(" · ");
+        return `<li><b>${escapeHtml(employer.name)}</b>${meta ? `<br><span class="lca-alt-meta">${escapeHtml(meta)}</span>` : ""} <span class="lca-alt-score">score ${score}</span></li>`;
+      })
+      .join("");
+    return `
+      <div class="lca-alternatives">
+        <div class="lca-label">Other possible matches</div>
+        <ul>${items}</ul>
+      </div>`;
+  }
 
   function extractJobId() {
     const params = new URLSearchParams(window.location.search);
@@ -139,8 +165,15 @@
       .join("")}</ul>`;
   }
 
+  function renderNotes(notes) {
+    if (!notes?.length) return "";
+    return `<ul class="lca-notes">${notes
+      .map((n) => `<li>${escapeHtml(n)}</li>`)
+      .join("")}</ul>`;
+  }
+
   function renderBadge(result, ctx) {
-    const { employer, confidence, score, method, matchedOn, warnings } = result;
+    const { employer, confidence, warnings, notes, alternatives } = result;
     const meta = CONFIDENCE_META[confidence] || CONFIDENCE_META.medium;
     const el = ensureBadge();
 
@@ -169,6 +202,9 @@
       ? `<div class="lca-compare"><span class="lca-label">LinkedIn</span> ${escapeHtml(ctx.displayName)}</div>`
       : "";
 
+    const showAlternatives =
+      confidence !== "high" && alternatives?.length ? renderAlternatives(alternatives) : "";
+
     el.className = `lca-badge ${meta.badgeClass}`;
     el.innerHTML = `
       <button class="lca-close" aria-label="Close">×</button>
@@ -179,8 +215,9 @@
           <div class="lca-confidence lca-confidence-${confidence}">${meta.label}</div>
         </div>
       </div>
-      <div class="lca-compare"><span class="lca-label">LCA legal name</span> ${escapeHtml(employer.name)}</div>
+      <div class="lca-company">${escapeHtml(employer.name)}</div>
       ${linkedInLine}
+      ${industryLine(employer)}
       ${altNames}
       <div class="lca-stats">
         <span>${employer.lca_count.toLocaleString()} LCA</span>
@@ -189,13 +226,10 @@
       </div>
       ${location ? `<div class="lca-meta">${escapeHtml(location)} · FEIN ${escapeHtml(employer.fein)}</div>` : `<div class="lca-meta">FEIN ${escapeHtml(employer.fein)}</div>`}
       ${jobsHtml ? `<ul class="lca-jobs">${jobsHtml}</ul>` : ""}
+      ${renderNotes(notes)}
       ${renderWarnings(warnings)}
-      <div class="lca-match-detail">
-        <div><span class="lca-label">Match method</span> ${METHOD_LABELS[method] || method}${result.fromCache ? " · session cache" : ""}</div>
-        <div><span class="lca-label">Matched on</span> <code>${escapeHtml(matchedOn)}</code></div>
-        <div><span class="lca-label">Score</span> ${score}/100</div>
-        <div><span class="lca-label">Source</span> ${escapeHtml(ctx.source)} · <code>${escapeHtml(ctx.slug || "")}</code></div>
-      </div>
+      ${showAlternatives}
+      <div class="lca-foot">${sourceLabel(ctx)}</div>
     `;
     el.querySelector(".lca-close").addEventListener("click", () => el.remove());
   }

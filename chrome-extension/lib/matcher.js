@@ -2,12 +2,13 @@
  * LCA employer lookup — loads compressed index and matches LinkedIn slugs/names.
  *
  * lookup() returns:
- *   { employer, confidence, score, method, matchedOn, warnings[], fromCache? } | null
+ *   { employer, confidence, score, method, matchedOn, warnings[], alternatives[], fromCache? } | null
  */
 const LcaMatcher = (() => {
   const STORAGE_KEY = "learned_slugs";
   const LEARNABLE_METHODS = new Set(["exact_key", "exact_page_name"]);
   const SESSION_CACHE = new Map();
+  const FUZZY_FLOOR = 70;
 
   let payload = null;
   let feinMap = null;
@@ -33,7 +34,7 @@ const LcaMatcher = (() => {
   function tokens(text) {
     return normalize(String(text).replace(/-/g, " "))
       .split(" ")
-      .filter(Boolean);
+      .filter((t) => t.length >= 2);
   }
 
   function escapeRegExp(s) {
@@ -55,42 +56,64 @@ const LcaMatcher = (() => {
     return shared / Math.max(ta.size, tb.size);
   }
 
+  /** LinkedIn shows a short brand; LCA uses a longer legal name (e.g. EVERSANA → EVERSANA LIFE … LLC). */
+  function isBrandSubset(pageName, legalName) {
+    const pageTokens = tokens(pageName);
+    const legalTokenSet = new Set(tokens(legalName));
+    if (!pageTokens.length) return false;
+    if (pageTokens.length >= tokens(legalName).length) return false;
+    return pageTokens.every((t) => legalTokenSet.has(t));
+  }
+
   function cacheKey(slug, pageName) {
     return `${slug}|${normalize(pageName || "")}`;
   }
 
-  function buildResult(employer, score, method, matchedOn, pageName) {
+  function buildResult(employer, score, method, matchedOn, pageName, alternatives = []) {
     const warnings = [];
+    const notes = [];
     let confidence = "high";
+    const brandSubset = pageName && isBrandSubset(pageName, employer.name);
 
-    if (score < 90) confidence = "medium";
-    if (score < 70) confidence = "low";
+    if (score < 90 && !brandSubset && method !== "manual_override") confidence = "medium";
+    if (score < 75 && !brandSubset && method !== "manual_override") confidence = "low";
 
-    if (method === "fuzzy_token" || method === "fuzzy_single") {
-      warnings.push("Fuzzy match — verify the legal name before trusting this result.");
+    if ((method === "fuzzy_token" || method === "fuzzy_single") && !brandSubset) {
+      warnings.push("Name-based match — confirm legal name and industry before trusting.");
     }
 
-    if (pageName) {
+    if (brandSubset) {
+      notes.push(
+        `LinkedIn brand "${pageName}" — H-1B filed under legal entity "${employer.name}".`
+      );
+      if (confidence === "low" || confidence === "medium") confidence = "high";
+    } else if (pageName) {
       const overlap = nameOverlap(pageName, employer.name);
       if (overlap < 0.34) {
         confidence = confidence === "high" ? "medium" : "low";
         warnings.push(
-          `LinkedIn name "${pageName}" looks different from LCA name "${employer.name}".`
+          `LinkedIn shows "${pageName}" but LCA lists "${employer.name}".`
         );
       }
     }
 
     if (employer.lca_count <= 2) {
-      warnings.push("Very few LCA filings — treat as weak signal.");
+      warnings.push("Very few LCA filings — weak sponsorship signal.");
     }
 
-    return { employer, confidence, score, method, matchedOn, warnings };
+    if (alternatives.length > 0 && confidence !== "high") {
+      warnings.push("Other similar employers exist — see alternatives below.");
+    }
+
+    return { employer, confidence, score, method, matchedOn, warnings, notes, alternatives };
   }
 
   function cloneResult(result, extras = {}) {
     return {
       ...result,
       warnings: [...(result.warnings || [])],
+      notes: [...(result.notes || [])],
+      alternatives: [...(result.alternatives || [])],
       ...extras,
     };
   }
@@ -145,18 +168,20 @@ const LcaMatcher = (() => {
       if (hay === slugNorm) return 100;
     }
 
-    const tokenHits = slugTokens.map((token) =>
-      haystacks.some((hay) => hasWord(hay, token))
-    );
-    if (tokenHits.length > 0 && tokenHits.every(Boolean)) {
-      return 70 + slugTokens.length * 10;
+    if (slugTokens.length >= 2) {
+      const tokenHits = slugTokens.map((token) =>
+        haystacks.some((hay) => hasWord(hay, token))
+      );
+      if (tokenHits.length > 0 && tokenHits.every(Boolean)) {
+        return 75 + Math.min(slugTokens.length * 5, 20);
+      }
     }
 
     if (slugTokens.length === 1) {
       const t = slugTokens[0];
-      if (t.length >= 4) {
+      if (t.length >= 6) {
         for (const hay of haystacks) {
-          if (hay === t || hasWord(hay, t)) return 60;
+          if (hay === t || hasWord(hay, t)) return 70;
         }
       }
     }
@@ -164,10 +189,23 @@ const LcaMatcher = (() => {
     return 0;
   }
 
+  function collectFuzzyCandidates(slugTokenList, slugNorm, excludeFein) {
+    const scored = [];
+    for (const employer of payload.employers) {
+      if (employer.fein === excludeFein) continue;
+      const score = scoreEmployer(employer, slugTokenList, slugNorm);
+      if (score >= FUZZY_FLOOR) {
+        scored.push({ employer, score });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score || b.employer.lca_count - a.employer.lca_count);
+    return scored;
+  }
+
   function shouldLearn(result, pageName) {
     if (result.confidence !== "high") return false;
     if (!LEARNABLE_METHODS.has(result.method)) return false;
-    if (result.warnings.some((w) => w.includes("looks different"))) return false;
+    if (result.warnings.some((w) => w.includes("LinkedIn shows"))) return false;
     if (pageName && nameOverlap(pageName, result.employer.name) < 0.34) return false;
     return true;
   }
@@ -190,7 +228,7 @@ const LcaMatcher = (() => {
     const employer = lookupByFein(entry.fein);
     if (!employer) return null;
     const result = buildResult(employer, 100, "learned_slug", slug, pageName);
-    result.warnings.push("Matched from a previously verified slug mapping on this device.");
+    result.warnings.push("Matched from a slug you verified earlier on this device.");
     return result;
   }
 
@@ -237,25 +275,31 @@ const LcaMatcher = (() => {
 
     if (best) {
       const method = bestSource === "page_name" ? "exact_page_name" : "exact_key";
-      return buildResult(best, 95, method, bestKey, pageName);
+      const alts = collectFuzzyCandidates(slugTokenList, slugNorm, best.fein)
+        .slice(0, 2)
+        .map(({ employer, score }) => ({ employer, score }));
+      return buildResult(best, 95, method, bestKey, pageName, alts);
     }
 
-    let bestScore = 0;
-    let bestEmp = null;
-    for (const employer of payload.employers) {
-      const score = scoreEmployer(employer, slugTokenList, slugNorm);
-      if (score > bestScore) {
-        bestScore = score;
-        bestEmp = employer;
-      } else if (score === bestScore && score > 0 && bestEmp) {
-        if (employer.lca_count > bestEmp.lca_count) bestEmp = employer;
-      }
-    }
+    const fuzzyHits = collectFuzzyCandidates(slugTokenList, slugNorm, null);
+    if (!fuzzyHits.length) return null;
 
-    if (bestScore < 60 || !bestEmp) return null;
+    const top = fuzzyHits[0];
+    if (top.score < FUZZY_FLOOR) return null;
 
     const method = slugTokenList.length === 1 ? "fuzzy_single" : "fuzzy_token";
-    return buildResult(bestEmp, bestScore, method, slugTokenList.join(" + "), pageName);
+    const alts = fuzzyHits
+      .slice(1, 3)
+      .map(({ employer, score }) => ({ employer, score }));
+
+    return buildResult(
+      top.employer,
+      top.score,
+      method,
+      slugTokenList.join(" + ") || slugNorm,
+      pageName,
+      alts
+    );
   }
 
   async function lookup(slug, pageName) {

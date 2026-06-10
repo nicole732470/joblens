@@ -1,299 +1,220 @@
 # LCA Sponsor Checker
 
-A local-first system that cross-references LinkedIn company pages against U.S. Department of Labor (DOL) H-1B Labor Condition Application (LCA) disclosure data. The project combines an offline data pipeline with a Chrome extension that performs in-browser entity matching — no backend server, no cloud dependency.
+Cross-reference LinkedIn company pages against U.S. Department of Labor (DOL) H-1B Labor Condition Application (LCA) disclosure data — fully offline, no backend.
+
+LinkedIn exposes a **URL slug** and a **display name**. DOL records use **legal entity names** and **FEINs**. There is no shared identifier between the two systems, so matching is an **entity resolution** problem solved with a conservative lookup pipeline and human-verifiable signals on the badge.
+
+**Data:** DOL LCA Disclosure · FY2026 Q2 · 785,687 H-1B filings · 69,250 employers (by FEIN)  
+**Extension:** Chrome Manifest V3 · index v1.1 · extension v1.5.1
 
 ---
 
-## Repository Layout
+## End-to-end data flow
+
+```mermaid
+flowchart LR
+  subgraph offline["Offline pipeline (Python)"]
+    XLSX["DOL LCA Excel\n~440 MB"]
+    SQLITE["SQLite\nlca_cases · ~786K rows"]
+    INDEX["employers.json.gz\n~6.4 MB · 69K employers"]
+    XLSX -->|"convert_to_sqlite.py\npython-calamine"| SQLITE
+    SQLITE -->|"export_employer_index.py\nSQL aggregation + key_index"| INDEX
+    OVERRIDES["slug_overrides.json"] --> INDEX
+  end
+
+  subgraph browser["Browser runtime (Chrome MV3)"]
+    LI["linkedin.com/company/{slug}\nor job posting"]
+    DOM["content.js\nextract slug + page name"]
+    MATCH["matcher.js\nlookup cascade"]
+    UI["Badge overlay\nconfidence · industry · alternatives"]
+    INDEX --> MATCH
+    LI --> DOM --> MATCH --> UI
+    STORAGE[("chrome.storage.local\nlearned slugs")] <--> MATCH
+  end
+```
+
+Raw `.xlsx` and `.db` files are gitignored (too large). The extension ships only the compressed index.
+
+---
+
+## Company identification workflow
+
+On each LinkedIn company or job page, the extension extracts a **slug** (from the URL or company link) and optionally a **display name** (from the page heading or job card). Those inputs feed a fixed-order resolver:
+
+```mermaid
+flowchart TD
+  START["Input: slug + page name"] --> CACHE{"Session cache\nslug|name seen?"}
+  CACHE -->|hit| OUT["Return cached result"]
+  CACHE -->|miss| OVERRIDE{"slug_overrides.json\nmanual slug → FEIN?"}
+  OVERRIDE -->|yes| HIGH1["High confidence · manual_override"]
+  OVERRIDE -->|no| LEARNED{"learned_slugs\nthis device only?"}
+  LEARNED -->|yes| HIGH2["High confidence · learned_slug"]
+  LEARNED -->|no| EXACT{"key_index lookup\nslug / normalized name?"}
+  EXACT -->|hit| HIGH3["High confidence · exact_key / exact_page_name"]
+  EXACT -->|miss| FUZZY{"Whole-word fuzzy scan\nall slug tokens in legal name?"}
+  FUZZY -->|score ≥ 70| MED["Medium/low confidence · fuzzy_*"]
+  FUZZY -->|no match| RED["Not found"]
+  HIGH3 --> CONF{"Confidence scoring\nbrand subset · name overlap · alts"}
+  MED --> CONF
+  CONF --> LEARN{"High + exact path +\nname agreement?"}
+  LEARN -->|yes| PERSIST["Persist to learned_slugs"]
+  LEARN -->|no| OUT2["Show badge"]
+  PERSIST --> OUT2
+  HIGH1 --> OUT2
+  HIGH2 --> OUT2
+  RED --> OUT2
+```
+
+### Why this order
+
+| Stage | What it solves | Failure mode if skipped |
+|-------|----------------|-------------------------|
+| **Overrides** | Slug ≠ legal name (`meta` → Meta Platforms FEIN) | False negatives on well-known brands |
+| **Learned slugs** | Verified slug → FEIN from a prior visit | Re-running fuzzy on every page load |
+| **Exact key index** | Fast O(1) hash lookup on precomputed keys | Scanning 69K employers per page |
+| **Fuzzy (last resort)** | Partial token overlap when keys miss | False positives — kept strict |
+
+Fuzzy matches are **never learned**. Only high-confidence exact paths with sufficient LinkedIn ↔ LCA name overlap are written to `chrome.storage.local`.
+
+### Search key policy (export time)
+
+Earlier versions generated single-token keys like `gamma` or `american`, causing thousands of collisions. Index v1.1 tightens key generation:
+
+- Multi-word normalized legal names always become keys
+- Single-token keys only when the token is ≥10 characters
+- Hyphenated slug forms when the slug has ≥1 hyphen or length ≥10
+- **No bare short single-word shortcuts**
+
+Collisions on the same key resolve to the employer with the **highest `lca_count`**.
+
+### Confidence scoring (runtime)
+
+| Signal | Effect |
+|--------|--------|
+| Manual override or exact key hit | Score 95–100, usually **high** |
+| **Brand subset** — LinkedIn shows `EVERSANA`, LCA lists `EVERSANA LIFE SCIENCE SERVICES, LLC` | Promotes to **high** with an explanatory note |
+| LinkedIn name overlap &lt; 34% with LCA legal name | Downgrades to **medium/low** |
+| Fuzzy match (`fuzzy_token` / `fuzzy_single`) | Floor score 70; warning to verify |
+| Other candidates with similar scores | Listed as **alternatives** on yellow badges |
+| ≤2 LCA filings | Weak sponsorship signal warning |
+
+### Badge colors
+
+| Color | Meaning |
+|-------|---------|
+| **Green** | Confident company match with LCA history |
+| **Yellow** | Match found but uncertain — check legal name, industry (NAICS), alternatives |
+| **Red** | No confident match in the index |
+
+Green/yellow means the **entity** appears in LCA data, not that **this specific role** sponsors. Job descriptions may still exclude internships, entry level, or non-US candidates.
+
+---
+
+## Repository layout
 
 ```
 .
-├── convert_to_sqlite.py          # Ingestion: Excel → SQLite
-├── export_employer_index.py      # Index builder: SQLite → compressed JSON
-├── slug_overrides.json           # Curated LinkedIn slug → FEIN mappings
+├── convert_to_sqlite.py          # Excel → SQLite ingestion
+├── export_employer_index.py      # SQLite → compressed JSON index
+├── naics_sectors.py              # NAICS code → sector label
+├── slug_overrides.json           # Curated LinkedIn slug → FEIN
 ├── requirements.txt
-├── export_cook_county.py         # Export Cook County IL full LCA + employer summary
-├── export_distribution.py        # Regenerate national job/SOC distribution CSVs
-├── data/                         # Derived datasets (job distribution, Cook County sponsors)
-├── docs/                         # H-1B distribution summaries and Cook County sponsor lists
-├── chrome-extension/             # Chrome Manifest V3 extension
-│   ├── manifest.json
-│   ├── content.js                # DOM injection + SPA navigation handling
-│   ├── styles.css
-│   ├── lib/matcher.js            # Client-side lookup engine
-│   └── data/employers.json.gz    # Pre-built employer index (~7 MB)
-└── README.md
-```
-
-Raw source files (440 MB `.xlsx`, 940 MB `.db`) are excluded from version control due to size.
-
----
-
-## System Architecture
-
-The system is split into two decoupled layers: an **offline data pipeline** (Python) and a **client-side lookup runtime** (Chrome extension). They communicate only through a versioned, compressed JSON artifact.
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        OFFLINE DATA PIPELINE                        │
-│                                                                     │
-│  DOL LCA Excel (.xlsx)                                              │
-│       │  python-calamine (Rust-backed reader)                       │
-│       ▼                                                             │
-│  SQLite (lca_cases table, ~786K H-1B rows, indexed)                 │
-│       │  SQL aggregation + entity resolution by FEIN              │
-│       ▼                                                             │
-│  employers.json.gz (~7 MB, 74K employers, 173K search keys)         │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ bundled into extension
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                     CLIENT RUNTIME (Chrome MV3)                     │
-│                                                                     │
-│  linkedin.com/company/{slug}                                        │
-│       │  content.js extracts slug from URL                          │
-│       ▼                                                             │
-│  matcher.js loads index + learned slugs (chrome.storage.local)      │
-│       │  session cache → overrides → learned → exact → fuzzy        │
-│       ▼                                                             │
-│  Badge UI (confidence, warnings, match method, FEIN)                │
-└─────────────────────────────────────────────────────────────────────┘
+├── export_cook_county.py         # Cook County IL sponsor export
+├── export_distribution.py        # National job/SOC distribution CSVs
+├── data/                         # Derived CSVs and caches
+├── docs/                         # Distribution summaries
+└── chrome-extension/
+    ├── manifest.json
+    ├── content.js                # DOM extraction + badge UI
+    ├── styles.css
+    ├── lib/matcher.js            # Lookup engine
+    └── data/employers.json.gz    # Pre-built index (~6.4 MB)
 ```
 
 ---
 
-## Layer 1: Data Ingestion (Excel → SQLite)
+## Layer 1: Ingestion (Excel → SQLite)
 
-### Problem
-
-DOL publishes LCA data as flat Excel files. The FY2026 Q2 file is ~440 MB on disk, ~807K rows × 98 columns (import filters to **785,687 H-1B** only), with ~1.9M shared strings and ~2.6 GB of decompressed XML internally. Standard Python readers (`openpyxl`, `pandas` default engine) take 5–15 minutes; the dataset is too large for in-browser or in-memory analytics without preprocessing.
-
-### Design
+DOL publishes LCA data as flat Excel. The FY2026 Q2 file is ~440 MB, ~807K rows × 98 columns; import filters to **785,687 H-1B** rows only.
 
 | Decision | Rationale |
 |----------|-----------|
-| **python-calamine** over openpyxl | Rust bindings via PyO3; reads 807K rows in ~47 s vs. minutes. Read-only path is sufficient — no write-back needed. |
-| **H-1B-only import** | Filters out E-3 Australian and H-1B1 Chile/Singapore at ingest; DB stores 785,687 rows. |
-| **SQLite** over Parquet/CSV | Random lookups by `EMPLOYER_NAME`, `EMPLOYER_FEIN`, `JOB_TITLE` during exploration; SQL aggregation for index export; single-file portability. |
-| **Batch insert (10K rows)** | Reduces transaction overhead; total write ~21 s for 786K rows. |
-| **Post-load indexing** | 13 indexes on high-cardinality filter columns (`EMPLOYER_FEIN`, `CASE_STATUS`, `VISA_CLASS`, etc.); built after bulk insert to avoid per-row index maintenance cost (~6 s). |
-| **WAL journal mode** | Faster concurrent reads during export while ingestion completes. |
-| **TEXT columns throughout** | LCA fields mix formats (dates as strings, empty wage fields, OES year strings in wage-level columns); schema-on-read avoids silent type coercion errors. |
+| **python-calamine** | Rust-backed reader; ~47 s vs minutes with openpyxl |
+| **SQLite** | Indexed random lookups; single-file portability for local SQL |
+| **Batch insert + post-load indexes** | 13 indexes on filter columns after bulk load |
+| **TEXT columns** | Mixed formats in source fields; avoids silent coercion |
 
-### Schema
-
-One fact table `lca_cases` (98 columns, one row per H-1B LCA filing) plus pre-aggregated summary tables and metadata. Employers are deduplicated at query time by **FEIN** (Federal Employer Identification Number): 79,492 distinct `EMPLOYER_NAME` values collapse to **69,250** legal entities.
+Employers deduplicate by **FEIN**: 79,492 distinct names → **69,250** legal entities.
 
 ---
 
-## Layer 2: Index Export (SQLite → Compressed JSON)
+## Layer 2: Index export (SQLite → JSON)
 
-### Problem
+The browser cannot read a ~940 MB SQLite file. Export aggregates per FEIN and ships a read-optimized artifact:
 
-A Chrome extension cannot read a 940 MB SQLite file from disk. The browser sandbox permits only packaged extension resources or network requests. The lookup surface needed at runtime is not 786K LCA rows — it is **"does this LinkedIn company correspond to any LCA-filing entity, and what are the headline stats?"**
-
-### Design
-
-The export step performs **server-side aggregation** (in Python/SQL) and ships a **read-optimized denormalized index** to the client.
-
-| Field per employer | Purpose |
-|--------------------|---------|
-| `fein` | Stable primary key for legal entity |
-| `name` / `names[]` | Primary and alias employer names from LCA filings |
-| `search_keys[]` | Precomputed normalized lookup tokens |
+| Field | Purpose |
+|-------|---------|
+| `fein` | Stable legal-entity key |
+| `name` / `names[]` | Primary and alias employer names |
+| `search_keys[]` | Precomputed lookup tokens (strict policy above) |
 | `lca_count`, `h1b_count`, `certified_count` | Headline sponsorship signals |
-| `top_jobs[]` | Top 3 `(title, wage_level, wage_from)` by filing frequency |
-| `key_index` | Inverted map: `normalized_key → fein` for O(1) client lookup |
-| `slug_overrides` | Curated `linkedin_slug → fein` for known mismatches |
+| `naics_code`, `naics_sector` | Industry context for verification |
+| `top_jobs[]` | Top 3 roles by filing frequency |
+| `key_index` | Inverted map `normalized_key → fein` |
+| `slug_overrides` | Bundled manual slug → FEIN mappings |
 
-**Top-jobs aggregation** uses a single SQL window-function query (`ROW_NUMBER() OVER (PARTITION BY EMPLOYER_FEIN ...)`) rather than 74K per-FEIN queries — export completes in ~7 s instead of 10+ minutes.
-
-**Compression:** raw JSON ~36 MB → gzip ~7 MB. Loaded once per session via `fetch()` + native `DecompressionStream` (no third-party library).
-
-### Search Key Generation
-
-Each employer name is normalized (lowercase, strip legal suffixes like LLC/Inc/Corp, replace `&` → `and`, remove punctuation) and expanded into multiple keys:
-
-- Full normalized name: `"google llc"` → `"google"`
-- Slug form: `"Google LLC"` → `"google-llc"`
-- First token (≥3 chars): `"Google LLC"` → `"google"`
-
-When multiple employers share a key (e.g., `"meta"` matching both Meta Platforms and unrelated `"META IT CORP"`), the export resolves collisions by keeping the employer with the **highest `lca_count`** — a frequency-based disambiguation heuristic.
+Top jobs use one SQL window query (`ROW_NUMBER() OVER (PARTITION BY EMPLOYER_FEIN …)`). Raw JSON ~36 MB compresses to **~6.4 MB gzip** with **124,926** search keys.
 
 ---
 
-## Layer 3: Chrome Extension (Client Runtime)
-
-### Manifest V3 Structure
+## Layer 3: Chrome extension
 
 | Component | Role |
 |-----------|------|
-| `content.js` | Runs on LinkedIn company/job pages; extracts slug; handles SPA navigation |
-| `lib/matcher.js` | Lookup engine with session cache + learned slug persistence |
-| `styles.css` | Fixed-position badge overlay with confidence color coding |
-| `data/employers.json.gz` | Web-accessible compressed employer index |
-| `chrome.storage.local` | Device-local learned slug → FEIN mappings (not in git) |
+| `content.js` | Extracts slug/name from company and job pages; `MutationObserver` + `popstate` for LinkedIn SPA navigation |
+| `matcher.js` | Loads gzip index; runs lookup cascade; session cache + learned slug persistence |
+| `styles.css` | Fixed badge: confidence, legal name, industry, warnings, alternatives |
+| `employers.json.gz` | Web-accessible compressed index — no network calls after install |
 
-Requires `storage` permission for learned slug persistence only. No network calls — fully offline after install.
+**Permissions:** `storage` only (learned slugs). No telemetry, no remote API.
 
-### Lookup Cascade
+### Manual overrides
 
-Each page view resolves a company through a fixed-order pipeline. Earlier stages are cheaper and more reliable; later stages are fallbacks.
-
-```
-1. Session cache          slug + page name seen earlier this browser session?
-2. Manual overrides       slug_overrides.json curated mappings
-3. Learned slugs          chrome.storage.local entries from past high-confidence hits
-4. Exact key index        normalize(slug / page name) → key_index → FEIN
-5. Whole-word fuzzy       all slug tokens must match as complete words in employer name
-6. Not found              no result ≥ confidence threshold
-```
-
-After stage 4 or 5 produces a **high-confidence exact match**, the slug may be written to `learned_slugs` (stage 3 on future visits). Fuzzy matches and low-confidence hits are never learned.
-
-### Session Cache
-
-An in-memory `Map` keyed by `slug|normalized_page_name` stores both hits and misses for the current browser session.
-
-| Property | Detail |
-|----------|--------|
-| Scope | Current tab session only; cleared when the extension reloads |
-| Stores | Full match results and `null` (not-found) |
-| Purpose | Avoid repeated fuzzy scans when LinkedIn SPA navigation or DOM mutations re-trigger lookup for the same company |
-| Cost | O(1) hash lookup vs. O(74K) fuzzy scoring |
-
-Typical win: navigating between a job posting and a company page for the same employer, or LinkedIn re-rendering the page several times without a URL change.
-
-### Learned Slug Memory
-
-High-confidence exact matches are persisted to `chrome.storage.local` under `learned_slugs`:
+When slug and legal name diverge with no safe automatic key, add an entry to `slug_overrides.json` and re-export:
 
 ```json
 {
-  "typeface": {
-    "fein": "88-2469676",
-    "employer_name": "Typeface Inc.",
-    "learned_at": "2026-06-08T...",
-    "method": "exact_key",
-    "score": 95
-  }
+  "eversana": "39-1821626",
+  "meta": "20-1665019",
+  "dun-bradstreet": "22-3582360"
 }
 ```
 
-**Write criteria (all must pass):**
-
-| Rule | Reason |
-|------|--------|
-| `confidence === "high"` | No medium/low results stored |
-| Method is `exact_key` or `exact_page_name` | Fuzzy guesses are never learned |
-| LinkedIn name overlap ≥ 34% with LCA legal name | Prevents learning mismatched pairs |
-| No "looks different" warning | Name disagreement blocks persistence |
-
-**Why this improves accuracy:** fuzzy matching is heuristic and can false-positive (e.g., `coppersmith` once matched `rsm` via substring). Learned slugs convert a verified slug into an O(1) exact lookup on subsequent visits — the same path `google` uses on first load.
-
-**Why this improves speed:** learned hits skip the O(74K) fuzzy scan entirely, even across browser sessions (unlike session cache).
-
-Manual overrides in `slug_overrides.json` take precedence and ship with the extension. Learned slugs are device-local corrections discovered during normal use.
-
-### Match Verification on the Badge
-
-The badge surfaces enough signal to judge correctness without external tools:
-
-| UI element | Meaning |
-|------------|---------|
-| **Green badge** | High confidence — safe to trust initially |
-| **Yellow badge** | Medium/low confidence or name mismatch — verify manually |
-| **Red badge** | Not found — no confident match in index |
-| **LinkedIn vs LCA legal name** | Side-by-side comparison; unrelated names indicate a false positive |
-| **Match method** | `Exact slug` > `Learned slug` > `Fuzzy` in reliability |
-| **Score / 100** | ≥90 high · 60–89 medium · fuzzy floor is 60 |
-| **Warnings list** | Explicit reasons to distrust the result |
-| **FEIN** | Cross-check against DOL disclosure or local SQLite |
-
-**False positive signals:** yellow badge, fuzzy method, LinkedIn name ≠ LCA legal name, implausible employer for the industry (e.g., a furniture company resolving to an accounting firm).
-
-**False negative signals:** red badge on a company known to sponsor — likely slug/legal-name mismatch; add a manual override or wait for a learned mapping after verifying FEIN.
-
-### Entity Resolution Pipeline
-
-Matching LinkedIn identity to LCA identity is an **entity resolution** problem, not exact string equality:
-
-```
-Input:  linkedin.com/company/dun-bradstreet
-LCA:    "Dun & Bradstreet, Inc."  (FEIN 22-3582360)
-
-LinkedIn slug ≠ legal name ≠ DBA ≠ subsidiary name
-```
-
-The matcher applies a **cascading resolution strategy** (see Lookup Cascade above). Whole-word token matching replaced naive substring matching after a documented false positive where `coppersmith` contained the character sequence `rsm`, incorrectly resolving to RSM US LLP.
-
-```
-1. Session cache hit       return immediately
-2. slug_overrides          manual curated slug → FEIN
-3. learned_slugs           device-local verified slug → FEIN
-4. Exact key index         normalize(slug / h1) → key_index
-5. Whole-word fuzzy        every slug token must appear as a complete word
-6. Not found
-```
-
-This is intentionally conservative: false positives are reduced by preferring exact paths and never learning fuzzy results; false negatives occur when slug and legal name diverge with no override or learned entry.
-
 ---
 
-## Key Design Trade-offs (Interview Talking Points)
-
-### Why not query SQLite from the extension?
-
-Browser extensions cannot access the local filesystem. Options considered:
-
-| Approach | Pros | Cons | Verdict |
-|----------|------|------|---------|
-| Localhost FastAPI | Full SQL, always fresh | Must run server; friction for daily use | Rejected for v1 |
-| Cloud DB (Supabase) | Accessible anywhere | Upload PII-adjacent data; latency; cost | Rejected |
-| **Bundled JSON index** | Zero ops, offline, instant | Stale until re-export; ~7 MB install size | **Chosen** |
-
-### Why deduplicate by FEIN, not employer name?
-
-Same company appears under multiple names (`Google LLC`, `Google Public Sector LLC`, `Meta Platforms, Inc.` vs `Meta Platforms, Inc.` with trailing period). FEIN is the legal entity identifier; name is a display attribute. Aggregation by FEIN prevents splitting stats across aliases.
-
-### Why precompute `key_index` instead of scanning 74K records client-side?
-
-74K linear scans per page load would work (~1–5 ms in JS) but 173K key lookups with hash-map access is O(1) per candidate and simpler to reason about. The inverted index is built once at export time; the client only reads.
-
-### Why not ship all 786K LCA rows?
-
-Full row set is ~36 MB+ JSON, mostly redundant for the UX question ("does this company sponsor?"). The aggregated index answers the question in <50 KB per lookup result. Raw rows remain in local SQLite for ad-hoc SQL analysis outside the extension.
-
-### LinkedIn as a single-page application (SPA)
-
-LinkedIn does not trigger full page reloads on in-app navigation. `content.js` uses a `MutationObserver` on `document.body` and resets state on `popstate` to re-run matching when the URL slug changes — otherwise the badge would show stale results from the previous company.
-
----
-
-## Data Provenance
+## Data provenance
 
 | Attribute | Value |
 |-----------|-------|
 | Source | DOL Office of Foreign Labor Certification — LCA Disclosure Data |
 | Period | FY2026 Q2 |
-| Raw filings | 785,687 H-1B LCA records |
+| H-1B LCA records | 785,687 |
 | Unique employers (FEIN) | 69,250 |
-| Unique employer names | 79,492 |
-| Index search keys | 161,314 |
+| Index search keys | 124,926 |
 
-LCA filings represent employer **attestations** of intent to employ H-1B workers at a stated wage — not confirmed hires, not H-1B lottery outcomes. A company with LCA records has historically engaged the sponsorship process; absence of records does not prove non-sponsorship (may file under a parent entity or PEO).
+LCA filings are employer **attestations** of intent to employ H-1B workers — not confirmed hires or lottery outcomes. A company may file under a parent entity, PEO, or a name not visible on LinkedIn.
 
 ---
 
-## Technology Stack
+## Technology stack
 
-| Layer | Technology | Why |
-|-------|------------|-----|
-| Excel ingestion | python-calamine | Rust performance for large xlsx |
-| Storage | SQLite 3 | Embedded, indexed, zero-config |
-| Index serialization | JSON + gzip | Browser-native decompression; git-friendly size |
-| Extension | Chrome Manifest V3 | Content scripts, no persistent background page |
-| Matching | Custom normalizer + inverted index | Domain-specific entity resolution without ML overhead |
+| Layer | Technology |
+|-------|------------|
+| Excel ingestion | python-calamine (Rust via PyO3) |
+| Storage | SQLite 3 |
+| Index | JSON + gzip · browser `DecompressionStream` |
+| Extension | Chrome Manifest V3 |
+| Matching | Normalizer + inverted index + conservative fuzzy · no ML |
 
 ---
 
