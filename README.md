@@ -93,40 +93,48 @@ Raw `.xlsx` and `.db` files are gitignored (too large). The extension ships only
 
 ## Company identification workflow
 
-On each LinkedIn company or job page, the extension extracts a **slug** (from the URL or company link) and optionally a **display name** (from the page heading or job card). Those inputs feed a fixed-order resolver:
+On each LinkedIn company or job page, the extension extracts a **slug** (from the URL or company link) and optionally a **display name** (from the page heading or job card). Those inputs feed a fixed-order resolver — **first hit wins**; later stages run only when earlier ones miss.
+
+**Lookup cascade** (left → right):
 
 ```mermaid
-flowchart TD
-  START["Input: slug + page name"] --> CACHE{"Session cache\nslug|name seen?"}
-  CACHE -->|hit| OUT["Return cached result"]
-  CACHE -->|miss| OVERRIDE{"slug_overrides.json\nmanual slug → FEIN?"}
-  OVERRIDE -->|yes| HIGH1["High confidence · manual_override"]
-  OVERRIDE -->|no| LEARNED{"learned_slugs\nthis device only?"}
-  LEARNED -->|yes| HIGH2["High confidence · learned_slug"]
-  LEARNED -->|no| EXACT{"key_index lookup\nslug / normalized name?"}
-  EXACT -->|hit| HIGH3["High confidence · exact_key / exact_page_name"]
-  EXACT -->|miss| FUZZY{"Whole-word fuzzy scan\nall slug tokens in legal name?"}
-  FUZZY -->|score ≥ 70| MED["Medium/low confidence · fuzzy_*"]
-  FUZZY -->|no match| RED["Not found"]
-  HIGH3 --> CONF{"Confidence scoring\nbrand subset · name overlap · alts"}
-  MED --> CONF
-  CONF --> LEARN{"High + exact path +\nname agreement?"}
-  LEARN -->|yes| PERSIST["Persist to learned_slugs"]
-  LEARN -->|no| OUT2["Show badge"]
-  PERSIST --> OUT2
-  HIGH1 --> OUT2
-  HIGH2 --> OUT2
-  RED --> OUT2
+flowchart LR
+  IN["slug + page name"] --> S1["① Cache"]
+  S1 --> S2["② Override"]
+  S2 --> S3["③ Learned"]
+  S3 --> S4["④ Exact key"]
+  S4 --> S5["⑤ Fuzzy ≥70"]
+  S5 --> S6["⑥ Not found"]
+
+  S1 -.->|hit| BADGE(["Badge UI"])
+  S2 -.->|hit| BADGE
+  S3 -.->|hit| BADGE
+  S4 -.->|hit| SCORE
+  S5 -.->|hit| SCORE
+  S6 --> BADGE
+```
+
+**After match at ④ or ⑤** (confidence + optional persistence):
+
+```mermaid
+flowchart LR
+  SCORE["Confidence scoring\nbrand subset · name overlap · alts"]
+  SCORE --> LEARN{"High + exact\n+ name agree?"}
+  LEARN -->|yes| PERSIST["Persist learned slug"]
+  LEARN -->|no| BADGE(["Badge UI"])
+  PERSIST --> BADGE
 ```
 
 ### Why this order
 
-| Stage | What it solves | Failure mode if skipped |
-|-------|----------------|-------------------------|
-| **Overrides** | Slug ≠ legal name (`meta` → Meta Platforms FEIN) | False negatives on well-known brands |
-| **Learned slugs** | Verified slug → FEIN from a prior visit | Re-running fuzzy on every page load |
-| **Exact key index** | Fast O(1) hash lookup on precomputed keys | Scanning 69K employers per page |
-| **Fuzzy (last resort)** | Partial token overlap when keys miss | False positives — kept strict |
+| Stage | On hit | Why it runs before the next stage |
+|-------|--------|-----------------------------------|
+| **① Cache** | Same slug/name this session → return | Avoids repeat work on LinkedIn SPA re-renders |
+| **② Override** | High confidence → badge | Curated slug → FEIN (`meta`, `eversana`, …) |
+| **③ Learned** | High confidence → badge | Device-local slug verified on a prior visit |
+| **④ Exact key** | Score → confidence → badge | O(1) hash lookup on precomputed keys |
+| **⑤ Fuzzy** | Score ≥ 70 → confidence → badge | Last resort; whole-word tokens only |
+| **⑥ Not found** | Red badge | No match above threshold |
 
 Fuzzy matches are **never learned**. Only high-confidence exact paths with sufficient LinkedIn ↔ LCA name overlap are written to `chrome.storage.local`.
 
