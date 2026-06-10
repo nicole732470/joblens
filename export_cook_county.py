@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Export full Cook County IL H-1B LCA records and employer summary from SQLite."""
+"""Export Cook County IL H-1B LCA records and employer summary (with website column)."""
 
+from __future__ import annotations
+
+import argparse
 import csv
-import json
 import sqlite3
 from pathlib import Path
 
+from cook_county_websites import CSV_PATH, enrich_csv, load_website_map, merge_legacy_cache
+
 DB_PATH = Path(__file__).parent / "lca_fy2026_q2.db"
 DATA_DIR = Path(__file__).parent / "data"
-WEBSITE_CACHE = DATA_DIR / "cook_county_website_cache.json"
 
 WHERE = """
     WORKSITE_STATE = 'IL'
@@ -27,15 +30,10 @@ def export_full(conn: sqlite3.Connection) -> Path:
     return out
 
 
-def load_website_cache() -> dict[str, str]:
-    if WEBSITE_CACHE.exists():
-        return json.loads(WEBSITE_CACHE.read_text(encoding="utf-8"))
-    return {}
-
-
 def export_summary(conn: sqlite3.Connection) -> Path:
-    website_cache = load_website_cache()
-    out = DATA_DIR / "cook_county_companies.csv"
+    out = CSV_PATH
+    website_map = merge_legacy_cache(load_website_map(out))
+
     cur = conn.execute(
         f"""
         SELECT
@@ -55,12 +53,36 @@ def export_summary(conn: sqlite3.Connection) -> Path:
         writer = csv.writer(f)
         writer.writerow(columns)
         for row in cur:
-            writer.writerow([*row, website_cache.get(row[0], "")])
+            writer.writerow([*row, website_map.get(row[0], "")])
     return out
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Export Cook County H-1B LCA data")
+    parser.add_argument(
+        "--websites",
+        action="store_true",
+        help="After export, fetch missing official websites into the same CSV",
+    )
+    parser.add_argument(
+        "--websites-only",
+        action="store_true",
+        help="Only enrich missing website cells in cook_county_companies.csv (no SQL re-export)",
+    )
+    parser.add_argument(
+        "--force-websites",
+        action="store_true",
+        help="Re-fetch all websites (Clearbit), not just empty cells",
+    )
+    args = parser.parse_args()
+
     DATA_DIR.mkdir(exist_ok=True)
+
+    if args.websites_only:
+        filled, total = enrich_csv(force=args.force_websites)
+        print(f"Updated {CSV_PATH} — {filled}/{total} companies have websites")
+        return
+
     conn = sqlite3.connect(DB_PATH)
     try:
         full = export_full(conn)
@@ -68,9 +90,13 @@ def main() -> None:
         full_rows = sum(1 for _ in open(full, encoding="utf-8")) - 1
         summary_rows = sum(1 for _ in open(summary, encoding="utf-8")) - 1
         print(f"Wrote {full} ({full_rows:,} rows, all columns)")
-        print(f"Wrote {summary} ({summary_rows:,} employers)")
+        print(f"Wrote {summary} ({summary_rows:,} employers, website column preserved)")
     finally:
         conn.close()
+
+    if args.websites or args.force_websites:
+        filled, total = enrich_csv(force=args.force_websites)
+        print(f"Websites: {filled}/{total} companies have URLs in {CSV_PATH.name}")
 
 
 if __name__ == "__main__":
