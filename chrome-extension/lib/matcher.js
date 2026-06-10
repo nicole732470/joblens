@@ -9,6 +9,51 @@ const LcaMatcher = (() => {
   const LEARNABLE_METHODS = new Set(["exact_key", "exact_page_name"]);
   const SESSION_CACHE = new Map();
   const FUZZY_FLOOR = 70;
+  const LEGAL_SUFFIXES = [
+    " incorporated",
+    " corporation",
+    " company",
+    " limited",
+    " llc",
+    " inc",
+    " corp",
+    " ltd",
+    " llp",
+    " lp",
+    " plc",
+    " usa",
+    " us",
+    " co",
+  ];
+  /** Too common for single-token fuzzy or brand-subset promotion alone. */
+  const GENERIC_TOKENS = new Set([
+    "hiring",
+    "staffing",
+    "solutions",
+    "services",
+    "service",
+    "consulting",
+    "group",
+    "partners",
+    "partner",
+    "global",
+    "international",
+    "systems",
+    "industries",
+    "industry",
+    "technologies",
+    "technology",
+    "holdings",
+    "enterprises",
+    "enterprise",
+    "associates",
+    "management",
+    "resources",
+    "digital",
+    "software",
+    "company",
+    "companies",
+  ]);
 
   let payload = null;
   let feinMap = null;
@@ -16,25 +61,51 @@ const LcaMatcher = (() => {
   let learnedSlugs = {};
   let loadPromise = null;
 
+  function stripLegalSuffixes(text) {
+    let prev;
+    do {
+      prev = text;
+      for (const suffix of LEGAL_SUFFIXES) {
+        if (text.endsWith(suffix)) {
+          text = text.slice(0, -suffix.length).trim();
+          break;
+        }
+      }
+    } while (text !== prev);
+    return text;
+  }
+
   function normalize(text) {
-    return text
+    return stripLegalSuffixes(
+      String(text)
+        .toLowerCase()
+        .replace(/&/g, " and ")
+        .replace(/[^\w\s-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+  }
+
+  /** LinkedIn display names — do not strip legal suffixes (e.g. "A Hiring Company"). */
+  function displayTokens(text) {
+    return String(text)
       .toLowerCase()
       .replace(/&/g, " and ")
       .replace(/[^\w\s-]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
-      .replace(
-        /\b(incorporated|corporation|company|limited|llc|inc|corp|ltd|co|llp|lp|plc|usa|us)\b/g,
-        ""
-      )
-      .replace(/\s+/g, " ")
-      .trim();
+      .split(" ")
+      .filter((t) => t.length >= 2);
   }
 
   function tokens(text) {
     return normalize(String(text).replace(/-/g, " "))
       .split(" ")
       .filter((t) => t.length >= 2);
+  }
+
+  function isDistinctiveToken(token) {
+    return token.length >= 4 && !GENERIC_TOKENS.has(token);
   }
 
   function escapeRegExp(s) {
@@ -47,9 +118,9 @@ const LcaMatcher = (() => {
     return re.test(haystack);
   }
 
-  function nameOverlap(a, b) {
-    const ta = new Set(tokens(a));
-    const tb = new Set(tokens(b));
+  function nameOverlap(pageName, legalName) {
+    const ta = new Set(displayTokens(pageName));
+    const tb = new Set(tokens(legalName));
     if (!ta.size || !tb.size) return 0;
     let shared = 0;
     for (const t of ta) if (tb.has(t) && t.length >= 3) shared += 1;
@@ -58,11 +129,12 @@ const LcaMatcher = (() => {
 
   /** LinkedIn shows a short brand; LCA uses a longer legal name (e.g. EVERSANA → EVERSANA LIFE … LLC). */
   function isBrandSubset(pageName, legalName) {
-    const pageTokens = tokens(pageName);
+    const pageTokens = displayTokens(pageName);
     const legalTokenSet = new Set(tokens(legalName));
     if (!pageTokens.length) return false;
     if (pageTokens.length >= tokens(legalName).length) return false;
-    return pageTokens.every((t) => legalTokenSet.has(t));
+    if (!pageTokens.every((t) => legalTokenSet.has(t))) return false;
+    return pageTokens.some(isDistinctiveToken);
   }
 
   function cacheKey(slug, pageName) {
@@ -162,6 +234,13 @@ const LcaMatcher = (() => {
   }
 
   function scoreEmployer(employer, slugTokens, slugNorm) {
+    if (slugTokens.length >= 2 && !slugTokens.some(isDistinctiveToken)) {
+      return 0;
+    }
+    if (slugTokens.length === 1 && GENERIC_TOKENS.has(slugTokens[0])) {
+      return 0;
+    }
+
     const haystacks = employerHaystacks(employer);
 
     for (const hay of haystacks) {
@@ -215,7 +294,7 @@ const LcaMatcher = (() => {
     let method;
 
     if (!hits.length && pageName) {
-      const pageTokens = tokens(pageName);
+      const pageTokens = displayTokens(pageName);
       const pageNorm = normalize(pageName);
       if (pageTokens.length && tokensDiffer(pageTokens, slugTokenList)) {
         const pageHits = collectFuzzyCandidates(pageTokens, pageNorm, excludeFein);
