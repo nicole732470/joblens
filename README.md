@@ -114,16 +114,7 @@ flowchart LR
   S6 --> BADGE
 ```
 
-**After match at ④ or ⑤** (confidence + optional persistence):
-
-```mermaid
-flowchart LR
-  SCORE["Confidence scoring\nbrand subset · name overlap · alts"]
-  SCORE --> LEARN{"High + exact\n+ name agree?"}
-  LEARN -->|yes| PERSIST["Persist learned slug"]
-  LEARN -->|no| BADGE(["Badge UI"])
-  PERSIST --> BADGE
-```
+Stages ④ and ⑤ run through the **[confidence & scoring](#confidence--scoring)** pipeline before the badge is shown. High-confidence exact hits may be persisted as learned slugs.
 
 ### Why this order
 
@@ -149,26 +140,133 @@ Earlier versions generated single-token keys like `gamma` or `american`, causing
 
 Collisions on the same key resolve to the employer with the **highest `lca_count`**.
 
-### Confidence scoring (runtime)
+---
 
-| Signal | Effect |
-|--------|--------|
-| Manual override or exact key hit | Score 95–100, usually **high** |
-| **Brand subset** — LinkedIn shows `EVERSANA`, LCA lists `EVERSANA LIFE SCIENCE SERVICES, LLC` | Promotes to **high** with an explanatory note |
-| LinkedIn name overlap &lt; 34% with LCA legal name | Downgrades to **medium/low** |
-| Fuzzy match (`fuzzy_token` / `fuzzy_single`) | Floor score 70; warning to verify |
-| Other candidates with similar scores | Listed as **alternatives** on yellow badges |
-| ≤2 LCA filings | Weak sponsorship signal warning |
+## Confidence & scoring
+
+This is **not** machine learning and **not** a sponsorship probability. The matcher produces two separate outputs:
+
+| Output | What it measures | Used for |
+|--------|------------------|----------|
+| **`score`** (0–100) | How closely the **LinkedIn URL tokens** match an employer’s legal names / search keys | Whether fuzzy matching qualifies; ranking alternatives |
+| **`confidence`** (`high` / `medium` / `low`) | Whether we trust that employer is the **same entity** LinkedIn is showing | Badge color (green vs yellow) |
+
+**Red (not found)** means `lookup()` returned `null` — no employer reached score ≥ 70 on the fuzzy path, and no exact / override / learned hit.
+
+### Step 1 — Match score (URL vs LCA names)
+
+Only stages **④ exact key** and **⑤ fuzzy** compute a numeric score. Overrides and learned slugs are assigned **100**; exact index hits are assigned **95** before confidence rules run.
+
+**Fuzzy scoring** compares normalized LinkedIn URL tokens against each employer’s legal name, aliases, and precomputed keys. Matching uses **whole words** (`\b token \b`), not arbitrary substrings — so `coppersmith` cannot match `RSM` via an embedded character sequence.
+
+```mermaid
+flowchart LR
+  T["URL tokens"] --> E{"Exact normalized\nstring match?"}
+  E -->|yes| S100["score 100"]
+  E -->|no| M{"Every token\nwhole-word hit?"}
+  M -->|"2+ tokens"| S75["75 + 5×tokens\ncapped at 95"]
+  M -->|"1 token, len ≥ 6"| S70["score 70"]
+  M -->|miss| S0["score 0"]
+  S0 --> NF["🔴 not found"]
+  S70 --> OK{"score ≥ 70?"}
+  S75 --> OK
+  S100 --> OK
+  OK -->|yes| CONF["→ Step 2"]
+```
+
+| Fuzzy case | Score | Example |
+|------------|-------|---------|
+| Normalized URL equals a stored name/key | 100 | rare on fuzzy path; usually caught at exact key |
+| All URL tokens appear as whole words (2 tokens) | 85 | `gamma-technologies` → “Gamma Technologies …” |
+| All URL tokens (3 tokens) | 90 | |
+| All URL tokens (4+ tokens) | 95 | |
+| Single token, length ≥ 6, whole-word hit | 70 | minimum to qualify |
+| Anything else | 0 → **not found** | bare `gamma` after key tightening |
+
+Candidates with score ≥ **70** are ranked by score, then by `lca_count`. The top hit is returned; runners-up may appear as **alternatives** on yellow badges.
+
+### Step 2 — Confidence (display name vs legal name)
+
+After an employer is selected, `confidence` starts at **high** and is adjusted:
+
+```mermaid
+flowchart LR
+  IN["score + method"] --> B["Bucket by score\n(not override)"]
+  B --> B90["≥90 → high"]
+  B --> B75["75–89 → medium"]
+  B --> B70["70–74 → low"]
+  B90 --> ADJ
+  B75 --> ADJ
+  B70 --> ADJ["Adjustments"]
+  ADJ --> BR{"Brand subset?\npage name ⊂ legal name"}
+  BR -->|yes| HI["→ high + note"]
+  BR -->|no| OV{"Display-name overlap\n< 34%?"}
+  OV -->|yes| DOWN["high→medium\nmedium→low"]
+  OV -->|no| KEEP["keep bucket"]
+  HI --> OUT
+  DOWN --> OUT
+  KEEP --> OUT["confidence"]
+  OUT --> G{"level?"}
+  G -->|high| GREEN["🟢 badge"]
+  G -->|medium / low| YELLOW["🟡 badge"]
+```
+
+**Score → initial bucket** (skipped for `manual_override`):
+
+| Score | Initial confidence |
+|-------|-------------------|
+| ≥ 90 | `high` |
+| 75 – 89 | `medium` |
+| 70 – 74 | `low` |
+
+**Adjustments** (applied in order):
+
+| Rule | Condition | Effect |
+|------|-----------|--------|
+| **Brand subset** | Every token in the LinkedIn **display name** appears in the LCA **legal name**, and the display name is shorter | Promote `medium` / `low` → `high`; add explanatory note (e.g. `EVERSANA` → `EVERSANA LIFE SCIENCE SERVICES, LLC`) |
+| **Name overlap** | Token overlap between display name and legal name &lt; **34%** (tokens length ≥ 3) | `high` → `medium`, or `medium` → `low`; add name-mismatch warning |
+| **Fuzzy method** | `fuzzy_token` or `fuzzy_single` | Add “confirm legal name and industry” warning (does not by itself change the bucket) |
+
+**Display-name overlap** is separate from match score:
+
+```
+overlap = shared_tokens / max(linkedin_tokens, legal_tokens)
+```
+
+Example: LinkedIn shows `Vertex Pharmaceuticals`, LCA lists `Vertex Pharmaceuticals Incorporated` → overlap **100%** → no downgrade. LinkedIn shows `Acme`, LCA lists `Totally Different Industries LLC` → low overlap → downgrade even if the URL matched.
 
 ### Badge colors
 
-| Color | Meaning |
-|-------|---------|
-| **Green** | Confident company match with LCA history |
-| **Yellow** | Match found but uncertain — check legal name, industry (NAICS), alternatives |
-| **Red** | No confident match in the index |
+| Badge | `confidence` | Typical situation |
+|-------|--------------|-------------------|
+| 🟢 **Green** | `high` | Exact index hit (score 95) with agreeing names; or strong fuzzy (score ≥ 90); or brand subset |
+| 🟡 **Yellow** | `medium` or `low` | Fuzzy match at 70–89; or exact hit but display name ≠ legal name; alternatives shown |
+| 🔴 **Red** | no result | No match, or fuzzy score &lt; 70 |
 
-Green/yellow means the **entity** appears in LCA data, not that **this specific role** sponsors. Job descriptions may still exclude internships, entry level, or non-US candidates.
+### Warnings (do not change the color)
+
+These lines appear on the badge but **do not** switch green ↔ yellow ↔ red:
+
+| Warning | Trigger |
+|---------|---------|
+| Very few LCA filings | `lca_count ≤ 2` — weak historical signal |
+| Other possible matches | Alternatives exist and confidence is not `high` |
+| Matched from learned slug | Slug was verified on this device earlier |
+
+### Persistence (learned slugs)
+
+A slug is saved to `chrome.storage.local` only when **all** of the following hold:
+
+- `confidence === high` after adjustments
+- Method is `exact_key` or `exact_page_name` (never fuzzy)
+- No display-name mismatch warning
+- Display-name overlap ≥ **34%**
+
+### What green / yellow do *not* mean
+
+Green or yellow means the **legal entity** appears in LCA disclosure data. It does **not** mean this specific job posting sponsors H-1B — the JD may still exclude internships, entry-level roles, or candidates who need sponsorship.
+
+Implementation: `chrome-extension/lib/matcher.js` — `scoreEmployer()`, `nameOverlap()`, `isBrandSubset()`, `buildResult()`.
 
 ---
 
