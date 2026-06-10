@@ -78,7 +78,7 @@ const LcaMatcher = (() => {
     if (score < 90 && !brandSubset && method !== "manual_override") confidence = "medium";
     if (score < 75 && !brandSubset && method !== "manual_override") confidence = "low";
 
-    if ((method === "fuzzy_token" || method === "fuzzy_single") && !brandSubset) {
+    if (method.startsWith("fuzzy_") && !brandSubset) {
       warnings.push("Name-based match — confirm legal name and industry before trusting.");
     }
 
@@ -189,17 +189,61 @@ const LcaMatcher = (() => {
     return 0;
   }
 
-  function collectFuzzyCandidates(slugTokenList, slugNorm, excludeFein) {
+  function collectFuzzyCandidates(tokenList, norm, excludeFein) {
     const scored = [];
     for (const employer of payload.employers) {
       if (employer.fein === excludeFein) continue;
-      const score = scoreEmployer(employer, slugTokenList, slugNorm);
+      const score = scoreEmployer(employer, tokenList, norm);
       if (score >= FUZZY_FLOOR) {
         scored.push({ employer, score });
       }
     }
     scored.sort((a, b) => b.score - a.score || b.employer.lca_count - a.employer.lca_count);
     return scored;
+  }
+
+  function tokensDiffer(a, b) {
+    if (a.length !== b.length) return true;
+    return a.some((t, i) => t !== b[i]);
+  }
+
+  /** Try URL tokens first; if no hit, fall back to LinkedIn display-name tokens. */
+  function resolveFuzzy(slugTokenList, slugNorm, pageName, excludeFein) {
+    let hits = collectFuzzyCandidates(slugTokenList, slugNorm, excludeFein);
+    let tokenList = slugTokenList;
+    let norm = slugNorm;
+    let method;
+
+    if (!hits.length && pageName) {
+      const pageTokens = tokens(pageName);
+      const pageNorm = normalize(pageName);
+      if (pageTokens.length && tokensDiffer(pageTokens, slugTokenList)) {
+        const pageHits = collectFuzzyCandidates(pageTokens, pageNorm, excludeFein);
+        if (pageHits.length) {
+          hits = pageHits;
+          tokenList = pageTokens;
+          norm = pageNorm;
+        }
+      }
+    }
+
+    if (!hits.length) return null;
+
+    const top = hits[0];
+    if (top.score < FUZZY_FLOOR) return null;
+
+    if (tokenList === slugTokenList) {
+      method = slugTokenList.length === 1 ? "fuzzy_single" : "fuzzy_token";
+    } else {
+      method = tokenList.length === 1 ? "fuzzy_page_single" : "fuzzy_page_token";
+    }
+
+    return {
+      top,
+      method,
+      matchedOn: tokenList.join(" + ") || norm,
+      alts: hits.slice(1, 3).map(({ employer, score }) => ({ employer, score })),
+    };
   }
 
   function shouldLearn(result, pageName) {
@@ -281,24 +325,16 @@ const LcaMatcher = (() => {
       return buildResult(best, 95, method, bestKey, pageName, alts);
     }
 
-    const fuzzyHits = collectFuzzyCandidates(slugTokenList, slugNorm, null);
-    if (!fuzzyHits.length) return null;
-
-    const top = fuzzyHits[0];
-    if (top.score < FUZZY_FLOOR) return null;
-
-    const method = slugTokenList.length === 1 ? "fuzzy_single" : "fuzzy_token";
-    const alts = fuzzyHits
-      .slice(1, 3)
-      .map(({ employer, score }) => ({ employer, score }));
+    const fuzzy = resolveFuzzy(slugTokenList, slugNorm, pageName, null);
+    if (!fuzzy) return null;
 
     return buildResult(
-      top.employer,
-      top.score,
-      method,
-      slugTokenList.join(" + ") || slugNorm,
+      fuzzy.top.employer,
+      fuzzy.top.score,
+      fuzzy.method,
+      fuzzy.matchedOn,
       pageName,
-      alts
+      fuzzy.alts
     );
   }
 
