@@ -16,12 +16,17 @@ Companies with H-1B LCA filings where the **worksite** is in **Cook County, Illi
 | File | Rows | Description |
 |------|-----:|-------------|
 | [`data/cook_county_lca_full.csv`](../data/cook_county_lca_full.csv) | **9,708** | **Full LCA records, all 98 DOL columns** (one row per filing) |
-| [`data/cook_county_companies.csv`](../data/cook_county_companies.csv) | 2,635 | Employer summary by FEIN — includes `website` column (single file) |
+| [`data/cook_county_companies.csv`](../data/cook_county_companies.csv) | 2,635 | Employer summary by FEIN — `website` + `connect_status` |
+| [`data/networking_connects.csv`](../data/networking_connects.csv) | — | **Networking log** — FEIN key, connect sent/accepted, date, notes |
 
 ```bash
-python export_cook_county.py              # LCA full + companies CSV (keeps existing websites)
+python export_cook_county.py              # LCA full + companies CSV (keeps website + connect marks)
 python export_cook_county.py --websites   # export + fetch missing websites into same CSV
 python export_cook_county.py --websites-only   # only fill empty website cells
+
+python networking_connects.py add 20-2079434 "Magnetar Capital, LLC"   # log connect
+python networking_connects.py list
+python networking_connects.py sync
 ```
 
 ---

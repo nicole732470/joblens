@@ -9,6 +9,7 @@ import sqlite3
 from pathlib import Path
 
 from cook_county_websites import CSV_PATH, enrich_csv, load_website_map, merge_legacy_cache
+from networking_connects import connect_status_map
 
 DB_PATH = Path(__file__).parent / "lca_fy2026_q2.db"
 DATA_DIR = Path(__file__).parent / "data"
@@ -33,6 +34,7 @@ def export_full(conn: sqlite3.Connection) -> Path:
 def export_summary(conn: sqlite3.Connection) -> Path:
     out = CSV_PATH
     website_map = merge_legacy_cache(load_website_map(out))
+    connect_map = connect_status_map()
 
     cur = conn.execute(
         f"""
@@ -48,12 +50,13 @@ def export_summary(conn: sqlite3.Connection) -> Path:
         ORDER BY lca_count DESC
         """
     )
-    columns = [d[0] for d in cur.description] + ["website"]
+    columns = [d[0] for d in cur.description] + ["website", "connect_status"]
     with out.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(columns)
         for row in cur:
-            writer.writerow([*row, website_map.get(row[0], "")])
+            fein = row[0]
+            writer.writerow([*row, website_map.get(fein, ""), connect_map.get(fein, "")])
     return out
 
 
