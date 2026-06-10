@@ -61,10 +61,23 @@ def slugify(text: str) -> str:
     return re.sub(r"\s+", "-", text)
 
 
+def slugify_raw(text: str) -> str:
+    """Hyphenated slug from display name before legal-suffix stripping."""
+    text = text.lower().strip()
+    text = text.replace("&", " and ")
+    text = re.sub(r"[^\w\s-]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return re.sub(r"\s+", "-", text)
+
+
 def search_keys_for(name: str, all_names: list[str]) -> list[str]:
     """Build lookup keys from full legal names (no bare single-word shortcuts)."""
     keys: set[str] = set()
     for raw in {name, *all_names}:
+        raw_slug = slugify_raw(raw)
+        if raw_slug.count("-") >= 1 or len(raw_slug) >= 10:
+            keys.add(raw_slug)
+
         norm = normalize(raw)
         if not norm or len(norm) < 4:
             continue
