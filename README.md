@@ -9,6 +9,60 @@ LinkedIn exposes a **URL slug** and a **display name**. DOL records use **legal 
 
 ---
 
+## Quick start
+
+### Use the extension (pre-built index included)
+
+The repo ships `chrome-extension/data/employers.json.gz`. You only need Chrome — no Python, no server.
+
+```bash
+git clone https://github.com/nicole732470/lca-linkedin-checker.git
+cd lca-linkedin-checker
+```
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (top right)
+3. Click **Load unpacked** → select the `chrome-extension/` folder
+4. Visit any [LinkedIn company page](https://www.linkedin.com/company/) or job posting
+
+A badge appears in the corner: **green** = confident LCA match, **yellow** = verify manually, **red** = no match in the index.
+
+### Rebuild the index from DOL data (optional)
+
+Download the latest [LCA Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) Excel file from DOL and place it in the repo root (default expected name: `LCA_Dislclosure_Data_FY2026_Q2.xlsx`). Then:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+python3 convert_to_sqlite.py       # Excel → lca_fy2026_q2.db (~1 min)
+python3 export_employer_index.py   # SQLite → chrome-extension/data/employers.json.gz
+```
+
+Reload the extension on `chrome://extensions` after re-exporting.
+
+**Test a slug without re-exporting** (uses existing `employers.json` if present):
+
+```bash
+python3 export_employer_index.py --test microsoft
+python3 export_employer_index.py --test eversana
+```
+
+### Add a manual slug override
+
+When LinkedIn’s slug does not map cleanly to a legal name, edit `slug_overrides.json`, then re-run `export_employer_index.py`:
+
+```json
+{
+  "your-linkedin-slug": "XX-XXXXXXX"
+}
+```
+
+FEIN comes from the DOL file or your local SQLite DB (`SELECT DISTINCT EMPLOYER_FEIN, EMPLOYER_NAME FROM lca_cases WHERE …`).
+
+---
+
 ## End-to-end data flow
 
 ```mermaid
