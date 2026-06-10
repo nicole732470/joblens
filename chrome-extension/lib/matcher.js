@@ -141,6 +141,13 @@ const LcaMatcher = (() => {
     return `${slug}|${normalize(pageName || "")}`;
   }
 
+  function shortLabel(text, max = 48) {
+    if (!text) return "";
+    const one = String(text).replace(/\s+/g, " ").trim();
+    if (one.length <= max) return one;
+    return `${one.slice(0, max).replace(/\s+\S*$/, "").trim()}…`;
+  }
+
   function buildResult(employer, score, method, matchedOn, pageName, alternatives = []) {
     const warnings = [];
     const notes = [];
@@ -156,7 +163,7 @@ const LcaMatcher = (() => {
 
     if (brandSubset) {
       notes.push(
-        `LinkedIn brand "${pageName}" — H-1B filed under legal entity "${employer.name}".`
+        `LinkedIn brand "${shortLabel(pageName)}" — H-1B filed under legal entity "${employer.name}".`
       );
       if (confidence === "low" || confidence === "medium") confidence = "high";
     } else if (pageName) {
@@ -164,7 +171,7 @@ const LcaMatcher = (() => {
       if (overlap < 0.34) {
         confidence = confidence === "high" ? "medium" : "low";
         warnings.push(
-          `LinkedIn shows "${pageName}" but LCA lists "${employer.name}".`
+          `LinkedIn shows "${shortLabel(pageName)}" but LCA lists "${employer.name}".`
         );
       }
     }

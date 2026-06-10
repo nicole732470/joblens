@@ -69,38 +69,94 @@
     return m ? decodeURIComponent(m[1]).toLowerCase() : null;
   }
 
+  function cleanDisplayName(raw) {
+    if (!raw) return null;
+    let text = raw.replace(/\s+/g, " ").trim();
+    if (!text) return null;
+
+    const stopPatterns = [
+      /\bFollow\b/i,
+      /\bfollowers\b/i,
+      /\bpeople from your school\b/i,
+      /\bwere hired here\b/i,
+      /\bSee all\b/i,
+      /\bFor decades,/i,
+      /\bWith Ansys now part of/i,
+      /\bSoftware Development(?=[A-Z])/i,
+      /[a-z]([A-Z][a-z]+,\s*[A-Z]{2})\b/,
+    ];
+    for (const re of stopPatterns) {
+      const m = text.match(re);
+      if (m && m.index > 0) {
+        text = text.slice(0, m.index).trim();
+      }
+    }
+
+    text = text.replace(/\s+(Software Development|Information Technology|IT Services).*$/i, "");
+
+    const words = text.split(" ").filter(Boolean);
+    if (words.length >= 2 && words[0].toLowerCase() === words[1].toLowerCase()) {
+      text = words[0];
+    }
+
+    if (text.length > 60) {
+      text = text.slice(0, 60).replace(/\s+\S*$/, "").trim();
+    }
+
+    return text.length > 1 ? text : null;
+  }
+
+  function titleFromSlug(slug) {
+    if (!slug) return null;
+    return slug
+      .split("-")
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+
+  function resolveDisplayName(raw, slug) {
+    return cleanDisplayName(raw) || titleFromSlug(slug);
+  }
+
   function extractCompanySlugFromLinks() {
     const links = document.querySelectorAll('a[href*="/company/"]');
     for (const link of links) {
       const slug = slugFromCompanyHref(link.href);
       if (!slug || slug === "linkedin" || slug === "learning") continue;
-      const name = link.textContent?.trim();
-      if (name && name.length > 1) return { slug, name };
+      const name = resolveDisplayName(link.textContent?.trim(), slug);
+      if (name) return { slug, name };
     }
     for (const link of links) {
       const slug = slugFromCompanyHref(link.href);
       if (!slug || slug === "linkedin" || slug === "learning") continue;
-      return { slug, name: null };
+      return { slug, name: titleFromSlug(slug) };
     }
     return { slug: null, name: null };
   }
 
-  function extractCompanyNameFromDom() {
-    const selectors = [
+  function extractCompanyNameFromDom(isCompanyPage) {
+    const companySelectors = [
+      "h1.org-top-card-summary__title",
+      "h1[data-anonymize='company-name']",
+      ".org-top-card-summary-info-list__title h1",
+      ".org-top-card-primary-content h1",
+    ];
+    const jobSelectors = [
       ".job-details-jobs-unified-top-card__company-name",
       ".jobs-unified-top-card__company-name",
       ".jobs-details-top-card__company-url",
       ".job-details-jobs-unified-top-card__primary-description-container a",
-      ".artdeco-entity-lockup__subtitle",
       "a[data-tracking-control-name='public_jobs_topcard-org-name']",
-      "h1.org-top-card-summary__title",
-      "h1[data-anonymize='company-name']",
-      ".org-top-card-summary-info-list__title h1",
     ];
+    const selectors = isCompanyPage
+      ? companySelectors
+      : [...jobSelectors, ".artdeco-entity-lockup__subtitle"];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
       const text = el?.textContent?.trim();
-      if (text && text.length > 1) return text;
+      const cleaned = cleanDisplayName(text);
+      if (cleaned) return cleaned;
     }
     return null;
   }
@@ -111,7 +167,7 @@
       const slug = decodeURIComponent(companyPath[1]).toLowerCase();
       return {
         slug,
-        displayName: extractCompanyNameFromDom(),
+        displayName: resolveDisplayName(extractCompanyNameFromDom(true), slug),
         pageKey: `company:${slug}`,
         source: "company page",
       };
@@ -120,7 +176,8 @@
     if (window.location.pathname.includes("/jobs")) {
       const jobId = extractJobId();
       const fromLinks = extractCompanySlugFromLinks();
-      const displayName = fromLinks.name || extractCompanyNameFromDom();
+      const displayName =
+        fromLinks.name || resolveDisplayName(extractCompanyNameFromDom(false), fromLinks.slug);
       const slug = fromLinks.slug;
       return {
         slug,
