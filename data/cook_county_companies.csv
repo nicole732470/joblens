@@ -97,7 +97,7 @@ fein,employer_name,lca_count,certified_count,worksite_cities,website,connect_sta
 76-0759220,"ValueLabs, Inc.",14,14,Chicago,https://valuelabs.com,
 54-1780389,"Capital One Services, LLC",14,14,Chicago,https://capitalone.com,
 46-1927858,EdvenSoft Solutions LLC,14,13,"Des Plaines,DesPlaines,Chicago,Schaumburg",https://edvensoft.com,
-36-4303931,"Cyberbridge International, Inc. d/b/a Creospan, Inc.",14,14,"Chicago,,Chicago,Evanston,PALATINE,,Evanston,",https://cyberbridge.com,
+36-4303931,"Cyberbridge International, Inc. d/b/a Creospan, Inc.",14,14,"Chicago,,Chicago,Evanston,PALATINE,,Evanston,",https://cyberbridge.com,sent
 36-2382580,Deere and Company,14,14,Chicago,https://deere.com,
 36-2167048,DePaul University,14,14,Chicago,https://depaul.edu,
 27-1129195,"Enova Financial Holdings, LLC",14,14,Chicago,https://enova.com,
@@ -120,7 +120,7 @@ fein,employer_name,lca_count,certified_count,worksite_cities,website,connect_sta
 27-4780643,"Tiger Analytics, Inc.",12,9,"Wheeling,Chicago,SCHAUMBURG",https://tigeranalytics.com,
 20-5367947,"Sunrise Futures, LLC",12,12,Chicago,https://sunrisefutures.com,
 87-2980048,"Cartera Consultants, LLC.",11,9,Chicago,https://carteraconsultants.com,
-77-0080465,"HERE North America, LLC",11,11,"Chicago,Evanston",https://herenorthere.ca,
+77-0080465,"HERE North America, LLC",11,11,"Chicago,Evanston",https://herenorthere.ca,sent
 42-1530280,"IBS SOFTWARE AMERICAS, INC. (f/k/aIBS Software Services Americas, Inc.)",11,11,Chicago,https://ibsplc.com,
 36-3369778,Sumit Contruction Co Inc,11,10,Chicago,https://onlyias.com,
 36-2947987,"Circana, LLC",11,11,Chicago,https://circana.com,
@@ -152,7 +152,7 @@ fein,employer_name,lca_count,certified_count,worksite_cities,website,connect_sta
 56-2633028,"NETWORK OBJECTS, INC.",9,9,Hoffman Estates,https://networksolutions.com,
 52-2010575,"TEKsystems, Inc.",9,9,Chicago,https://teksystems.com,
 47-4921463,"BOFA SECURITIES, INC.",9,9,Chicago,https://bofaks2.co.uk,
-41-1815880,"LexisNexis Risk Solutions FL, Inc.",9,9,"Schaumburg,Evanston,Chicago,Wheeling,Des Plaines",https://lexisnexis.com,
+41-1815880,"LexisNexis Risk Solutions FL, Inc.",9,9,"Schaumburg,Evanston,Chicago,Wheeling,Des Plaines",https://lexisnexis.com,sent
 36-4207170,Enfusion Ltd. LLC,9,9,Chicago,https://enfusion.com,
 36-4002001,Lycee Francais de Chicago,9,9,Chicago,https://lyceefrancais.be,
 36-2085229,BMO Bank N.A.,9,9,Chicago,https://bmo.com,
