@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export Cook County IL H-1B LCA records and employer summary (with website column)."""
+"""Export Cook County IL H-1B LCA records and employer summary (networking columns, no website)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ import csv
 import sqlite3
 from pathlib import Path
 
-from cook_county_websites import CSV_PATH, enrich_csv, load_website_map, merge_legacy_cache
-from networking_connects import connect_status_map
+from networking_connects import COOK_COUNTY_PATH, load_connects, sync_connect_columns
 
 DB_PATH = Path(__file__).parent / "lca_fy2026_q2.db"
 DATA_DIR = Path(__file__).parent / "data"
@@ -18,6 +17,17 @@ WHERE = """
     WORKSITE_STATE = 'IL'
     AND WORKSITE_COUNTY = 'COOK'
 """
+
+FIELDNAMES = [
+    "fein",
+    "employer_name",
+    "lca_count",
+    "certified_count",
+    "worksite_cities",
+    "connect_status",
+    "connect_sent_date",
+    "connect_notes",
+]
 
 
 def export_full(conn: sqlite3.Connection) -> Path:
@@ -32,9 +42,8 @@ def export_full(conn: sqlite3.Connection) -> Path:
 
 
 def export_summary(conn: sqlite3.Connection) -> Path:
-    out = CSV_PATH
-    website_map = merge_legacy_cache(load_website_map(out))
-    connect_map = connect_status_map()
+    out = COOK_COUNTY_PATH
+    connects = load_connects()
 
     cur = conn.execute(
         f"""
@@ -50,40 +59,42 @@ def export_summary(conn: sqlite3.Connection) -> Path:
         ORDER BY lca_count DESC
         """
     )
-    columns = [d[0] for d in cur.description] + ["website", "connect_status"]
+
     with out.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(columns)
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
+        writer.writeheader()
         for row in cur:
             fein = row[0]
-            writer.writerow([*row, website_map.get(fein, ""), connect_map.get(fein, "")])
+            conn_row = connects.get(fein, {})
+            writer.writerow(
+                {
+                    "fein": fein,
+                    "employer_name": row[1],
+                    "lca_count": row[2],
+                    "certified_count": row[3],
+                    "worksite_cities": row[4] or "",
+                    "connect_status": conn_row.get("status", ""),
+                    "connect_sent_date": conn_row.get("sent_date", ""),
+                    "connect_notes": conn_row.get("notes", ""),
+                }
+            )
     return out
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export Cook County H-1B LCA data")
     parser.add_argument(
-        "--websites",
+        "--sync-only",
         action="store_true",
-        help="After export, fetch missing official websites into the same CSV",
-    )
-    parser.add_argument(
-        "--websites-only",
-        action="store_true",
-        help="Only enrich missing website cells in cook_county_companies.csv (no SQL re-export)",
-    )
-    parser.add_argument(
-        "--force-websites",
-        action="store_true",
-        help="Re-fetch all websites (Clearbit), not just empty cells",
+        help="Only refresh connect columns in cook_county_companies.csv",
     )
     args = parser.parse_args()
 
     DATA_DIR.mkdir(exist_ok=True)
 
-    if args.websites_only:
-        filled, total = enrich_csv(force=args.force_websites)
-        print(f"Updated {CSV_PATH} — {filled}/{total} companies have websites")
+    if args.sync_only:
+        n = sync_connect_columns(COOK_COUNTY_PATH)
+        print(f"Synced {COOK_COUNTY_PATH.name} — {n} marked")
         return
 
     conn = sqlite3.connect(DB_PATH)
@@ -93,13 +104,9 @@ def main() -> None:
         full_rows = sum(1 for _ in open(full, encoding="utf-8")) - 1
         summary_rows = sum(1 for _ in open(summary, encoding="utf-8")) - 1
         print(f"Wrote {full} ({full_rows:,} rows, all columns)")
-        print(f"Wrote {summary} ({summary_rows:,} employers, website column preserved)")
+        print(f"Wrote {summary} ({summary_rows:,} employers)")
     finally:
         conn.close()
-
-    if args.websites or args.force_websites:
-        filled, total = enrich_csv(force=args.force_websites)
-        print(f"Websites: {filled}/{total} companies have URLs in {CSV_PATH.name}")
 
 
 if __name__ == "__main__":

@@ -278,9 +278,14 @@ Implementation: `chrome-extension/lib/matcher.js` — `scoreEmployer()`, `nameOv
 ├── naics_sectors.py              # NAICS code → sector label
 ├── slug_overrides.json           # Curated LinkedIn slug → FEIN
 ├── requirements.txt
+├── export_all_employers.py       # National employer CSV (69K, networking columns)
 ├── export_cook_county.py         # Cook County IL sponsor export
+├── networking_connects.py        # Log / sync LinkedIn connect outreach
 ├── export_distribution.py        # National job/SOC distribution CSVs
-├── data/                         # Derived CSVs and caches
+├── data/
+│   ├── all_employers.csv         # National summary + connect_status
+│   ├── cook_county_companies.csv # Cook County subset
+│   └── networking_connects.csv   # Connect log (source of truth)
 ├── docs/                         # Distribution summaries
 └── chrome-extension/
     ├── manifest.json

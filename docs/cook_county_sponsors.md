@@ -15,18 +15,17 @@ Companies with H-1B LCA filings where the **worksite** is in **Cook County, Illi
 
 | File | Rows | Description |
 |------|-----:|-------------|
+| [`data/all_employers.csv`](../data/all_employers.csv) | 69,250 | **National employer summary** — networking columns, no website |
 | [`data/cook_county_lca_full.csv`](../data/cook_county_lca_full.csv) | **9,708** | **Full LCA records, all 98 DOL columns** (one row per filing) |
-| [`data/cook_county_companies.csv`](../data/cook_county_companies.csv) | 2,635 | Employer summary by FEIN — `website` + `connect_status` |
-| [`data/networking_connects.csv`](../data/networking_connects.csv) | — | **Networking log** — FEIN key, connect sent/accepted, date, notes |
+| [`data/cook_county_companies.csv`](../data/cook_county_companies.csv) | 2,635 | Cook County subset — same networking columns, no website |
+| [`data/networking_connects.csv`](../data/networking_connects.csv) | — | **Networking log** (source of truth for connect status) |
 
 ```bash
-python export_cook_county.py              # LCA full + companies CSV (keeps website + connect marks)
-python export_cook_county.py --websites   # export + fetch missing websites into same CSV
-python export_cook_county.py --websites-only   # only fill empty website cells
-
-python networking_connects.py add 20-2079434 "Magnetar Capital, LLC"   # log connect
+python export_all_employers.py          # national 69K employer table
+python export_cook_county.py            # Cook County full + companies subset
+python networking_connects.py add FEIN "Employer Name"
 python networking_connects.py list
-python networking_connects.py sync
+python networking_connects.py sync      # refresh connect_* columns in both CSVs
 ```
 
 ---

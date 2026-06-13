@@ -7,8 +7,6 @@
 - **20** marked `sent` in [`networking_connects.csv`](networking_connects.csv) / `connect_status` column
 - **40** reviewed but no connect sent (or not logging yet)
 
-Next time: pick a different filter (e.g. Chicago-only, LCA count ≥ 5, industry) — Evanston list is fully scanned once.
+Next time: filter `all_employers.csv` (e.g. `cook_county_lca > 0`, city contains Evanston) — see [`networking_connects.csv`](networking_connects.csv) for sent log.
 
-```bash
-python networking_connects.py list   # see all sent
-```
+**Main table:** [`all_employers.csv`](all_employers.csv) — national 69K employers with `connect_status` / `connect_sent_date` (no website column).

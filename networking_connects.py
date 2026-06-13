@@ -9,10 +9,15 @@ from datetime import date
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-CONNECTS_PATH = BASE_DIR / "data" / "networking_connects.csv"
-COMPANIES_PATH = BASE_DIR / "data" / "cook_county_companies.csv"
+DATA_DIR = BASE_DIR / "data"
+CONNECTS_PATH = DATA_DIR / "networking_connects.csv"
+ALL_EMPLOYERS_PATH = DATA_DIR / "all_employers.csv"
+COOK_COUNTY_PATH = DATA_DIR / "cook_county_companies.csv"
 
-FIELDNAMES = ["fein", "employer_name", "status", "sent_date", "notes"]
+CONNECT_FIELDNAMES = ["fein", "employer_name", "status", "sent_date", "notes"]
+
+# Tables that receive connect_status / connect_sent_date / connect_notes on sync.
+SYNC_TARGETS = (ALL_EMPLOYERS_PATH, COOK_COUNTY_PATH)
 
 
 def load_connects() -> dict[str, dict[str, str]]:
@@ -23,10 +28,10 @@ def load_connects() -> dict[str, dict[str, str]]:
 
 
 def save_connects(rows: dict[str, dict[str, str]]) -> None:
-    CONNECTS_PATH.parent.mkdir(exist_ok=True)
+    CONNECTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     ordered = sorted(rows.values(), key=lambda r: (r.get("sent_date", ""), r["fein"]), reverse=True)
     with CONNECTS_PATH.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
+        writer = csv.DictWriter(f, fieldnames=CONNECT_FIELDNAMES)
         writer.writeheader()
         writer.writerows(ordered)
 
@@ -56,25 +61,38 @@ def connect_status_map() -> dict[str, str]:
     return {fein: row["status"] for fein, row in load_connects().items()}
 
 
-def merge_into_companies_csv(companies_path: Path = COMPANIES_PATH) -> int:
-    """Add/update connect_status column in cook_county_companies.csv from networking log."""
-    if not companies_path.exists():
+def sync_connect_columns(csv_path: Path) -> int:
+    """Merge networking log into connect_* columns; drop legacy website column if present."""
+    if not csv_path.exists():
         return 0
-    status_by_fein = connect_status_map()
+
+    connects = load_connects()
+    drop_cols = {"website", "connect_status", "connect_sent_date", "connect_notes"}
     rows: list[dict[str, str]] = []
-    with companies_path.open(newline="", encoding="utf-8") as f:
+
+    with csv_path.open(newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        fieldnames = [c for c in (reader.fieldnames or []) if c != "connect_status"]
-        if "connect_status" not in fieldnames:
-            fieldnames.append("connect_status")
+        base_fields = [c for c in (reader.fieldnames or []) if c not in drop_cols]
+        fieldnames = base_fields + ["connect_status", "connect_sent_date", "connect_notes"]
         for row in reader:
-            row["connect_status"] = status_by_fein.get(row["fein"], "")
-            rows.append(row)
-    with companies_path.open("w", newline="", encoding="utf-8") as f:
+            fein = row["fein"]
+            conn = connects.get(fein, {})
+            out = {k: row[k] for k in base_fields if k in row}
+            out["connect_status"] = conn.get("status", "")
+            out["connect_sent_date"] = conn.get("sent_date", "")
+            out["connect_notes"] = conn.get("notes", "")
+            rows.append(out)
+
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
     return sum(1 for r in rows if r.get("connect_status"))
+
+
+def sync_all_tables() -> dict[str, int]:
+    return {path.name: sync_connect_columns(path) for path in SYNC_TARGETS}
 
 
 def main() -> None:
@@ -89,7 +107,7 @@ def main() -> None:
     add_p.add_argument("--notes", default="", help="Optional note")
 
     sub.add_parser("list", help="Show all logged connects")
-    sub.add_parser("sync", help="Refresh connect_status column in cook_county_companies.csv")
+    sub.add_parser("sync", help="Refresh connect columns in all employer CSVs")
 
     args = parser.parse_args()
 
@@ -101,9 +119,11 @@ def main() -> None:
             sent_date=args.date or None,
             notes=args.notes,
         )
-        marked = merge_into_companies_csv()
+        counts = sync_all_tables()
         print(f"Logged {row['employer_name']} ({row['fein']}) → {row['status']} on {row['sent_date']}")
-        print(f"Updated cook_county_companies.csv — {marked} row(s) with connect_status")
+        for name, n in counts.items():
+            if Path(name).exists() or name in {p.name for p in SYNC_TARGETS}:
+                print(f"  Updated {name} — {n} row(s) with connect_status")
 
     elif args.cmd == "list":
         rows = load_connects()
@@ -115,8 +135,9 @@ def main() -> None:
             print(f"{row['sent_date']}  {row['status']:10}  {row['fein']}  {row['employer_name']}{note}")
 
     elif args.cmd == "sync":
-        marked = merge_into_companies_csv()
-        print(f"Synced connect_status into cook_county_companies.csv — {marked} marked")
+        counts = sync_all_tables()
+        for name, n in counts.items():
+            print(f"Synced {name} — {n} marked")
 
 
 if __name__ == "__main__":
