@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db import check_db_connection
+from app.tools.sponsorship import search_h1b_company
 
 app = FastAPI(title="Job Intelligence API", version="0.1.0")
 
@@ -37,14 +38,20 @@ def health() -> dict:
 
 @app.post("/analyze")
 def analyze(req: AnalyzeRequest) -> dict:
-    """Stub. Returns a placeholder report so the end-to-end path is wired.
+    """Partial analysis: real H-1B sponsorship lookup; the rest is pending.
 
-    Real analysis (JD parsing, H-1B lookup, resume fit, risk, recommendation)
-    is added in later phases per docs/DESIGN.md.
+    JD parsing, resume fit, risk, and recommendation are added in later phases
+    per docs/DESIGN.md.
     """
+    sponsorship = (
+        search_h1b_company(req.company)
+        if req.company
+        else {"matched": False, "reason": "no company provided"}
+    )
     return {
-        "status": "not_implemented",
-        "message": "Analysis pipeline not built yet; this is a skeleton response.",
+        "status": "partial",
+        "sponsorship": sponsorship,
+        "pending": ["jd_parsing", "resume_fit", "risk", "recommendation"],
         "received": {
             "company": req.company,
             "title": req.title,
