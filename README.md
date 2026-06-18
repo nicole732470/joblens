@@ -355,7 +355,8 @@ flowchart LR
 > **Note:** This repo is evolving from a standalone Chrome extension into an
 > agentic Job Intelligence Platform. The `extension/` + `data-pipeline/` layers
 > are the existing, production foundation; `backend/` and `evals/` are the new
-> product surface. See `backend/README.md` for the phased build plan.
+> product surface. See **[`docs/DESIGN.md`](docs/DESIGN.md)** for the full design
+> and the 8-week implementation plan, and `backend/README.md` for the build phases.
 
 ---
 
