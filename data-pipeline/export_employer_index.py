@@ -24,7 +24,7 @@ from naics_sectors import naics_sector_label
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "lca_fy2026_q2.db"
 SLUG_OVERRIDES_PATH = BASE_DIR / "slug_overrides.json"
-OUT_DIR = BASE_DIR / "chrome-extension" / "data"
+OUT_DIR = BASE_DIR.parent / "extension" / "data"
 OUT_JSON = OUT_DIR / "employers.json"
 OUT_GZ = OUT_DIR / "employers.json.gz"
 

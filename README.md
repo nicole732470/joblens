@@ -25,7 +25,7 @@ The matcher is **evidence-first**, not score-first. There are no user-facing num
 
 ### Use the extension (pre-built index included)
 
-The repo ships `chrome-extension/data/employers.json.gz`. You only need Chrome — no Python, no server.
+The repo ships `extension/data/employers.json.gz`. You only need Chrome — no Python, no server.
 
 ```bash
 git clone https://github.com/nicole732470/lca-linkedin-checker.git
@@ -34,20 +34,21 @@ cd lca-linkedin-checker
 
 1. Open `chrome://extensions`
 2. Enable **Developer mode** (top right)
-3. Click **Load unpacked** → select the `chrome-extension/` folder
+3. Click **Load unpacked** → select the `extension/` folder
 4. Visit any [LinkedIn company page](https://www.linkedin.com/company/) or job posting
 
 ### Rebuild the index from DOL data (optional)
 
-Download the latest [LCA Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) Excel file and place it in the repo root (default: `LCA_Dislclosure_Data_FY2026_Q2.xlsx`). Then:
+Download the latest [LCA Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) Excel file and place it in `data-pipeline/` (default: `LCA_Dislclosure_Data_FY2026_Q2.xlsx`). Then:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r data-pipeline/requirements.txt
 
+cd data-pipeline
 python3 convert_to_sqlite.py       # Excel → lca_fy2026_q2.db (~1 min)
-python3 export_employer_index.py   # SQLite → chrome-extension/data/employers.json.gz
+python3 export_employer_index.py   # SQLite → ../extension/data/employers.json.gz
 ```
 
 Reload the extension on `chrome://extensions` after re-exporting.
@@ -55,6 +56,7 @@ Reload the extension on `chrome://extensions` after re-exporting.
 **Smoke-test slugs:**
 
 ```bash
+cd data-pipeline
 python3 export_employer_index.py --test microsoft
 python3 test_entity_resolution.py
 ```
@@ -291,7 +293,7 @@ flowchart TD
 | `learned_slug` as high confidence | Session cache only; not a source of truth |
 | `brand_subset` | Renamed to `display_name_subset`; overlap note only, not a confidence boost |
 
-Implementation: `chrome-extension/lib/matcher.js` — `meaningfulTokens()`, `computeSignals()`, `assignConfidence()`, `compareCandidates()`.
+Implementation: `extension/lib/matcher.js` — `meaningfulTokens()`, `computeSignals()`, `assignConfidence()`, `compareCandidates()`.
 
 ---
 
@@ -333,18 +335,27 @@ flowchart LR
 
 ```
 .
-├── convert_to_sqlite.py
-├── export_employer_index.py
-├── generic_tokens.py
-├── naics_sectors.py
-├── test_entity_resolution.py
-├── chrome-extension/
+├── extension/                 # Chrome MV3 sponsorship checker (entry point)
 │   ├── manifest.json          # v1.6.1 · no permissions
 │   ├── content.js             # badge UI
 │   ├── lib/matcher.js         # evidence-first resolver
 │   └── data/employers.json.gz
-└── data/                      # CSV exports (optional)
+├── data-pipeline/             # offline DOL LCA → employer index (Python)
+│   ├── convert_to_sqlite.py
+│   ├── export_employer_index.py
+│   ├── generic_tokens.py
+│   ├── naics_sectors.py
+│   └── test_entity_resolution.py
+├── backend/                   # FastAPI + agent orchestration (new product)
+├── evals/                     # golden set + evaluation harness
+├── data/                      # CSV exports (optional)
+└── docs/
 ```
+
+> **Note:** This repo is evolving from a standalone Chrome extension into an
+> agentic Job Intelligence Platform. The `extension/` + `data-pipeline/` layers
+> are the existing, production foundation; `backend/` and `evals/` are the new
+> product surface. See `backend/README.md` for the phased build plan.
 
 ---
 

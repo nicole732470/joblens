@@ -10,7 +10,7 @@ from export_employer_index import meaningful_tokens, normalize, tokenize_raw
 from generic_tokens import GENERIC_TOKENS, NOISE_WORDS
 
 BASE = Path(__file__).resolve().parent
-INDEX = BASE / "chrome-extension" / "data" / "employers.json"
+INDEX = BASE.parent / "extension" / "data" / "employers.json"
 
 
 def strip_noise_tokens(tokens: list[str]) -> list[str]:

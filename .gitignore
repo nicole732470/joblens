@@ -18,4 +18,10 @@ venv/
 Thumbs.db
 
 # Extension dev (keep committed gzip; ignore uncompressed export for size)
-chrome-extension/data/employers.json
+extension/data/employers.json
+
+# Backend / Python services
+backend/.venv/
+data-pipeline/.venv/
+*.egg-info/
+.pytest_cache/
