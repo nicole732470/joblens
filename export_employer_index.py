@@ -18,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from generic_tokens import GENERIC_TOKENS, MAX_SHORT_TOKEN_COLLISIONS
+from generic_tokens import GENERIC_TOKENS, MAX_SHORT_TOKEN_COLLISIONS, NOISE_WORDS
 from naics_sectors import naics_sector_label
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -28,33 +28,40 @@ OUT_DIR = BASE_DIR / "chrome-extension" / "data"
 OUT_JSON = OUT_DIR / "employers.json"
 OUT_GZ = OUT_DIR / "employers.json.gz"
 
-SUFFIXES = (
-    " incorporated",
-    " corporation",
-    " company",
-    " limited",
-    " llc",
-    " inc",
-    " corp",
-    " ltd",
-    " co",
-    " llp",
-    " lp",
-    " plc",
-    " usa",
-    " us",
-)
+def tokenize_raw(text: str) -> list[str]:
+    text = text.lower().strip()
+    text = text.replace("&", " and ")
+    text = re.sub(r"[^\w\s-]", " ", text)
+    text = text.replace("-", " ")
+    return [t for t in re.sub(r"\s+", " ", text).strip().split() if t]
+
+
+def strip_noise_tokens(tokens: list[str]) -> list[str]:
+    out: list[str] = []
+    i = 0
+    while i < len(tokens):
+        if tokens[i] == "north" and i + 1 < len(tokens) and tokens[i + 1] == "america":
+            i += 2
+            continue
+        if tokens[i] not in NOISE_WORDS:
+            out.append(tokens[i])
+        i += 1
+    return out
+
+
+def meaningful_tokens(text: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for token in strip_noise_tokens(tokenize_raw(text)):
+        if len(token) < 3 or token in GENERIC_TOKENS or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
 
 
 def normalize(text: str) -> str:
-    text = text.lower().strip()
-    text = text.replace("&", " and ")
-    text = re.sub(r"[^\w\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    for suffix in SUFFIXES:
-        if text.endswith(suffix):
-            text = text[: -len(suffix)].strip()
-    return text
+    return " ".join(meaningful_tokens(text))
 
 
 def slugify(text: str) -> str:
@@ -292,15 +299,13 @@ def export() -> Path:
     meta_row = conn.execute("SELECT value FROM _metadata WHERE key='source_file'").fetchone()
     conn.close()
 
-    overrides = load_slug_overrides()
     key_index = build_index(employers)
 
     payload = {
-        "version": "1.2",
+        "version": "1.3",
         "source_file": meta_row[0] if meta_row else DB_PATH.name,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "employer_count": len(employers),
-        "slug_overrides": overrides,
         "employers": employers,
         "key_index": {k: v["fein"] for k, v in key_index.items()},
     }

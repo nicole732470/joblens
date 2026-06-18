@@ -2,10 +2,22 @@
 
 Cross-reference LinkedIn company pages against U.S. Department of Labor (DOL) H-1B Labor Condition Application (LCA) disclosure data — fully offline, no backend.
 
-LinkedIn exposes a **URL slug** and a **display name**. DOL records use **legal entity names** and **FEINs**. There is no shared identifier between the two systems, so matching is an **entity resolution** problem solved with a conservative lookup pipeline and human-verifiable signals on the badge.
+LinkedIn exposes a **URL slug** and a **display name**. DOL records use **legal entity names** and **FEINs**. There is no shared identifier between the two systems, so matching is an **entity resolution** problem: normalize both sides, collect **evidence**, rank candidates, and assign rule-based **confidence** on the badge.
 
 **Data:** DOL LCA Disclosure · FY2026 Q2 · 785,687 H-1B filings · 69,250 employers (by FEIN)  
-**Extension:** Chrome Manifest V3 · index v1.1 · extension v1.5.1
+**Extension:** Chrome Manifest V3 · **v1.6.1** · index **v1.3**
+
+### Badge meanings
+
+| Badge | Confidence | Meaning |
+|-------|------------|---------|
+| 🟢 **Green** | `high` | Likely the **same legal employer** appears in DOL LCA data |
+| 🟡 **Yellow** | `medium` or `low` | **Possible match** — verify legal name and industry manually |
+| 🔴 **Red** | no result | **No reliable match** found in the index |
+
+**Confidence is entity-resolution confidence, not sponsorship probability.** Green or yellow does **not** predict whether this specific job posting sponsors H-1B.
+
+The matcher is **evidence-first**, not score-first. There are no user-facing numeric match scores and no mapping like “score ≥ 90 → green.” Token count alone does not imply a better entity match.
 
 ---
 
@@ -25,11 +37,9 @@ cd lca-linkedin-checker
 3. Click **Load unpacked** → select the `chrome-extension/` folder
 4. Visit any [LinkedIn company page](https://www.linkedin.com/company/) or job posting
 
-A badge appears in the corner: **green** = confident LCA match, **yellow** = verify manually, **red** = no match in the index.
-
 ### Rebuild the index from DOL data (optional)
 
-Download the latest [LCA Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) Excel file from DOL and place it in the repo root (default expected name: `LCA_Dislclosure_Data_FY2026_Q2.xlsx`). Then:
+Download the latest [LCA Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance) Excel file and place it in the repo root (default: `LCA_Dislclosure_Data_FY2026_Q2.xlsx`). Then:
 
 ```bash
 python3 -m venv .venv
@@ -42,230 +52,280 @@ python3 export_employer_index.py   # SQLite → chrome-extension/data/employers.
 
 Reload the extension on `chrome://extensions` after re-exporting.
 
-**Test a slug without re-exporting** (uses existing `employers.json` if present):
+**Smoke-test slugs:**
 
 ```bash
 python3 export_employer_index.py --test microsoft
-python3 export_employer_index.py --test eversana
+python3 test_entity_resolution.py
 ```
-
-### Add a manual slug override
-
-When LinkedIn’s slug does not map cleanly to a legal name, edit `slug_overrides.json`, then re-run `export_employer_index.py`:
-
-```json
-{
-  "your-linkedin-slug": "XX-XXXXXXX"
-}
-```
-
-FEIN comes from the DOL file or your local SQLite DB (`SELECT DISTINCT EMPLOYER_FEIN, EMPLOYER_NAME FROM lca_cases WHERE …`).
 
 ---
 
-## End-to-end data flow
+## System architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph offline["Offline pipeline (Python)"]
     XLSX["DOL LCA Excel\n~440 MB"]
-    SQLITE["SQLite\nlca_cases · ~786K rows"]
-    INDEX["employers.json.gz\n~6.4 MB · 69K employers"]
-    XLSX -->|"convert_to_sqlite.py\npython-calamine"| SQLITE
-    SQLITE -->|"export_employer_index.py\nSQL aggregation + key_index"| INDEX
-    OVERRIDES["slug_overrides.json"] --> INDEX
+    CONV["convert_to_sqlite.py"]
+    DB[("SQLite\n785,687 H-1B rows")]
+    EXP["export_employer_index.py"]
+    TOK["generic_tokens.py"]
+    GZ["employers.json.gz\n69,250 employers"]
+    XLSX --> CONV --> DB --> EXP
+    TOK --> EXP --> GZ
   end
 
   subgraph browser["Browser runtime (Chrome MV3)"]
-    LI["linkedin.com/company/{slug}\nor job posting"]
-    DOM["content.js\nextract slug + page name"]
-    MATCH["matcher.js\nlookup cascade"]
-    UI["Badge overlay\nconfidence · industry · alternatives"]
-    INDEX --> MATCH
-    LI --> DOM --> MATCH --> UI
-    STORAGE[("chrome.storage.local\nlearned slugs")] <--> MATCH
+    LI["LinkedIn page"]
+    CS["content.js"]
+    MAT["matcher.js\nevidence-first resolver"]
+    IDX[("index + token inverted index")]
+    LI --> CS --> MAT
+    GZ -.-> IDX --> MAT --> CS
   end
 ```
 
-Raw `.xlsx` and `.db` files are gitignored (too large). The extension ships only the compressed index.
+No remote API. No `chrome.storage`. Session cache is a **performance optimization only** — it is not a source of truth and does not affect confidence.
 
 ---
 
-## Company identification workflow
-
-On each LinkedIn company or job page, the extension extracts a **slug** (from the URL or company link) and optionally a **display name** (from the page heading or job card). Those inputs feed a fixed-order resolver — **first hit wins**; later stages run only when earlier ones miss.
-
-**Lookup cascade** (left → right):
+## Runtime flow
 
 ```mermaid
-flowchart LR
-  IN["slug + page name"] --> S1["① Cache"]
-  S1 --> S2["② Override"]
-  S2 --> S3["③ Learned"]
-  S3 --> S4["④ Exact key"]
-  S4 --> S5["⑤ Fuzzy ≥70"]
-  S5 --> S6["⑥ Not found"]
+sequenceDiagram
+  participant LI as LinkedIn page
+  participant CS as content.js
+  participant MAT as matcher.js
+  participant IDX as employers.json.gz
 
-  S1 -.->|hit| BADGE(["Badge UI"])
-  S2 -.->|hit| BADGE
-  S3 -.->|hit| BADGE
-  S4 -.->|hit| SCORE
-  S5 -.->|hit| SCORE
-  S6 --> BADGE
+  LI->>CS: navigation / DOM change
+  CS->>CS: extract slug + display name
+  CS->>MAT: lookup(slug, pageName)
+  MAT->>IDX: load + decompress (once)
+  MAT->>MAT: normalize → evidence → rank → confidence
+  alt evidence sufficient
+    MAT-->>CS: { employer, confidence, warnings }
+    CS->>LI: green or yellow badge
+  else no evidence
+    MAT-->>CS: null
+    CS->>LI: red badge
+  end
 ```
-
-Stages ④ and ⑤ run through the **[confidence & scoring](#confidence--scoring)** pipeline before the badge is shown. High-confidence exact hits may be persisted as learned slugs.
-
-### Why this order
-
-| Stage | On hit | Why it runs before the next stage |
-|-------|--------|-----------------------------------|
-| **① Cache** | Same slug/name this session → return | Avoids repeat work on LinkedIn SPA re-renders |
-| **② Override** | High confidence → badge | Curated slug → FEIN (`meta`, `eversana`, …) |
-| **③ Learned** | High confidence → badge | Device-local slug verified on a prior visit |
-| **④ Exact key** | Score → confidence → badge | O(1) hash lookup on precomputed keys |
-| **⑤ Fuzzy** | Score ≥ 70 → confidence → badge | Last resort; whole-word tokens only |
-| **⑥ Not found** | Red badge | No match above threshold |
-
-Fuzzy matches are **never learned**. Only high-confidence exact paths with sufficient LinkedIn ↔ LCA name overlap are written to `chrome.storage.local`.
-
-### Search key policy (export time)
-
-Earlier versions generated single-token keys like `gamma` or `american`, causing thousands of collisions. Index v1.2 key policy:
-
-- Multi-word legal names and hyphenated slugs (`ornua-foods-north-america-inc`) always indexed
-- Short brand tokens (≥4 chars, e.g. `ornua`, `coforge`) indexed only when **≤5 employers** share that token — avoids `american` / `university` collisions
-- Generic words (`gamma`, `hiring`, `global`, …) never indexed as single-token keys
-
-Collisions on the same key resolve to the employer with the **highest `lca_count`**.
 
 ---
 
-## Confidence & scoring
+## Entity resolution pipeline (evidence-first)
 
-This is **not** machine learning and **not** a sponsorship probability. The matcher produces two separate outputs:
+```mermaid
+flowchart TD
+  IN["slug + display name"] --> CACHE{"Session cache?"}
+  CACHE -->|hit| OUT["Return cached result"]
+  CACHE -->|miss| NORM["Normalize → meaningful tokens"]
 
-| Output | What it measures | Used for |
-|--------|------------------|----------|
-| **`score`** (0–100) | How closely the **LinkedIn URL tokens** match an employer’s legal names / search keys | Whether fuzzy matching qualifies; ranking alternatives |
-| **`confidence`** (`high` / `medium` / `low`) | Whether we trust that employer is the **same entity** LinkedIn is showing | Badge color (green vs yellow) |
+  NORM --> EMPTY{"Any meaningful\nLinkedIn tokens?"}
+  EMPTY -->|no| RED["🔴 No match\n(generic / noise only)"]
+  EMPTY -->|yes| CAND["Collect candidates\n(token index + key_index)"]
 
-**Red (not found)** means `lookup()` returned `null` — no employer reached score ≥ 70 on the fuzzy path, and no exact / override / learned hit.
+  CAND --> EVID["Compute evidence per candidate\noverlap · core match · subset · ambiguity"]
+  EVID --> MIN{"Minimum evidence?"}
+  MIN -->|no| RED
+  MIN -->|yes| RANK["Rank candidates\n(see ranking rules)"]
+  RANK --> CONF["Assign confidence from evidence\nnot from numeric score"]
+  CONF --> NONE{"confidence set?"}
+  NONE -->|no| RED
+  NONE -->|yes| BADGE["Return result + warnings"]
+  BADGE --> OUT
+  RED --> CACHE2["Cache null"]
+  OUT --> CACHE2
+```
 
-### Step 1 — Match score (URL vs LCA names)
+Every candidate — including `key_index` hits — must pass the same evidence and confidence pipeline. A precomputed key hit alone never forces green.
 
-Only stages **④ exact key** and **⑤ fuzzy** compute a numeric score. Overrides and learned slugs are assigned **100**; exact index hits are assigned **95** before confidence rules run.
+---
 
-**Fuzzy scoring** compares normalized LinkedIn URL tokens against each employer’s legal name, aliases, and precomputed keys. Matching uses **whole words** (`\b token \b`), not arbitrary substrings — so `coppersmith` cannot match `RSM` via an embedded character sequence.
+## Normalization
+
+Python (`export_employer_index.py`) and JavaScript (`matcher.js`) share token lists via `generic_tokens.py`.
 
 ```mermaid
 flowchart LR
-  T["URL tokens"] --> E{"Exact normalized\nstring match?"}
-  E -->|yes| S100["score 100"]
-  E -->|no| M{"Every token\nwhole-word hit?"}
-  M -->|"2+ tokens"| S75["75 + 5×tokens\ncapped at 95"]
-  M -->|"1 token, len ≥ 6"| S70["score 70"]
-  M -->|miss| S0["score 0"]
-  S0 --> NF["🔴 not found"]
-  S70 --> OK{"score ≥ 70?"}
-  S75 --> OK
-  S100 --> OK
-  OK -->|yes| CONF["→ Step 2"]
+  RAW["Raw text"] --> LOWER["Lowercase\nremove punctuation"]
+  LOWER --> LEGAL["Remove legal suffixes\ninc · llc · ltd · corp · co · company …"]
+  LEGAL --> WEAK["Remove weak corporate words\ngroup · holdings · services · solutions\nsystems · technologies · international · usa · north america"]
+  WEAK --> GEN{"Generic or\nlen < 3?"}
+  GEN -->|drop| GEN
+  GEN -->|keep| TOK["Meaningful tokens"]
+  TOK --> CORE["Core name\njoined meaningful tokens"]
 ```
 
-| Fuzzy case | Score | Example |
-|------------|-------|---------|
-| Normalized URL equals a stored name/key | 100 | rare on fuzzy path; usually caught at exact key |
-| All URL tokens appear as whole words (2 tokens) | 85 | `gamma-technologies` → “Gamma Technologies …” |
-| All URL tokens (3 tokens) | 90 | |
-| All URL tokens (4+ tokens) | 95 | |
-| Single token, length ≥ 6, whole-word hit | 70 | minimum to qualify |
-| Anything else | 0 → **not found** | bare `gamma` after key tightening |
+### Legal suffixes removed anywhere
 
-Candidates with score ≥ **70** are ranked by score, then by `lca_count`. The top hit is returned; runners-up may appear as **alternatives** on yellow badges.
+`inc`, `incorporated`, `llc`, `ltd`, `limited`, `corp`, `corporation`, `co`, `company`, `llp`, `lp`, `plc`
 
-### Step 2 — Confidence (display name vs legal name)
+### Weak corporate words removed anywhere
 
-After an employer is selected, `confidence` starts at **high** and is adjusted:
+`group`, `holdings`, `services`, `solutions`, `systems`, `technologies`, `international`, `usa`, `us`, `america`, `north america`
+
+### Generic tokens (cannot form a match alone)
+
+`american`, `global`, `consulting`, `university`, `hiring`, `staffing`, … — full list in `generic_tokens.py`
+
+### LinkedIn token selection
+
+Display-name tokens are primary. Slug tokens are added only when not dominated by a display-name token (e.g. `tencentglobal` is ignored when display name already yields `tencent`).
+
+---
+
+## Evidence signals
+
+For each candidate employer the matcher computes **evidence**, not a user-facing score:
+
+| Signal | Definition |
+|--------|------------|
+| `exact_core_match` | normalized core LinkedIn name **equals** normalized core DOL name |
+| `subset_match` | every LinkedIn meaningful token appears in DOL tokens |
+| `shared_count` | number of shared meaningful tokens |
+| `token_overlap_ratio` | shared ÷ LinkedIn meaningful tokens |
+| `reverse_overlap_ratio` | shared ÷ DOL meaningful tokens |
+| `single_token_match` | LinkedIn has exactly one meaningful token |
+| `ambiguity_count` | employers in the index sharing **all** LinkedIn meaningful tokens |
+| `close_alternatives` | other candidates with similar overlap |
+| `display_name_subset` | LinkedIn display tokens ⊂ DOL legal tokens (informational note only) |
+| `slug_display_disagree` | slug and display name yield different meaningful token sets |
+
+The code does **not** infer “brand name” status. `display_name_subset` only describes text overlap — it does not promote confidence by itself.
+
+### Minimum evidence (required to show any result)
+
+- at least one shared meaningful token, **and**
+- one of: `exact_core_match`, `subset_match`, multi-token overlap ≥ 50%, or a single shared distinctive token
+
+Otherwise → **red** (no match).
+
+---
+
+## Candidate ranking
+
+Candidates are sorted by **evidence quality**. `rank_score` exists internally for debugging/sorting only and is **never shown in the UI**. It is **not** confidence and **not** a probability.
 
 ```mermaid
-flowchart LR
-  IN["score + method"] --> B["Bucket by score\n(not override)"]
-  B --> B90["≥90 → high"]
-  B --> B75["75–89 → medium"]
-  B --> B70["70–74 → low"]
-  B90 --> ADJ
-  B75 --> ADJ
-  B70 --> ADJ["Adjustments"]
-  ADJ --> BR{"Brand subset?\npage name ⊂ legal name"}
-  BR -->|yes| HI["→ high + note"]
-  BR -->|no| OV{"Display-name overlap\n< 34%?"}
-  OV -->|yes| DOWN["high→medium\nmedium→low"]
-  OV -->|no| KEEP["keep bucket"]
-  HI --> OUT
-  DOWN --> OUT
-  KEEP --> OUT["confidence"]
-  OUT --> G{"level?"}
-  G -->|high| GREEN["🟢 badge"]
-  G -->|medium / low| YELLOW["🟡 badge"]
+flowchart TD
+  R1["1. exact_core_match"] --> R2["2. shared_count\n(more shared tokens)"]
+  R2 --> R3["3. token_overlap_ratio"]
+  R3 --> R4["4. lower ambiguity_count\n(fewer competing employers)"]
+  R4 --> R5["5. lca_count\nfinal tie-break only"]
 ```
 
-**Score → initial bucket** (skipped for `manual_override`):
+`lca_count` is **not** evidence that names match — it only breaks ties after name evidence is equal.
 
-| Score | Initial confidence |
-|-------|-------------------|
-| ≥ 90 | `high` |
-| 75 – 89 | `medium` |
-| 70 – 74 | `low` |
+---
 
-**Adjustments** (applied in order):
+## Confidence assignment
 
-| Rule | Condition | Effect |
-|------|-----------|--------|
-| **Brand subset** | Every token in the LinkedIn **display name** appears in the LCA **legal name**, and the display name is shorter | Promote `medium` / `low` → `high`; add explanatory note (e.g. `EVERSANA` → `EVERSANA LIFE SCIENCE SERVICES, LLC`) |
-| **Name overlap** | Token overlap between display name and legal name &lt; **34%** (tokens length ≥ 3) | `high` → `medium`, or `medium` → `low`; add name-mismatch warning |
-| **Fuzzy method** | `fuzzy_token` or `fuzzy_single` | Add “confirm legal name and industry” warning (does not by itself change the bucket) |
+Confidence is derived **only from evidence rules**. When uncertain, the system prefers **yellow over green**.
 
-**Display-name overlap** is separate from match score:
+```mermaid
+flowchart TD
+  START["Top-ranked candidate"] --> MIN{"Minimum evidence?"}
+  MIN -->|no| RED["🔴 No match"]
+  MIN -->|yes| HIGH{"HIGH evidence?"}
 
+  HIGH -->|exact core + no competitors| G1["🟢 HIGH"]
+  HIGH -->|≥2 LI tokens all in DOL + no competitors| G2["🟢 HIGH"]
+  HIGH -->|no| LOWCHK{"LOW evidence?"}
+
+  LOWCHK -->|partial / fuzzy overlap only| Y1["🟡 LOW"]
+  LOWCHK -->|single token + competitors| Y2["🟡 LOW"]
+  LOWCHK -->|single token, not exact core| Y3["🟡 LOW"]
+  LOWCHK -->|weak overlap| Y4["🟡 LOW"]
+  LOWCHK -->|no| MED{"MEDIUM evidence?"}
+
+  MED -->|subset + extra DOL words| Y5["🟡 MEDIUM"]
+  MED -->|multiple possible employers| Y6["🟡 MEDIUM"]
+  MED -->|slug ≠ display tokens| Y7["🟡 MEDIUM"]
+  MED -->|close alternatives| Y8["🟡 MEDIUM"]
+  MED -->|exact core but competitors| Y9["🟡 MEDIUM"]
+  MED -->|default| Y10["🟡 MEDIUM"]
 ```
-overlap = shared_tokens / max(linkedin_tokens, legal_tokens)
-```
 
-Example: LinkedIn shows `Vertex Pharmaceuticals`, LCA lists `Vertex Pharmaceuticals Incorporated` → overlap **100%** → no downgrade. LinkedIn shows `Acme`, LCA lists `Totally Different Industries LLC` → low overlap → downgrade even if the URL matched.
+### Confidence rules
 
-### Badge colors
+| Level | Badge | Evidence required |
+|-------|-------|-------------------|
+| **high** | 🟢 | `exact_core_match` with no competing employers; **or** ≥ 2 LinkedIn meaningful tokens all in DOL with full overlap and no close alternatives |
+| **medium** | 🟡 | Multi-token subset but DOL has extra meaningful words; exact/strong match with multiple possible entities; slug and display disagree; close alternatives exist |
+| **low** | 🟡 | Single-token match; partial/fuzzy overlap only; weak overlap; only one of several LinkedIn tokens matched |
+| **no match** | 🔴 | Only generic/noise tokens; no meaningful overlap; below minimum evidence |
 
-| Badge | `confidence` | Typical situation |
-|-------|--------------|-------------------|
-| 🟢 **Green** | `high` | Exact index hit (score 95) with agreeing names; or strong fuzzy (score ≥ 90); or brand subset |
-| 🟡 **Yellow** | `medium` or `low` | Fuzzy match at 70–89; or exact hit but display name ≠ legal name; alternatives shown |
-| 🔴 **Red** | no result | No match, or fuzzy score &lt; 70 |
+### Examples
 
-### Warnings (do not change the color)
+| LinkedIn | DOL match | Confidence | Why |
+|----------|-----------|------------|-----|
+| `microsoft` / Microsoft | Microsoft Corporation | **high** | Exact core, unique token |
+| `ornua-foods-north-america-inc` / Ornua | Ornua Foods North America, Inc. | **high** | Multi-token subset, no competitors |
+| `eversana` / Eversana | EVERSANA LIFE SCIENCE SERVICES, LLC | **low** | Single-token subset; DOL legal name has extra words |
+| `meta` / Meta | Meta Platforms, Inc. (among 12) | **low** | Single ambiguous token |
+| `tencentglobal` / Tencent | Tencent America LLC | **low** | Single token, multiple employers |
+| `a-hiring-company` / A Hiring Company | — | **no match** | `hiring` is generic |
 
-These lines appear on the badge but **do not** switch green ↔ yellow ↔ red:
+### Warnings (informational; shown on badge)
 
 | Warning | Trigger |
 |---------|---------|
-| Very few LCA filings | `lca_count ≤ 2` — weak historical signal |
-| Other possible matches | Alternatives exist and confidence is not `high` |
-| Matched from learned slug | Slug was verified on this device earlier |
+| Single distinctive word | `single_token_match` |
+| Multiple employers | `ambiguity_count > 1` |
+| Slug ≠ display name | `slug_display_disagree` |
+| Display vs legal mismatch | display/legal overlap < 34% |
+| Extra DOL words | meaningful tokens on DOL not on LinkedIn |
+| Partial overlap only | method `token_overlap` or `key_overlap` |
+| Very few LCA filings | `lca_count ≤ 2` |
+| Other possible matches | close alternatives and confidence ≠ `high` |
 
-### Persistence (learned slugs)
+### What is explicitly **not** in the matcher
 
-A slug is saved to `chrome.storage.local` only when **all** of the following hold:
+| Removed / de-emphasized | Why |
+|-------------------------|-----|
+| Numeric score → green mapping (70 / 85 / 90 / 95) | Token count is not match quality |
+| `manual_override` as confidence path | No manual verification in automatic mode |
+| `learned_slug` as high confidence | Session cache only; not a source of truth |
+| `brand_subset` | Renamed to `display_name_subset`; overlap note only, not a confidence boost |
 
-- `confidence === high` after adjustments
-- Method is `exact_key` or `exact_page_name` (never fuzzy)
-- No display-name mismatch warning
-- Display-name overlap ≥ **34%**
+Implementation: `chrome-extension/lib/matcher.js` — `meaningfulTokens()`, `computeSignals()`, `assignConfidence()`, `compareCandidates()`.
 
-### What green / yellow do *not* mean
+---
 
-Green or yellow means the **legal entity** appears in LCA disclosure data. It does **not** mean this specific job posting sponsors H-1B — the JD may still exclude internships, entry-level roles, or candidates who need sponsorship.
+## Index export architecture
 
-Implementation: `chrome-extension/lib/matcher.js` — `scoreEmployer()`, `nameOverlap()`, `isBrandSubset()`, `buildResult()`.
+```mermaid
+flowchart LR
+  DB[("SQLite")] --> AGG["Aggregate by FEIN\nnames · counts · NAICS · top jobs"]
+  AGG --> KEYS["search_keys_for()\ncollision-aware keys"]
+  KEYS --> KI["key_index"]
+  AGG --> EMP["employers[]"]
+  KI --> PAYLOAD["employers.json.gz"]
+  EMP --> PAYLOAD
+```
+
+### Search key policy (index v1.3)
+
+- **Always index:** multi-word legal names and hyphenated slugs
+- **Conditionally index:** short distinctive tokens (≥ 4 chars) when ≤ 5 employers share them
+- **Never index alone:** generic words (`gamma`, `hiring`, `global`, `university`, …)
+
+`key_index` seeds candidates at runtime; confidence still comes from evidence rules above.
+
+### Index fields
+
+| Field | Purpose |
+|-------|---------|
+| `fein` | Stable legal-entity key |
+| `name` / `names[]` | Primary and alias employer names |
+| `search_keys[]` | Precomputed lookup keys |
+| `lca_count`, `h1b_count`, `certified_count` | Volume signals on badge (not match evidence) |
+| `naics_code`, `naics_sector` | Industry context |
+| `top_jobs[]` | Top 3 filed roles |
+| `key_index` | `normalized_key → fein` |
 
 ---
 
@@ -273,61 +333,38 @@ Implementation: `chrome-extension/lib/matcher.js` — `scoreEmployer()`, `nameOv
 
 ```
 .
-├── convert_to_sqlite.py          # Excel → SQLite ingestion
-├── export_employer_index.py      # SQLite → compressed JSON index
-├── naics_sectors.py              # NAICS code → sector label
-├── slug_overrides.json           # Curated LinkedIn slug → FEIN
-├── requirements.txt
-├── export_all_employers.py       # National employer CSV (69K, networking columns)
-├── export_cook_county.py         # Cook County IL sponsor export
-├── networking_connects.py        # Log / sync LinkedIn connect outreach
-├── export_distribution.py        # National job/SOC distribution CSVs
-├── data/
-│   ├── all_employers.csv         # National summary + connect_status
-│   ├── cook_county_companies.csv # Cook County subset
-│   └── networking_connects.csv   # Connect log (source of truth)
-├── docs/                         # Distribution summaries
-└── chrome-extension/
-    ├── manifest.json
-    ├── content.js                # DOM extraction + badge UI
-    ├── styles.css
-    ├── lib/matcher.js            # Lookup engine
-    └── data/employers.json.gz    # Pre-built index (~6.4 MB)
+├── convert_to_sqlite.py
+├── export_employer_index.py
+├── generic_tokens.py
+├── naics_sectors.py
+├── test_entity_resolution.py
+├── chrome-extension/
+│   ├── manifest.json          # v1.6.1 · no permissions
+│   ├── content.js             # badge UI
+│   ├── lib/matcher.js         # evidence-first resolver
+│   └── data/employers.json.gz
+└── data/                      # CSV exports (optional)
 ```
 
 ---
 
 ## Layer 1: Ingestion (Excel → SQLite)
 
-DOL publishes LCA data as flat Excel. The FY2026 Q2 file is ~440 MB, ~807K rows × 98 columns; import filters to **785,687 H-1B** rows only.
-
 | Decision | Rationale |
 |----------|-----------|
-| **python-calamine** | Rust-backed reader; ~47 s vs minutes with openpyxl |
-| **SQLite** | Indexed random lookups; single-file portability for local SQL |
-| **Batch insert + post-load indexes** | 13 indexes on filter columns after bulk load |
-| **TEXT columns** | Mixed formats in source fields; avoids silent coercion |
-
-Employers deduplicate by **FEIN**: 79,492 distinct names → **69,250** legal entities.
+| **python-calamine** | Fast Excel read (~47 s) |
+| **SQLite** | Portable indexed storage |
+| **FEIN dedup** | 79,492 names → 69,250 legal entities |
 
 ---
 
 ## Layer 2: Index export (SQLite → JSON)
 
-The browser cannot read a ~940 MB SQLite file. Export aggregates per FEIN and ships a read-optimized artifact:
-
-| Field | Purpose |
-|-------|---------|
-| `fein` | Stable legal-entity key |
-| `name` / `names[]` | Primary and alias employer names |
-| `search_keys[]` | Precomputed lookup tokens (strict policy above) |
-| `lca_count`, `h1b_count`, `certified_count` | Headline sponsorship signals |
-| `naics_code`, `naics_sector` | Industry context for verification |
-| `top_jobs[]` | Top 3 roles by filing frequency |
-| `key_index` | Inverted map `normalized_key → fein` |
-| `slug_overrides` | Bundled manual slug → FEIN mappings |
-
-Top jobs use one SQL window query (`ROW_NUMBER() OVER (PARTITION BY EMPLOYER_FEIN …)`). Raw JSON ~36 MB compresses to **~6.4 MB gzip** with **124,926** search keys.
+| Metric | Value |
+|--------|-------|
+| Employers | 69,250 |
+| Search keys | 202,254 |
+| Gzip (shipped) | ~6.9 MB |
 
 ---
 
@@ -335,23 +372,26 @@ Top jobs use one SQL window query (`ROW_NUMBER() OVER (PARTITION BY EMPLOYER_FEI
 
 | Component | Role |
 |-----------|------|
-| `content.js` | Extracts slug/name from company and job pages; `MutationObserver` + `popstate` for LinkedIn SPA navigation |
-| `matcher.js` | Loads gzip index; runs lookup cascade; session cache + learned slug persistence |
-| `styles.css` | Fixed badge: confidence, legal name, industry, warnings, alternatives |
-| `employers.json.gz` | Web-accessible compressed index — no network calls after install |
+| `content.js` | Extract slug/name; render badge with confidence, warnings, alternatives |
+| `matcher.js` | Evidence-first entity resolution; session cache |
+| `employers.json.gz` | Offline index |
 
-**Permissions:** `storage` only (learned slugs). No telemetry, no remote API.
+**Permissions:** none. No telemetry. No remote API.
 
-### Manual overrides
+### Badge UI
 
-When slug and legal name diverge with no safe automatic key, add an entry to `slug_overrides.json` and re-export:
-
-```json
-{
-  "eversana": "39-1821626",
-  "meta": "20-1665019",
-  "dun-bradstreet": "22-3582360"
-}
+```mermaid
+flowchart TB
+  subgraph badge["Badge overlay"]
+    HDR["Confidence label"]
+    LEGAL["DOL legal name"]
+    LI["LinkedIn display name"]
+    IND["Industry · NAICS"]
+    STATS["LCA · H-1B · certified %"]
+    NOTES["display_name_subset notes"]
+    WARN["Evidence warnings"]
+    ALT["Alternatives (non-high)"]
+  end
 ```
 
 ---
@@ -360,13 +400,12 @@ When slug and legal name diverge with no safe automatic key, add an entry to `sl
 
 | Attribute | Value |
 |-----------|-------|
-| Source | DOL Office of Foreign Labor Certification — LCA Disclosure Data |
+| Source | DOL OFLC — LCA Disclosure Data |
 | Period | FY2026 Q2 |
 | H-1B LCA records | 785,687 |
 | Unique employers (FEIN) | 69,250 |
-| Index search keys | 124,926 |
 
-LCA filings are employer **attestations** of intent to employ H-1B workers — not confirmed hires or lottery outcomes. A company may file under a parent entity, PEO, or a name not visible on LinkedIn.
+LCA filings are employer attestations of intent to employ H-1B workers — not confirmed hires or lottery outcomes.
 
 ---
 
@@ -374,11 +413,10 @@ LCA filings are employer **attestations** of intent to employ H-1B workers — n
 
 | Layer | Technology |
 |-------|------------|
-| Excel ingestion | python-calamine (Rust via PyO3) |
-| Storage | SQLite 3 |
-| Index | JSON + gzip · browser `DecompressionStream` |
+| Ingestion | python-calamine · SQLite 3 |
+| Index | JSON + gzip · `DecompressionStream` |
 | Extension | Chrome Manifest V3 |
-| Matching | Normalizer + inverted index + conservative fuzzy · no ML |
+| Matching | Meaningful-token evidence · rule-based confidence · no ML |
 
 ---
 

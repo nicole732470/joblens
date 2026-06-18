@@ -5,17 +5,17 @@
 
   const CONFIDENCE_META = {
     high: {
-      label: "High confidence",
+      label: "Likely same legal employer in DOL data",
       badgeClass: "lca-found",
       emoji: "✅",
     },
     medium: {
-      label: "Medium confidence — double-check",
+      label: "Possible match — verify manually",
       badgeClass: "lca-caution",
       emoji: "⚠️",
     },
     low: {
-      label: "Low confidence — verify manually",
+      label: "Possible match — verify manually",
       badgeClass: "lca-caution",
       emoji: "⚠️",
     },
@@ -42,11 +42,11 @@
   function renderAlternatives(alternatives) {
     if (!alternatives?.length) return "";
     const items = alternatives
-      .map(({ employer, score }) => {
+      .map(({ employer }) => {
         const loc = [employer.city, employer.state].filter(Boolean).join(", ");
         const industry = employer.naics_sector || "";
         const meta = [loc, industry, `${employer.lca_count} LCA`].filter(Boolean).join(" · ");
-        return `<li><b>${escapeHtml(employer.name)}</b>${meta ? `<br><span class="lca-alt-meta">${escapeHtml(meta)}</span>` : ""} <span class="lca-alt-score">score ${score}</span></li>`;
+        return `<li><b>${escapeHtml(employer.name)}</b>${meta ? `<br><span class="lca-alt-meta">${escapeHtml(meta)}</span>` : ""}</li>`;
       })
       .join("");
     return `
@@ -309,7 +309,7 @@
       </div>
       <ul class="lca-warnings">
         <li>May not sponsor H-1B, file under a different legal name, or use a parent company.</li>
-        <li>If you know this company sponsors, the match rules may need a manual slug override.</li>
+        <li>No meaningful token overlap with DOL legal names on file.</li>
       </ul>
       <div class="lca-foot">Absence here is not proof of no sponsorship.</div>
     `;

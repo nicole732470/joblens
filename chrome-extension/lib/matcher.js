@@ -1,144 +1,152 @@
 /**
- * LCA employer lookup — loads compressed index and matches LinkedIn slugs/names.
+ * LCA employer lookup — evidence-first entity resolution on meaningful token overlap.
  *
  * lookup() returns:
- *   { employer, confidence, score, method, matchedOn, warnings[], alternatives[], fromCache? } | null
+ *   { employer, confidence, rank_score, method, matchedOn, warnings[], notes[], alternatives[] } | null
+ *
+ * confidence: entity-resolution confidence (high / medium / low) — drives badge color.
+ * rank_score: internal candidate sort key only — not confidence, not probability.
  */
 const LcaMatcher = (() => {
-  const STORAGE_KEY = "learned_slugs";
-  const LEARNABLE_METHODS = new Set(["exact_key", "exact_page_name"]);
   const SESSION_CACHE = new Map();
-  const FUZZY_FLOOR = 70;
-  const LEGAL_SUFFIXES = [
-    " incorporated",
-    " corporation",
-    " company",
-    " limited",
-    " llc",
-    " inc",
-    " corp",
-    " ltd",
-    " llp",
-    " lp",
-    " plc",
-    " usa",
-    " us",
-    " co",
-  ];
-  /** Too common for single-token fuzzy or brand-subset promotion alone. */
-  const GENERIC_TOKENS = new Set([
-    "hiring",
-    "staffing",
-    "solutions",
-    "services",
-    "service",
-    "consulting",
+
+  const LEGAL_SUFFIXES = new Set([
+    "inc",
+    "incorporated",
+    "llc",
+    "ltd",
+    "limited",
+    "corporation",
+    "corp",
+    "company",
+    "co",
+    "llp",
+    "lp",
+    "plc",
+  ]);
+
+  const WEAK_CORPORATE_WORDS = new Set([
     "group",
-    "partners",
-    "partner",
+    "holdings",
+    "services",
+    "solutions",
+    "systems",
+    "technologies",
+    "international",
+    "usa",
+    "us",
+    "america",
+  ]);
+
+  const NOISE_WORDS = new Set([...LEGAL_SUFFIXES, ...WEAK_CORPORATE_WORDS]);
+
+  const GENERIC_TOKENS = new Set([
+    "american",
     "global",
     "international",
+    "group",
+    "services",
+    "service",
+    "solutions",
+    "technology",
+    "technologies",
     "systems",
+    "management",
+    "consulting",
+    "partners",
+    "partner",
+    "capital",
+    "holdings",
+    "labs",
+    "health",
+    "care",
+    "university",
+    "hiring",
+    "staffing",
     "industries",
     "industry",
-    "technologies",
-    "technology",
-    "holdings",
     "enterprises",
     "enterprise",
     "associates",
-    "management",
     "resources",
     "digital",
     "software",
-    "company",
     "companies",
+    "gamma",
+    "united",
+    "national",
+    "advanced",
+    "north",
+    "south",
+    "east",
+    "west",
+    "central",
+    "community",
+    "first",
+    "general",
+    "professional",
+    "business",
+    "world",
+    "city",
+    "state",
+    "pacific",
+    "atlantic",
+    "prime",
+    "blue",
+    "green",
+    "red",
+    "new",
+    "best",
+    "all",
+    "one",
   ]);
 
   let payload = null;
   let feinMap = null;
   let keyIndex = null;
-  let learnedSlugs = {};
+  let employerProfiles = null;
+  let tokenIndex = null;
   let loadPromise = null;
 
-  function stripLegalSuffixes(text) {
-    let prev;
-    do {
-      prev = text;
-      for (const suffix of LEGAL_SUFFIXES) {
-        if (text.endsWith(suffix)) {
-          text = text.slice(0, -suffix.length).trim();
-          break;
-        }
-      }
-    } while (text !== prev);
-    return text;
-  }
-
-  function normalize(text) {
-    return stripLegalSuffixes(
-      String(text)
-        .toLowerCase()
-        .replace(/&/g, " and ")
-        .replace(/[^\w\s-]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-    );
-  }
-
-  /** LinkedIn display names — do not strip legal suffixes (e.g. "A Hiring Company"). */
-  function displayTokens(text) {
+  function tokenizeRaw(text) {
     return String(text)
       .toLowerCase()
       .replace(/&/g, " and ")
       .replace(/[^\w\s-]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .split(" ")
-      .filter((t) => t.length >= 2);
+      .replace(/-/g, " ")
+      .split(/\s+/)
+      .filter(Boolean);
   }
 
-  function tokens(text) {
-    return normalize(String(text).replace(/-/g, " "))
-      .split(" ")
-      .filter((t) => t.length >= 2);
+  function stripNoiseTokens(tokens) {
+    const out = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+      if (tokens[i] === "north" && tokens[i + 1] === "america") {
+        i += 1;
+        continue;
+      }
+      if (!NOISE_WORDS.has(tokens[i])) out.push(tokens[i]);
+    }
+    return out;
   }
 
-  function isDistinctiveToken(token) {
-    return token.length >= 4 && !GENERIC_TOKENS.has(token);
+  function meaningfulTokens(text) {
+    const seen = new Set();
+    const out = [];
+    for (const token of stripNoiseTokens(tokenizeRaw(text))) {
+      if (token.length < 3 || GENERIC_TOKENS.has(token) || seen.has(token)) continue;
+      seen.add(token);
+      out.push(token);
+    }
+    return out;
   }
 
-  function escapeRegExp(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  function coreNormalize(text) {
+    return meaningfulTokens(text).join(" ");
   }
 
-  function hasWord(haystack, word) {
-    if (!haystack || !word) return false;
-    const re = new RegExp(`\\b${escapeRegExp(word)}\\b`, "i");
-    return re.test(haystack);
-  }
-
-  function nameOverlap(pageName, legalName) {
-    const ta = new Set(displayTokens(pageName));
-    const tb = new Set(tokens(legalName));
-    if (!ta.size || !tb.size) return 0;
-    let shared = 0;
-    for (const t of ta) if (tb.has(t) && t.length >= 3) shared += 1;
-    return shared / Math.max(ta.size, tb.size);
-  }
-
-  /** LinkedIn shows a short brand; LCA uses a longer legal name (e.g. EVERSANA → EVERSANA LIFE … LLC). */
-  function isBrandSubset(pageName, legalName) {
-    const pageTokens = displayTokens(pageName);
-    const legalTokenSet = new Set(tokens(legalName));
-    if (!pageTokens.length) return false;
-    if (pageTokens.length >= tokens(legalName).length) return false;
-    if (!pageTokens.every((t) => legalTokenSet.has(t))) return false;
-    return pageTokens.some(isDistinctiveToken);
-  }
-
-  function cacheKey(slug, pageName) {
-    return `${slug}|${normalize(pageName || "")}`;
+  function normalize(text) {
+    return coreNormalize(text);
   }
 
   function shortLabel(text, max = 48) {
@@ -148,43 +156,382 @@ const LcaMatcher = (() => {
     return `${one.slice(0, max).replace(/\s+\S*$/, "").trim()}…`;
   }
 
-  function buildResult(employer, score, method, matchedOn, pageName, alternatives = []) {
-    const warnings = [];
-    const notes = [];
-    let confidence = "high";
-    const brandSubset = pageName && isBrandSubset(pageName, employer.name);
+  function cacheKey(slug, pageName) {
+    return `${slug}|${coreNormalize(pageName || "")}`;
+  }
 
-    if (score < 90 && !brandSubset && method !== "manual_override") confidence = "medium";
-    if (score < 75 && !brandSubset && method !== "manual_override") confidence = "low";
+  function buildEmployerProfile(employer) {
+    const tokenSet = new Set();
+    const cores = new Set();
+    const sources = [employer.name, ...(employer.names || []), ...(employer.search_keys || [])];
 
-    if (method.startsWith("fuzzy_") && !brandSubset) {
-      warnings.push("Name-based match — confirm legal name and industry before trusting.");
+    for (const raw of sources) {
+      const tokens = meaningfulTokens(raw);
+      tokens.forEach((t) => tokenSet.add(t));
+      const core = coreNormalize(raw);
+      if (core) cores.add(core);
     }
 
-    if (brandSubset) {
-      notes.push(
-        `LinkedIn brand "${shortLabel(pageName)}" — H-1B filed under legal entity "${employer.name}".`
-      );
-      if (confidence === "low" || confidence === "medium") confidence = "high";
-    } else if (pageName) {
-      const overlap = nameOverlap(pageName, employer.name);
+    return {
+      employer,
+      tokens: tokenSet,
+      cores,
+      primaryCore: coreNormalize(employer.name),
+    };
+  }
+
+  function buildIndexes() {
+    employerProfiles = new Map();
+    tokenIndex = new Map();
+
+    for (const employer of payload.employers) {
+      const profile = buildEmployerProfile(employer);
+      employerProfiles.set(employer.fein, profile);
+      for (const token of profile.tokens) {
+        if (!tokenIndex.has(token)) tokenIndex.set(token, new Set());
+        tokenIndex.get(token).add(employer.fein);
+      }
+    }
+  }
+
+  function linkedInTokenSet(slug, pageName) {
+    const pageTokens = pageName ? meaningfulTokens(pageName) : [];
+    const slugTokens = slug ? meaningfulTokens(slug.replace(/-/g, " ")) : [];
+
+    if (pageTokens.length > 0) {
+      const tokens = new Set(pageTokens);
+      for (const slugToken of slugTokens) {
+        if (tokens.has(slugToken)) continue;
+        const dominated = [...tokens].some(
+          (pageToken) =>
+            slugToken.includes(pageToken) ||
+            pageToken.includes(slugToken) ||
+            slugToken.startsWith(pageToken) ||
+            pageToken.startsWith(slugToken)
+        );
+        if (!dominated) tokens.add(slugToken);
+      }
+      return tokens;
+    }
+
+    return new Set(slugTokens);
+  }
+
+  function linkedInCore(slug, pageName) {
+    const pageCore = pageName ? coreNormalize(pageName) : "";
+    const slugCore = slug ? coreNormalize(slug.replace(/-/g, " ")) : "";
+    if (pageCore && (!slugCore || pageCore.length >= slugCore.length)) return pageCore;
+    return slugCore;
+  }
+
+  function slugTokenSet(slug) {
+    return slug ? new Set(meaningfulTokens(slug.replace(/-/g, " "))) : new Set();
+  }
+
+  function pageTokenSet(pageName) {
+    return pageName ? new Set(meaningfulTokens(pageName)) : new Set();
+  }
+
+  function slugDisplayDisagree(slug, pageName) {
+    const slugTokens = slugTokenSet(slug);
+    const pageTokens = pageTokenSet(pageName);
+    if (!slugTokens.size || !pageTokens.size) return false;
+    if (slugTokens.size !== pageTokens.size) return true;
+    for (const token of slugTokens) {
+      if (!pageTokens.has(token)) return true;
+    }
+    return false;
+  }
+
+  function isDisplayNameSubset(pageName, legalName) {
+    const pageTokens = meaningfulTokens(pageName);
+    const legalTokenSet = new Set(meaningfulTokens(legalName));
+    if (!pageTokens.length) return false;
+    if (pageTokens.length >= meaningfulTokens(legalName).length) return false;
+    return pageTokens.every((token) => legalTokenSet.has(token));
+  }
+
+  function intersectSets(a, b) {
+    const out = new Set();
+    for (const item of a) if (b.has(item)) out.add(item);
+    return out;
+  }
+
+  function ambiguityCount(linkedInTokens) {
+    if (!linkedInTokens.size) return Number.POSITIVE_INFINITY;
+    let feins = null;
+    for (const token of linkedInTokens) {
+      const hits = tokenIndex.get(token);
+      if (!hits || !hits.size) return Number.POSITIVE_INFINITY;
+      if (feins === null) feins = new Set(hits);
+      else feins = intersectSets(feins, hits);
+    }
+    return feins ? feins.size : Number.POSITIVE_INFINITY;
+  }
+
+  function computeSignals(linkedInTokens, linkedInCoreName, profile) {
+    const shared = intersectSets(linkedInTokens, profile.tokens);
+    const linkedInCount = linkedInTokens.size;
+    const dolCount = profile.tokens.size;
+
+    const exactCoreMatch =
+      Boolean(linkedInCoreName) &&
+      (linkedInCoreName === profile.primaryCore || profile.cores.has(linkedInCoreName));
+
+    const subsetMatch =
+      linkedInCount > 0 && [...linkedInTokens].every((t) => profile.tokens.has(t));
+
+    const extraDolTokens = [...profile.tokens].filter((t) => !linkedInTokens.has(t));
+
+    return {
+      shared_count: shared.size,
+      linkedIn_count: linkedInCount,
+      dol_count: dolCount,
+      token_overlap_ratio: linkedInCount ? shared.size / linkedInCount : 0,
+      reverse_overlap_ratio: dolCount ? shared.size / dolCount : 0,
+      exact_core_match: exactCoreMatch,
+      subset_match: subsetMatch,
+      single_token_match: linkedInCount === 1,
+      extra_dol_tokens: extraDolTokens,
+    };
+  }
+
+  function computeRankScore(signals, ambiguity) {
+    return (
+      (signals.exact_core_match ? 1_000_000 : 0) +
+      signals.shared_count * 10_000 +
+      Math.round(signals.token_overlap_ratio * 1_000) -
+      ambiguity * 100
+    );
+  }
+
+  function compareCandidates(a, b) {
+    const sa = a.signals;
+    const sb = b.signals;
+    if (sa.exact_core_match !== sb.exact_core_match) {
+      return Number(sb.exact_core_match) - Number(sa.exact_core_match);
+    }
+    if (sa.shared_count !== sb.shared_count) return sb.shared_count - sa.shared_count;
+    if (sa.token_overlap_ratio !== sb.token_overlap_ratio) {
+      return sb.token_overlap_ratio - sa.token_overlap_ratio;
+    }
+    if (a.ambiguity_count !== b.ambiguity_count) return a.ambiguity_count - b.ambiguity_count;
+    return b.profile.employer.lca_count - a.profile.employer.lca_count;
+  }
+
+  function isCloseAlternative(top, other) {
+    if (other.profile.employer.fein === top.profile.employer.fein) return false;
+    const ts = top.signals;
+    const os = other.signals;
+    if (os.shared_count === 0) return false;
+    if (ts.exact_core_match && os.exact_core_match) return true;
+    if (Math.abs(ts.token_overlap_ratio - os.token_overlap_ratio) <= 0.15) return true;
+    if (ts.shared_count > 0 && os.shared_count >= ts.shared_count - 1) return true;
+    return false;
+  }
+
+  function displayOverlap(pageName, legalName) {
+    if (!pageName || !legalName) return 1;
+    const pageTokens = new Set(meaningfulTokens(pageName));
+    const legalTokens = new Set(meaningfulTokens(legalName));
+    if (!pageTokens.size || !legalTokens.size) return 0;
+    const shared = intersectSets(pageTokens, legalTokens);
+    return shared.size / Math.max(pageTokens.size, legalTokens.size);
+  }
+
+  function passesMinimumEvidence(signals) {
+    if (signals.shared_count === 0) return false;
+    if (signals.exact_core_match) return true;
+    if (signals.subset_match) return true;
+    if (signals.token_overlap_ratio >= 0.5 && signals.shared_count >= 2) return true;
+    if (signals.single_token_match && signals.shared_count === 1) return true;
+    return false;
+  }
+
+  function isFuzzyEvidence(signals) {
+    return (
+      !signals.exact_core_match &&
+      !(signals.subset_match && signals.token_overlap_ratio >= 1)
+    );
+  }
+
+  function assignConfidence(signals, ambiguity, closeAlternatives, context) {
+    if (!passesMinimumEvidence(signals)) return null;
+
+    const {
+      exact_core_match,
+      subset_match,
+      single_token_match,
+      token_overlap_ratio,
+      shared_count,
+      linkedIn_count,
+      extra_dol_tokens,
+    } = signals;
+
+    const { slugDisplayDisagree: slugPageDisagree, fuzzyOnly } = context;
+    const competing = ambiguity > 1 || closeAlternatives.length > 0;
+    const weakOverlap = token_overlap_ratio < 0.5;
+    const partialMultiToken = linkedIn_count >= 2 && shared_count < linkedIn_count;
+    const extraDolMeaningful = extra_dol_tokens.length > 0;
+
+    if (exact_core_match && !competing) return "high";
+    if (subset_match && linkedIn_count >= 2 && token_overlap_ratio >= 1 && !competing) {
+      return "high";
+    }
+
+    if (fuzzyOnly) return "low";
+    if (single_token_match && competing) return "low";
+    if (single_token_match && !exact_core_match) return "low";
+    if (weakOverlap) return "low";
+    if (partialMultiToken) return "low";
+
+    if (subset_match && linkedIn_count >= 2 && extraDolMeaningful) return "medium";
+    if (competing) return "medium";
+    if (slugPageDisagree) return "medium";
+    if (closeAlternatives.length > 0) return "medium";
+    if (exact_core_match) return "medium";
+
+    if (single_token_match) return "low";
+
+    return "medium";
+  }
+
+  function collectKeyCandidates(cleanSlug, pageName) {
+    const feins = new Set();
+    const keys = new Set();
+
+    const addKey = (key) => {
+      if (!key) return;
+      keys.add(key);
+    };
+
+    addKey(cleanSlug);
+    addKey(cleanSlug.replace(/-/g, " "));
+    addKey(coreNormalize(cleanSlug.replace(/-/g, " ")));
+    addKey(coreNormalize(cleanSlug.replace(/-/g, " ")).replace(/\s+/g, "-"));
+
+    if (pageName) {
+      addKey(coreNormalize(pageName));
+      addKey(coreNormalize(pageName).replace(/\s+/g, "-"));
+    }
+
+    for (const key of keys) {
+      const fein = keyIndex[key];
+      if (fein) feins.add(fein);
+    }
+    return feins;
+  }
+
+  function collectTokenCandidates(linkedInTokens) {
+    const feins = new Set();
+    for (const token of linkedInTokens) {
+      const hits = tokenIndex.get(token);
+      if (hits) hits.forEach((fein) => feins.add(fein));
+    }
+    return feins;
+  }
+
+  function resolveMethod(signals, fromKeyIndex) {
+    if (signals.exact_core_match) return "core_exact";
+    if (signals.subset_match && signals.token_overlap_ratio >= 1) return "core_subset";
+    if (fromKeyIndex) return "key_overlap";
+    return "token_overlap";
+  }
+
+  function buildWarnings(signals, confidence, pageName, employer, ambiguity, closeAlternatives, method, slugPageDisagree) {
+    const warnings = [];
+
+    if (signals.single_token_match) {
+      warnings.push("Matched on a single distinctive word — verify the legal entity.");
+    }
+    if (ambiguity > 1) {
+      warnings.push(`Multiple employers (${ambiguity}) share these name tokens.`);
+    }
+    if (closeAlternatives.length > 0 && confidence !== "high") {
+      warnings.push("Other similar employers exist — see alternatives below.");
+    }
+    if (slugPageDisagree) {
+      warnings.push("LinkedIn slug and display name disagree — match uses both inputs.");
+    }
+    if (pageName) {
+      const overlap = displayOverlap(pageName, employer.name);
       if (overlap < 0.34) {
-        confidence = confidence === "high" ? "medium" : "low";
         warnings.push(
           `LinkedIn shows "${shortLabel(pageName)}" but LCA lists "${employer.name}".`
         );
       }
     }
-
+    if (signals.extra_dol_tokens.length > 0 && signals.reverse_overlap_ratio < 0.8) {
+      warnings.push("DOL legal name includes extra words not seen on LinkedIn.");
+    }
+    if (method === "token_overlap" || method === "key_overlap") {
+      warnings.push("Partial token overlap only — confirm legal name and industry.");
+    }
     if (employer.lca_count <= 2) {
       warnings.push("Very few LCA filings — weak sponsorship signal.");
     }
 
-    if (alternatives.length > 0 && confidence !== "high") {
-      warnings.push("Other similar employers exist — see alternatives below.");
-    }
+    return warnings;
+  }
 
-    return { employer, confidence, score, method, matchedOn, warnings, notes, alternatives };
+  function buildNotes(pageName, employer) {
+    const notes = [];
+    if (pageName && isDisplayNameSubset(pageName, employer.name)) {
+      notes.push(
+        `LinkedIn display name "${shortLabel(pageName)}" is a subset of DOL legal name "${employer.name}".`
+      );
+    }
+    return notes;
+  }
+
+  function buildResult(top, pageName, cleanSlug, allRanked, matchedOn) {
+    const { profile, signals, ambiguity_count: ambiguity } = top;
+    const closeAlternatives = allRanked.slice(1).filter((c) => isCloseAlternative(top, c));
+    const slugPageDisagree = slugDisplayDisagree(cleanSlug, pageName);
+    const method = resolveMethod(signals, matchedOn.startsWith("key:"));
+    const fuzzyOnly = isFuzzyEvidence(signals);
+
+    const confidence = assignConfidence(signals, ambiguity, closeAlternatives, {
+      slugDisplayDisagree: slugPageDisagree,
+      fuzzyOnly,
+    });
+    if (!confidence) return null;
+
+    const rank_score = computeRankScore(signals, ambiguity);
+    const warnings = buildWarnings(
+      signals,
+      confidence,
+      pageName,
+      profile.employer,
+      ambiguity,
+      closeAlternatives,
+      method,
+      slugPageDisagree
+    );
+    const notes = buildNotes(pageName, profile.employer);
+
+    const alternatives = allRanked
+      .slice(1, 4)
+      .filter((c) => c.signals.shared_count > 0)
+      .map((c) => ({
+        employer: c.profile.employer,
+        confidence: assignConfidence(c.signals, c.ambiguity_count, [], {
+          slugDisplayDisagree: slugPageDisagree,
+          fuzzyOnly: isFuzzyEvidence(c.signals),
+        }),
+      }))
+      .filter((a) => a.confidence);
+
+    return {
+      employer: profile.employer,
+      confidence,
+      rank_score,
+      method,
+      matchedOn: matchedOn.replace(/^key:/, ""),
+      warnings,
+      notes,
+      alternatives,
+    };
   }
 
   function cloneResult(result, extras = {}) {
@@ -195,12 +542,6 @@ const LcaMatcher = (() => {
       alternatives: [...(result.alternatives || [])],
       ...extras,
     };
-  }
-
-  async function loadLearnedSlugs() {
-    if (!chrome.storage?.local) return;
-    const stored = await chrome.storage.local.get(STORAGE_KEY);
-    learnedSlugs = stored[STORAGE_KEY] || {};
   }
 
   async function load() {
@@ -221,7 +562,7 @@ const LcaMatcher = (() => {
 
       feinMap = Object.fromEntries(payload.employers.map((e) => [e.fein, e]));
       keyIndex = payload.key_index || {};
-      await loadLearnedSlugs();
+      buildIndexes();
       return payload;
     })();
 
@@ -232,196 +573,43 @@ const LcaMatcher = (() => {
     return feinMap[fein] || null;
   }
 
-  function employerHaystacks(employer) {
-    return [
-      normalize(employer.name),
-      ...(employer.names || []).map(normalize),
-      ...(employer.search_keys || []).map(normalize),
-    ].filter(Boolean);
-  }
+  function resolveMatch(cleanSlug, pageName) {
+    const linkedInTokens = linkedInTokenSet(cleanSlug, pageName);
+    const linkedInCoreName = linkedInCore(cleanSlug, pageName);
 
-  function scoreEmployer(employer, slugTokens, slugNorm) {
-    if (slugTokens.length >= 2 && !slugTokens.some(isDistinctiveToken)) {
-      return 0;
-    }
-    if (slugTokens.length === 1 && GENERIC_TOKENS.has(slugTokens[0])) {
-      return 0;
-    }
+    if (!linkedInTokens.size) return null;
 
-    const haystacks = employerHaystacks(employer);
+    const candidateFeins = collectTokenCandidates(linkedInTokens);
+    collectKeyCandidates(cleanSlug, pageName).forEach((fein) => candidateFeins.add(fein));
 
-    for (const hay of haystacks) {
-      if (hay === slugNorm) return 100;
-    }
+    const globalAmbiguity = ambiguityCount(linkedInTokens);
+    const ranked = [];
 
-    if (slugTokens.length >= 2) {
-      const tokenHits = slugTokens.map((token) =>
-        haystacks.some((hay) => hasWord(hay, token))
-      );
-      if (tokenHits.length > 0 && tokenHits.every(Boolean)) {
-        return 75 + Math.min(slugTokens.length * 5, 20);
-      }
+    for (const fein of candidateFeins) {
+      const profile = employerProfiles.get(fein);
+      if (!profile) continue;
+      const signals = computeSignals(linkedInTokens, linkedInCoreName, profile);
+      if (!passesMinimumEvidence(signals)) continue;
+      ranked.push({
+        profile,
+        signals,
+        ambiguity_count: globalAmbiguity,
+        rank_score: computeRankScore(signals, globalAmbiguity),
+      });
     }
 
-    if (slugTokens.length === 1) {
-      const t = slugTokens[0];
-      if (t.length >= 5) {
-        for (const hay of haystacks) {
-          if (hay === t || hasWord(hay, t)) return 70;
-        }
-      }
+    if (!ranked.length) return null;
+
+    ranked.sort(compareCandidates);
+    const top = ranked[0];
+
+    let matchedOn = [...linkedInTokens].sort().join(" + ");
+    const keyHits = collectKeyCandidates(cleanSlug, pageName);
+    if (keyHits.has(top.profile.employer.fein)) {
+      matchedOn = `key:${matchedOn}`;
     }
 
-    return 0;
-  }
-
-  function collectFuzzyCandidates(tokenList, norm, excludeFein) {
-    const scored = [];
-    for (const employer of payload.employers) {
-      if (employer.fein === excludeFein) continue;
-      const score = scoreEmployer(employer, tokenList, norm);
-      if (score >= FUZZY_FLOOR) {
-        scored.push({ employer, score });
-      }
-    }
-    scored.sort((a, b) => b.score - a.score || b.employer.lca_count - a.employer.lca_count);
-    return scored;
-  }
-
-  function tokensDiffer(a, b) {
-    if (a.length !== b.length) return true;
-    return a.some((t, i) => t !== b[i]);
-  }
-
-  /** Try URL tokens first; if no hit, fall back to LinkedIn display-name tokens. */
-  function resolveFuzzy(slugTokenList, slugNorm, pageName, excludeFein) {
-    let hits = collectFuzzyCandidates(slugTokenList, slugNorm, excludeFein);
-    let tokenList = slugTokenList;
-    let norm = slugNorm;
-    let method;
-
-    if (!hits.length && pageName) {
-      const pageTokens = displayTokens(pageName);
-      const pageNorm = normalize(pageName);
-      if (pageTokens.length && tokensDiffer(pageTokens, slugTokenList)) {
-        const pageHits = collectFuzzyCandidates(pageTokens, pageNorm, excludeFein);
-        if (pageHits.length) {
-          hits = pageHits;
-          tokenList = pageTokens;
-          norm = pageNorm;
-        }
-      }
-    }
-
-    if (!hits.length) return null;
-
-    const top = hits[0];
-    if (top.score < FUZZY_FLOOR) return null;
-
-    if (tokenList === slugTokenList) {
-      method = slugTokenList.length === 1 ? "fuzzy_single" : "fuzzy_token";
-    } else {
-      method = tokenList.length === 1 ? "fuzzy_page_single" : "fuzzy_page_token";
-    }
-
-    return {
-      top,
-      method,
-      matchedOn: tokenList.join(" + ") || norm,
-      alts: hits.slice(1, 3).map(({ employer, score }) => ({ employer, score })),
-    };
-  }
-
-  function shouldLearn(result, pageName) {
-    if (result.confidence !== "high") return false;
-    if (!LEARNABLE_METHODS.has(result.method)) return false;
-    if (result.warnings.some((w) => w.includes("LinkedIn shows"))) return false;
-    if (pageName && nameOverlap(pageName, result.employer.name) < 0.34) return false;
-    return true;
-  }
-
-  async function persistLearnedSlug(slug, result) {
-    if (!chrome.storage?.local) return;
-    learnedSlugs[slug] = {
-      fein: result.employer.fein,
-      employer_name: result.employer.name,
-      learned_at: new Date().toISOString(),
-      method: result.method,
-      score: result.score,
-    };
-    await chrome.storage.local.set({ [STORAGE_KEY]: learnedSlugs });
-  }
-
-  function resolveLearned(slug, pageName) {
-    const entry = learnedSlugs[slug];
-    if (!entry?.fein) return null;
-    const employer = lookupByFein(entry.fein);
-    if (!employer) return null;
-    const result = buildResult(employer, 100, "learned_slug", slug, pageName);
-    result.warnings.push("Matched from a slug you verified earlier on this device.");
-    return result;
-  }
-
-  function lookupExact(cleanSlug, slugNorm, slugTokenList, pageName) {
-    const overrides = payload.slug_overrides || {};
-    if (overrides[cleanSlug]) {
-      const employer = lookupByFein(overrides[cleanSlug]);
-      if (!employer) return null;
-      return buildResult(employer, 100, "manual_override", cleanSlug, pageName);
-    }
-
-    const learned = resolveLearned(cleanSlug, pageName);
-    if (learned) return learned;
-
-    const candidates = new Map();
-    const addCandidate = (key, source) => {
-      if (key) candidates.set(key, source);
-    };
-
-    addCandidate(cleanSlug, "slug");
-    addCandidate(cleanSlug.replace(/-/g, " "), "slug");
-    addCandidate(slugNorm, "slug");
-    addCandidate(slugNorm.replace(/\s+/g, "-"), "slug");
-
-    if (pageName) {
-      addCandidate(normalize(pageName), "page_name");
-      addCandidate(normalize(pageName).replace(/\s+/g, "-"), "page_name");
-    }
-
-    let best = null;
-    let bestKey = null;
-    let bestSource = null;
-
-    for (const [key, source] of candidates.entries()) {
-      const fein = keyIndex[key];
-      if (!fein) continue;
-      const emp = lookupByFein(fein);
-      if (emp && (!best || emp.lca_count > best.lca_count)) {
-        best = emp;
-        bestKey = key;
-        bestSource = source;
-      }
-    }
-
-    if (best) {
-      const method = bestSource === "page_name" ? "exact_page_name" : "exact_key";
-      const alts = collectFuzzyCandidates(slugTokenList, slugNorm, best.fein)
-        .slice(0, 2)
-        .map(({ employer, score }) => ({ employer, score }));
-      return buildResult(best, 95, method, bestKey, pageName, alts);
-    }
-
-    const fuzzy = resolveFuzzy(slugTokenList, slugNorm, pageName, null);
-    if (!fuzzy) return null;
-
-    return buildResult(
-      fuzzy.top.employer,
-      fuzzy.top.score,
-      fuzzy.method,
-      fuzzy.matchedOn,
-      pageName,
-      fuzzy.alts
-    );
+    return buildResult(top, pageName, cleanSlug, ranked, matchedOn);
   }
 
   async function lookup(slug, pageName) {
@@ -437,37 +625,24 @@ const LcaMatcher = (() => {
       return cloneResult(cached, { fromCache: true });
     }
 
-    const slugNorm = normalize(cleanSlug.replace(/-/g, " "));
-    const slugTokenList = tokens(cleanSlug);
-    const result = lookupExact(cleanSlug, slugNorm, slugTokenList, pageName);
-
-    if (result && shouldLearn(result, pageName)) {
-      await persistLearnedSlug(cleanSlug, result);
-    }
-
+    const result = resolveMatch(cleanSlug, pageName);
     SESSION_CACHE.set(key, result);
     return result;
   }
 
-  async function clearLearnedSlugs() {
-    learnedSlugs = {};
-    SESSION_CACHE.clear();
-    if (chrome.storage?.local) {
-      await chrome.storage.local.remove(STORAGE_KEY);
-    }
-  }
-
-  async function getLearnedSlugs() {
-    await load();
-    return { ...learnedSlugs };
+  function nameOverlap(pageName, legalName) {
+    return displayOverlap(pageName, legalName);
   }
 
   return {
     load,
     lookup,
+    lookupByFein,
     normalize,
     nameOverlap,
-    clearLearnedSlugs,
-    getLearnedSlugs,
+    meaningfulTokens,
+    coreNormalize,
+    isDisplayNameSubset,
+    slugDisplayDisagree,
   };
 })();
