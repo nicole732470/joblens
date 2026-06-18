@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobintel}
       POSTGRES_DB: ${POSTGRES_DB:-jobintel}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Host 5433 to avoid clashing with a locally-installed Postgres on 5432.
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
