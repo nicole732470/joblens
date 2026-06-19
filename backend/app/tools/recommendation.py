@@ -6,6 +6,7 @@ from app.schemas.candidate_profile import CandidateProfile, Track
 from app.schemas.report import JDParse, Recommendation, ResumeFitAnalysis
 from app.tools.profile_signals import evaluate_profile_signals
 from app.tools.risk_rules import _jd_sponsorship_veto
+from app.tools.company_signals import apply_technical_penalties
 from app.tools.track_match import match_job_to_profile, resolve_job_title
 
 
@@ -61,6 +62,7 @@ def _build_summary(
     *,
     dealbreaker_hits: list[str] | None = None,
     avoid_label: str | None = None,
+    technical_penalty_hits: list[str] | None = None,
 ) -> str:
     """One short UI line — not a gap count."""
     if decision == Recommendation.SKIP:
@@ -75,6 +77,9 @@ def _build_summary(
     parts: list[str] = []
     if track:
         parts.append(track.label)
+
+    if technical_penalty_hits:
+        parts.append(f"technical gap ({technical_penalty_hits[0][:28]})")
 
     if ratio >= 0.48 and strong >= 2:
         parts.append("strong skill match")
@@ -106,6 +111,19 @@ def _signal_fields(signals: dict) -> dict:
     )}
 
 
+def _apply_track_penalties(
+    track_fields: dict,
+    jd: JDParse,
+    jd_text: str,
+    profile: CandidateProfile,
+) -> dict:
+    priority, hits = apply_technical_penalties(
+        track_fields.get("track_priority"), jd, jd_text, profile
+    )
+    out = {**track_fields, "track_priority": priority, "technical_penalty_hits": hits}
+    return out
+
+
 def generate_recommendation(
     jd: JDParse,
     resume_fit: ResumeFitAnalysis,
@@ -121,12 +139,17 @@ def generate_recommendation(
     tm = match_job_to_profile(title, raw_jd, jd, profile)
     track: Track | None = tm["matched_track"]
     track_sim: float = tm["similarity"]
-    track_fields = {
-        "track_id": track.id if track else None,
-        "track_label": track.label if track else None,
-        "track_priority": track.priority if track else None,
-        "track_similarity": track_sim,
-    }
+    track_fields = _apply_track_penalties(
+        {
+            "track_id": track.id if track else None,
+            "track_label": track.label if track else None,
+            "track_priority": track.priority if track else None,
+            "track_similarity": track_sim,
+        },
+        jd,
+        raw_jd,
+        profile,
+    )
 
     if signals["dealbreakers_matched"] > 0:
         hits = signals.get("dealbreaker_hits") or []
@@ -186,16 +209,23 @@ def generate_recommendation(
         return {"available": False, "reason": "no requirements to score against resume"}
 
     track_note = ""
+    penalized_priority = track_fields.get("track_priority")
     if track:
         track_note = (
-            f" Role content matches your «{track.label}» track (priority {track.priority}, "
+            f" Role content matches your «{track.label}» track (priority {penalized_priority}, "
             f"similarity {track_sim:.0%})."
         )
 
     signal_fields = _signal_fields(signals)
 
     # P1–P2 title match: floor at Consider, not Skip (title fit alone is not Apply).
-    priority_floor = track is not None and track.priority <= 2 and track_sim >= 0.30
+    priority_floor = (
+        track is not None
+        and penalized_priority is not None
+        and penalized_priority <= 2
+        and track_sim >= 0.30
+        and not track_fields.get("technical_penalty_hits")
+    )
 
     if strong >= 2 and ratio >= 0.50:
         decision = Recommendation.APPLY
@@ -227,12 +257,10 @@ def generate_recommendation(
         "available": True,
         "decision": decision,
         "reasoning": reasoning.strip(),
-        "summary": _build_summary(decision, track, ratio, strong, partial, pure_gap, signals),
+        "summary": _build_summary(decision, track, ratio, strong, partial, pure_gap, signals,
+                                  technical_penalty_hits=track_fields.get("technical_penalty_hits")),
         "evidence_ids": _collect_evidence_ids(resume_fit, jd),
-        "track_id": track.id if track else None,
-        "track_label": track.label if track else None,
-        "track_priority": track.priority if track else None,
-        "track_similarity": track_sim,
         "fit_ratio": round(ratio, 3),
         **signal_fields,
+        **track_fields,
     }
