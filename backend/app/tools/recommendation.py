@@ -6,7 +6,11 @@ from app.schemas.candidate_profile import CandidateProfile, Track
 from app.schemas.report import JDParse, Recommendation, ResumeFitAnalysis
 from app.tools.profile_signals import evaluate_profile_signals
 from app.tools.risk_rules import _jd_sponsorship_veto
-from app.tools.role_priority import apply_jd_role_adjustments, apply_technical_penalties
+from app.tools.role_priority import (
+    apply_jd_role_adjustments,
+    apply_resume_priority_adjustment,
+    apply_technical_penalties,
+)
 from app.tools.track_match import match_job_to_profile, resolve_job_title
 
 
@@ -106,8 +110,8 @@ def _build_summary(
 def _signal_fields(signals: dict) -> dict:
     return {k: signals[k] for k in (
         "location_score", "location_label", "location_tier",
-        "preferences_matched", "preferences_total",
-        "dealbreakers_matched", "dealbreakers_total",
+        "preferences_matched", "preferences_total", "preference_hits",
+        "dealbreakers_matched", "dealbreakers_total", "dealbreaker_hits",
     )}
 
 
@@ -246,6 +250,18 @@ def generate_recommendation(
     total = strong + partial + weak + pure_gap
     if total == 0:
         return {"available": False, "reason": "no requirements to score against resume"}
+
+    resume_pri, resume_reasons = apply_resume_priority_adjustment(
+        track_fields.get("track_priority"), resume_fit
+    )
+    if resume_reasons:
+        track_fields = {
+            **track_fields,
+            "track_priority": resume_pri,
+            "technical_penalty_hits": (track_fields.get("technical_penalty_hits") or []) + resume_reasons,
+        }
+
+    display_track = _resolve_display_track(track_fields, profile, track)
 
     track_note = ""
     penalized_priority = track_fields.get("track_priority")

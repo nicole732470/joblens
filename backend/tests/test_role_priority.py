@@ -5,8 +5,12 @@ from __future__ import annotations
 import unittest
 
 from app.schemas.candidate_profile import Track
-from app.schemas.report import JDParse
-from app.tools.role_priority import _strict_phrase_hit, apply_technical_penalties
+from app.schemas.report import JDParse, ResumeFitAnalysis, Claim
+from app.tools.role_priority import (
+    _strict_phrase_hit,
+    apply_resume_priority_adjustment,
+    apply_technical_penalties,
+)
 from app.tools.track_match import _keyword_track_from_title
 
 
@@ -70,6 +74,24 @@ class TechnicalPenaltyTests(unittest.TestCase):
         pri, hits = apply_technical_penalties(1, jd, "HPC hardware and GPU cluster", profile)
         self.assertEqual(pri, 2)
         self.assertTrue(hits)
+
+
+class ResumePriorityTests(unittest.TestCase):
+    def test_bump_when_low_overlap_on_p1(self) -> None:
+        rf = ResumeFitAnalysis(
+            available=True,
+            strong_matches=[],
+            partial_matches=[],
+            missing=[Claim(claim="x", claim_type="resume_fit")] * 4,
+        )
+        pri, reasons = apply_resume_priority_adjustment(1, rf)
+        self.assertEqual(pri, 2)
+        self.assertTrue(reasons)
+
+    def test_no_change_without_resume(self) -> None:
+        pri, reasons = apply_resume_priority_adjustment(3, ResumeFitAnalysis(available=False))
+        self.assertEqual(pri, 3)
+        self.assertEqual(reasons, [])
 
 
 if __name__ == "__main__":

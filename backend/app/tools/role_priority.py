@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from app.schemas.candidate_profile import CandidateProfile, Track
-from app.schemas.report import JDParse
+from app.schemas.report import JDParse, ResumeFitAnalysis
 from app.tools.profile_signals import _anchor_tokens, _jd_scan_blob
 
 # JD signals that the role is a research / PhD-style path (not builder AI).
@@ -128,3 +128,41 @@ def apply_jd_role_adjustments(
             reasons.append(f"hardware-heavy JD ({hits[0][:24]})")
 
     return track, priority, reasons
+
+
+def _resume_fit_stats(resume_fit: ResumeFitAnalysis) -> tuple[int, int, int, float]:
+    strong = len(resume_fit.strong_matches)
+    partial = len(resume_fit.partial_matches)
+    pure_gap = sum(
+        1 for c in resume_fit.missing if not c.resume_evidence_ids
+    )
+    total = strong + partial + len(resume_fit.missing)
+    if total == 0:
+        return 0, 0, 0, 0.0
+    effective = strong + partial * 0.5
+    return strong, pure_gap, total, effective / total
+
+
+def apply_resume_priority_adjustment(
+    track_priority: int | None,
+    resume_fit: ResumeFitAnalysis | None,
+) -> tuple[int | None, list[str]]:
+    """Nudge Role P-tier using resume–JD stack overlap (after title + JD family)."""
+    if track_priority is None or resume_fit is None or not resume_fit.available:
+        return track_priority, []
+
+    strong, pure_gap, total, ratio = _resume_fit_stats(resume_fit)
+    if total == 0:
+        return track_priority, []
+
+    reasons: list[str] = []
+    priority = track_priority
+
+    if priority <= 2 and ratio < 0.20 and pure_gap >= 2:
+        priority = min(5, priority + 1)
+        reasons.append(f"low resume overlap ({ratio:.0%})")
+    elif priority >= 3 and ratio >= 0.40 and strong >= 2:
+        priority = max(1, priority - 1)
+        reasons.append(f"strong resume match ({strong}/{total} strong)")
+
+    return priority, reasons
