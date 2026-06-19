@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # LLM (OpenAI-compatible). Defaults target OpenRouter's free tier; swap the
     # base_url/model/key for OpenAI, AWS Bedrock proxy, etc. without code changes.
     llm_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "arcee-ai/trinity-large-preview:free"
+    llm_model: str = "openai/gpt-oss-20b:free"
     llm_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("LLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"),

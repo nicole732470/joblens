@@ -21,7 +21,12 @@ def get_client():
         return None
     from openai import OpenAI
 
-    return OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+    return OpenAI(
+        base_url=settings.llm_base_url,
+        api_key=settings.llm_api_key,
+        timeout=45.0,
+        max_retries=1,
+    )
 
 
 def llm_available() -> bool:
@@ -54,16 +59,29 @@ def complete_json(system: str, user: str, max_tokens: int = 1500) -> dict:
     if client is None:
         raise RuntimeError("LLM not configured (set LLM_API_KEY)")
 
-    resp = client.chat.completions.create(
-        model=settings.llm_model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0,
-        max_tokens=max_tokens,
-    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+    def _call(use_json_mode: bool):
+        kwargs: dict = {
+            "model": settings.llm_model,
+            "messages": messages,
+            "temperature": 0,
+            "max_tokens": max_tokens,
+        }
+        if use_json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        return client.chat.completions.create(**kwargs)
+
+    try:
+        resp = _call(True)
+    except Exception:
+        # Many OpenRouter free providers don't support response_format; fall back
+        # to a plain call and lean on the prompt + _extract_json.
+        resp = _call(False)
+
     msg = resp.choices[0].message
     # Thinking models put output in `reasoning`, not `content`.
     content: Optional[str] = msg.content or getattr(msg, "reasoning", None)
