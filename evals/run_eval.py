@@ -2,9 +2,9 @@
 """Evaluate the platform against the golden set.
 
 Reads golden_set/samples.csv, calls the backend /analyze for each row, and
-scores the system against the manual labels. Only sponsorship (company match)
-is implemented today; likelihood / resume-fit / risk / recommendation scoring
-is added as those analyses land. Stdlib only.
+scores the system against the manual labels. Only the sponsorship check
+(is the employer in U.S. H-1B data) is implemented today; resume-fit / risk /
+recommendation scoring is added as those analyses land. Stdlib only.
 
 Usage:
     python3 run_eval.py
@@ -63,8 +63,8 @@ def main() -> None:
     if not rows:
         raise SystemExit("samples.csv has no rows to evaluate")
 
-    company_match_total = 0
-    company_match_correct = 0
+    sponsors_total = 0
+    sponsors_correct = 0
     errors = 0
 
     print(f"Evaluating {len(rows)} sample(s) against {BASE_URL}\n")
@@ -82,13 +82,13 @@ def main() -> None:
         conf = sp.get("match_confidence")
         matched_name = (sp.get("company") or {}).get("name") if matched else None
 
-        expected_raw = (row.get("expected_company_match") or "").strip().lower()
+        expected_raw = (row.get("expected_sponsors") or "").strip().lower()
         verdict = ""
         if expected_raw in ("yes", "no"):
             expected = expected_raw == "yes"
-            company_match_total += 1
+            sponsors_total += 1
             ok = matched == expected
-            company_match_correct += int(ok)
+            sponsors_correct += int(ok)
             verdict = "  OK" if ok else "  MISMATCH"
 
         detail = f"matched={matched}"
@@ -100,15 +100,11 @@ def main() -> None:
     print(f"samples:            {len(rows)}")
     if errors:
         print(f"backend errors:     {errors}")
-    if company_match_total:
-        acc = company_match_correct / company_match_total
-        print(
-            f"company match acc:  {company_match_correct}/{company_match_total} "
-            f"({acc:.0%})"
-        )
+    if sponsors_total:
+        acc = sponsors_correct / sponsors_total
+        print(f"sponsors (in H-1B data) acc:  {sponsors_correct}/{sponsors_total} ({acc:.0%})")
     else:
-        print("company match acc:  (no rows labeled with expected_company_match)")
-    print("likelihood:         pending (calculate_sponsorship_likelihood not built)")
+        print("sponsors acc:  (no rows labeled with expected_sponsors)")
     print("resume fit / risk / recommendation: pending (analyses not built)")
 
 

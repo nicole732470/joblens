@@ -19,20 +19,22 @@ spreadsheet). One row = one job posting you want to evaluate.
 | `title` | Job title | free text |
 | `job_url` | Link to the posting (optional) | URL or blank |
 | `jd_text` | The full job description text | free text (paste it in) |
-| `expected_company_match` | Should our H-1B lookup find this employer? | `yes` / `no` / blank |
-| `expected_sponsorship_likelihood` | Your judgment of sponsorship odds | `High` / `Medium` / `Low` / `Unknown` |
-| `expected_recommendation` | What the right call is | `Apply` / `Apply with modifications` / `Low priority` / `Skip` |
-| `expected_strong_matches` | Skills/areas your resume clearly covers | `;`-separated, e.g. `Python;RAG` |
-| `expected_missing_quals` | Key things you're missing | `;`-separated |
+| `expected_sponsors` | Does this employer sponsor H-1B (i.e. it appears in U.S. H-1B data)? | `yes` / `no` / blank |
 | `notes` | Anything useful | free text |
 
+`expected_sponsors` is the single ground-truth label for now. "In the H-1B
+data = they sponsor" — it's a yes/no call, no middle ground (if you're unsure,
+search around and decide, or leave it blank).
+
+Resume-fit, risk, and recommendation labels are intentionally left out until
+those analyses are built; we'll design those columns (including the
+multi-dimensional fit: skills / domain / experience / location) at that point.
+
 Tips:
-- Use `;` to separate multiple items inside one cell (don't use commas — commas
-  split columns).
-- Leave a cell blank if you haven't judged it yet; the harness just skips
-  scoring that dimension for that row.
-- `resume.md` holds the single resume used for resume-fit scoring — paste yours
-  there.
+- Leave `expected_sponsors` blank if you haven't judged it yet; the harness just
+  skips scoring that row.
+- Avoid stray commas in `notes` unless the cell is quoted (commas split
+  columns); a spreadsheet handles the quoting for you.
 
 ## Resume
 
@@ -48,6 +50,7 @@ cd evals
 python3 run_eval.py
 ```
 
-It prints per-sample results and a summary. Right now it scores **company match
-accuracy** (sponsorship is the only implemented analysis). Likelihood, resume
-fit, risk, and recommendation scoring are added as those features land.
+It prints per-sample results and a summary. Right now it scores **sponsorship
+accuracy** — i.e. did the lookup correctly find (or not find) the employer in
+H-1B data, against your `expected_sponsors` labels. Resume fit, risk, and
+recommendation scoring are added as those features land.

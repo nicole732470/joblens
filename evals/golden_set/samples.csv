@@ -1,3 +1,63 @@
-id,company,title,job_url,jd_text,expected_company_match,expected_sponsorship_likelihood,expected_recommendation,expected_strong_matches,expected_missing_quals,notes
-ex1,Microsoft,Software Engineer,,"Build cloud services in Python. Requires 3+ years backend experience, distributed systems, and SQL.",yes,High,Apply,Python;SQL,distributed systems,Example row — replace with real data or delete
-ex2,Totally Fake Company XYZ,Engineer,,Generic role with vague responsibilities and no clear requirements.,no,Unknown,Skip,,,Example row — no DOL match expected
+id,company,title,job_url,jd_text,expected_sponsors,notes
+ex1,HERE Technologies,Technical Customer Success Manager,https://www.linkedin.com/jobs/view/4429108869/?alternateChannel=search&trackingId=6s1VnhqjRkePgjCgtWdcfw%3D%3D,"About the job
+What's the role? 
+
+The Team
+
+We are a group of self-motivated individuals who work closely with our customer to provide support through the entire customer journey. From pre-sales to onboarding to adoption and expansion, we are the Voice of the Customer. Our primary objectives are to Engage, Adopt, Expand, and Retain relationships with our customers and help bring their visions to reality. We foster a highly collaborative environment working closely with our Customers, Engineering, Product Management etc. to help build the best location services available in the market today. It?s highly rewarding when we get to see much of our work out in the real world in location-based applications and services used in the everyday. If this sounds like something you want to do, then we?d love to talk with you.
+
+The Role
+
+As a Technical Customer Success Manager, you will be responsible for the successful delivery, adoption, and ongoing engagement of HERE?s technology solutions to customers and ensuring these solutions continue to be successful for the customer over time. You?ll oversee day-to-day customer relationships as well as actively participate in retaining and growing those relationships.
+
+The role will cover all industries, focusing on key and strategic accounts, utilizing HERE products and services. You?ll also have the opportunity to obtain PMI / PMP certification.
+
+ Through high-touch customer engagement, develop and executive a Success Plan to help Customers maximize the value from HERE products & services 
+ Collaborate with stakeholders and manage cross-functionally to drive complex, strategic and large-scale customer engagements & ensure successful customer delivery (product launches, projects, etc.) 
+ Be the Voice of the Customer by providing regular feedback to Product and Sales, as well as proactively drive executive-level review and decision making as needed 
+ Identify gaps in methodologies and/or processes for any part of the customer lifecycle and drive change for continuous improvement 
+ Consult clients on potential opportunities to improve their Navigation, IoT and LBS solutions, in conjunction with HERE Sales Account Executives 
+ Acts as the main technical customer interface and ensure customer requirements are understood across internal divisions 
+ Travel up to 25%, both domestic and international, to meet customers and suppliers as needed 
+
+ Who are you? 
+
+The Customer Success Team drives customer product adoption, expansion and retention through proactive planning, management, and execution, collaborating with internal teams. The customer Success Manager focused on ensuring customer maximize the value they get from HERE product and services and successfully renewing customer subscriptions while providing a seamless and superior customer experience. The role aims to deliver predictable and efficient renewals through a proactive management of the customer?s lifecycle. This role reports to the Customer Success Regional Director.
+
+Role
+
+This role requires a high level of expertise in strategic relationship management, leadership, networking, and commercial awareness, as well as the ability to influence positive outcomes, along with most of the following:
+
+ 5-10 years of technical experience (content / data / engineering) with a sales / pre-sales track record or an equivalent technically oriented management function 
+ Demonstrated experience in GIS, mobile and web-based location technologies, contributing to the successful delivery of spatial solutions across enterprise environments 
+ Understanding of AI capabilities and how they can be applied to make day-to-day work more robust, efficient, and effective. 
+ Experience in Customer Success and strong Program Management skills working with large enterprise customers. Experience in all aspects of program management (execution and delivery) involving large cross-functional teams. 
+ A strong sense of ownership of the customer account & ensure a trusted partnership is established with the customer. 
+ Excellent consultative, advisory, organizational skills with an aptitude for strategic thinking, proactive risk management and problem solving 
+ Strong leadership, ownership, & lobbying skills with ability to influence people outside of one?s own managerial matrix and a track record of solid cross-functional stakeholder management and collaboration skills 
+
+What Do We Offer?
+
+ Challenging problems to solve 
+ Work that makes a difference in the world 
+ Freedom to decide how to perform your work 
+ Variety in the types of projects you work on 
+ Feedback so you will know how well you are doing 
+ Collaborative, Supportive Colleagues, in an inclusive environment 
+
+The expected base salary range for this position is $120,000 to $130,000 per year. Actual compensation will be based on factors such as skills and experience. This position is also eligible for an annual performance bonus, which is subject to company and individual performance.
+
+Life at HERE comes with generous benefits to support your health and overall wellness. Benefits available to US-based HERE employees include health (Medical/Dental/Vision) insurance, retirement savings plans, paid time off & leave policies .
+
+As part of HERE Technologies employment process, candidates will be required to successfully complete a background verification process. Offers of employment and any related claims are subject to the successful completion of a background verification. Pursuant to the San Francisco Fair Chance Ordinance and the Los Angeles Fair Chance Initiative for Hiring, HERE will consider for employment qualified applicants with arrest and conviction records.
+
+HERE is an equal opportunity employer. We evaluate qualified applicants without regard to race, color, age, gender identity, sexual orientation, marital status, parental status, religion, sex, national origin, disability, veteran status, and other legally protected characteristics.
+
+Under Section 503 of the Rehabilitation Act of 1973 and VEVRAA, we have developed an affirmative action program (AAP) for individuals with disabilities and protected veterans. Portions of the AAP are available for review by applicants and employees through our People Team.
+
+ Who are we? 
+
+HERE Technologies is a location data and technology platform company. We empower our customers to achieve better outcomes ? from helping a city manage its infrastructure or a business optimize its assets to guiding drivers to their destination safely.
+
+At HERE we take it upon ourselves to be the change we wish to see. We create solutions that fuel innovation, provide opportunity and foster inclusion to improve people?s lives. If you are inspired by an open world and driven to create positive change, join us. Learn more about us on our YouTube Channel.",yes,Example row ? replace with real data or delete
+ex2,Totally Fake Company XYZ,Engineer,,Generic role with vague responsibilities and no clear requirements.,no,Example row ? no DOL match expected
