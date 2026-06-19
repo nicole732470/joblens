@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.3.1";
+  const EXTENSION_VERSION = "2.4.0";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -292,7 +292,7 @@
   }
 
   function renderChrome() {
-    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand">Job Check</span><button type="button" class="lca-close" aria-label="Close">×</button></div>`;
+    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand">Apply Scout</span><button type="button" class="lca-close" aria-label="Close">×</button></div>`;
   }
 
   function initDrag(el) {
@@ -416,7 +416,7 @@
             : `${renderNotes(notes)}${renderWarnings(warnings)}`
         }
         <div class="lca-action-row">
-          <button type="button" class="lca-analyze-btn">Analyze fit</button>
+          <button type="button" class="lca-analyze-btn">Run analysis</button>
         </div>
         <div class="lca-analyze-result" hidden></div>
         ${renderFoot(ctx, [footLinkedInHint(ctx, employer.name), "Source: U.S. DOL H-1B"])}
@@ -441,7 +441,7 @@
           </div>
         </div>
         <div class="lca-action-row">
-          <button type="button" class="lca-analyze-btn">Analyze fit</button>
+          <button type="button" class="lca-analyze-btn">Run analysis</button>
         </div>
         <div class="lca-analyze-result" hidden></div>
         ${renderDisclaimer("employer may file under a different legal name")}
@@ -495,99 +495,81 @@
 
   function findJobDetailsRoot() {
     const selectors = [
-      ".jobs-search__job-details",
-      ".jobs-search__right-rail",
-      ".scaffold-layout__detail",
-      ".jobs-details",
-      "[class*='jobs-details__main-content']",
       "#job-details",
       ".jobs-description",
-      "main",
+      ".jobs-description__content",
+      ".jobs-search__job-details",
+      ".jobs-search__right-rail .jobs-details",
+      "[class*='jobs-details__main-content']",
+      ".scaffold-layout__detail .jobs-details",
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
-      if (el) return el;
+      if (el && !el.closest(`#${BADGE_ID}`)) return el;
     }
-    return document.body;
+    return null;
+  }
+
+  function jdExpandScope(root) {
+    if (!root) return null;
+    if (root.matches?.(".show-more-less-html, #job-details, .jobs-description, .jobs-description__content")) {
+      return root;
+    }
+    return (
+      root.querySelector(".show-more-less-html") ||
+      root.querySelector("#job-details") ||
+      root.querySelector(".jobs-description") ||
+      root.querySelector(".jobs-description__content") ||
+      null
+    );
   }
 
   function scrollJobPanelIntoView(root) {
+    if (!root) return;
     root.scrollIntoView({ block: "nearest", behavior: "instant" });
-    const scrollables = root.querySelectorAll
-      ? root.querySelectorAll("[class*='job-details'], [class*='jobs-description'], [class*='scaffold-layout']")
-      : [];
-    scrollables.forEach((el) => {
-      if (el.scrollHeight > el.clientHeight + 8) {
-        el.scrollTop = 0;
-      }
-    });
   }
 
   function simulateClick(el) {
     if (!(el instanceof HTMLElement)) return;
     el.click();
-    el.dispatchEvent(
-      new MouseEvent("click", { bubbles: true, cancelable: true, view: window })
-    );
   }
 
   function clickShowMoreIn(root) {
+    const scope = jdExpandScope(root);
+    if (!scope) return false;
     let clicked = false;
     const selectors = [
       ".jobs-description__footer-button",
       "[data-tracking-control-name='public_jobs_show-more-html-btn']",
       ".show-more-less-html__button--more",
-      ".show-more-less-html__button",
-      "button[aria-expanded='false']",
-      "button[aria-label*='Show more' i]",
-      "button[aria-label*='See more' i]",
-      ".jobs-description__footer button",
-      ".feed-shared-inline-show-more-text",
-      ".jobs-description-content__text button",
+      "button.show-more-less-html__button--more",
     ];
     for (const sel of selectors) {
-      root.querySelectorAll(sel).forEach((btn) => {
+      scope.querySelectorAll(sel).forEach((btn) => {
         simulateClick(btn);
         clicked = true;
       });
     }
-    root.querySelectorAll("button, [role='button']").forEach((el) => {
-      const label = (el.textContent || "").trim().toLowerCase();
-      if (
-        label === "show more" ||
-        label === "see more" ||
-        label === "show all" ||
-        label.endsWith("…more") ||
-        label.endsWith("...more")
-      ) {
-        simulateClick(el);
+    scope.querySelectorAll(".show-more-less-html span").forEach((span) => {
+      const t = (span.textContent || "").trim().toLowerCase();
+      if (span.children.length === 0 && (t === "more" || t === "…more" || t === "...more")) {
+        simulateClick(span.parentElement || span);
         clicked = true;
       }
     });
-    root
-      .querySelectorAll(
-        ".jobs-description span, .jobs-description-content__text span, #job-details span, .show-more-less-html span"
-      )
-      .forEach((span) => {
-        const t = (span.textContent || "").trim().toLowerCase();
-        if (span.children.length === 0 && (t === "more" || t === "…more" || t === "...more")) {
-          simulateClick(span.parentElement || span);
-          clicked = true;
-        }
-      });
     return clicked;
   }
 
   /** Expand LinkedIn's collapsed JD ("Show more") before we scrape text. */
   async function expandJobDescription() {
     const root = findJobDetailsRoot();
+    if (!root) return;
     scrollJobPanelIntoView(root);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 6; i++) {
       clickShowMoreIn(root);
-      clickShowMoreIn(document);
       await sleep(160);
     }
-    await sleep(300);
+    await sleep(250);
   }
 
   function stripHtml(html) {
@@ -648,13 +630,16 @@
     if (best.length > 40) return best;
 
     const root = findJobDetailsRoot();
-    let largest = "";
-    root.querySelectorAll("div, section, article").forEach((el) => {
-      if (el.closest(`#${BADGE_ID}`)) return;
-      const text = normalizeJdText(el.innerText);
-      if (text.length > largest.length && text.length < 50000) largest = text;
-    });
-    return largest.length > best.length ? largest : best;
+    if (root) {
+      let largest = "";
+      root.querySelectorAll("div, section, article").forEach((el) => {
+        if (el.closest(`#${BADGE_ID}`)) return;
+        const text = normalizeJdText(el.innerText);
+        if (text.length > largest.length && text.length < 50000) largest = text;
+      });
+      return largest.length > best.length ? largest : best;
+    }
+    return best;
   }
 
   function extractJobDescription() {
@@ -733,72 +718,144 @@
     return String(claim || "").replace(/^\[(strong|partial|weak|missing)\]\s*/i, "");
   }
 
-  function renderBulletedList(items, extraClass, limit = 8) {
-    if (!items?.length) return "";
-    const slice = items.slice(0, limit);
-    const more = items.length > limit ? `<li class="lca-list-more">+${items.length - limit} more</li>` : "";
-    return `<ul class="lca-list ${extraClass || ""}">${slice
-      .map((c) => `<li>${escapeHtml(stripClaimPrefix(c.claim))}</li>`)
-      .join("")}${more}</ul>`;
+  function buildWhyExplanation(rec, fit) {
+    if (!rec?.available) return "";
+    const decision = rec.decision || "";
+    const track = rec.track_label;
+    const priority = rec.track_priority;
+    const titlePct =
+      rec.track_similarity != null ? Math.round(rec.track_similarity * 100) : null;
+    const gaps = fit?.gaps?.length ?? 0;
+    const matched = fit ? fit.strong.length + fit.partial.length : 0;
+    const hardTotal = fit ? matched + gaps : 0;
+
+    if (decision === "Skip") {
+      if (rec.reasoning?.toLowerCase().includes("avoid track")) {
+        return "Title matches a track you marked as avoid.";
+      }
+      if (rec.reasoning?.toLowerCase().includes("no sponsorship")) {
+        return "Job posting states no visa sponsorship.";
+      }
+      return "Low overlap with your target tracks and resume skills.";
+    }
+
+    if (priority != null && priority <= 2 && track) {
+      if (gaps > 0 && (decision === "Apply with modifications" || decision === "Consider")) {
+        return `P${priority} target track (${track})${titlePct != null ? `, ${titlePct}% title match` : ""} — skill gaps (${gaps}) outweighed by role fit.`;
+      }
+      return `Matches your P${priority} target track: ${track}${titlePct != null ? ` (${titlePct}% title)` : ""}.`;
+    }
+
+    if (decision === "Apply") {
+      return hardTotal
+        ? `Strong skill overlap (${matched}/${hardTotal} hard requirements).`
+        : "Strong fit with your profile and this role.";
+    }
+
+    if (decision === "Apply with modifications" || decision === "Consider") {
+      return hardTotal
+        ? `${matched}/${hardTotal} hard skills match — worth applying if you can address gaps on resume.`
+        : "Partial fit — review before applying.";
+    }
+
+    if (decision === "Low priority") {
+      return "Some overlap, but not a top-priority track for you.";
+    }
+
+    return simplifyReasoning(rec.reasoning || "");
   }
 
-  function renderPanel(label, body) {
-    if (!body) return "";
-    return `<div class="lca-panel"><div class="lca-panel-label">${escapeHtml(label)}</div>${body}</div>`;
+  function renderStatChips(rec, fit) {
+    const chips = [];
+    if (rec.track_priority != null) {
+      chips.push({ val: `P${rec.track_priority}`, lbl: "Track" });
+    }
+    if (rec.track_similarity != null) {
+      chips.push({ val: `${Math.round(rec.track_similarity * 100)}%`, lbl: "Title" });
+    }
+    if (fit) {
+      const matched = fit.strong.length + fit.partial.length;
+      const hard = matched + fit.gaps.length;
+      if (hard > 0) chips.push({ val: `${matched}/${hard}`, lbl: "Skills" });
+    }
+    if (!chips.length) return "";
+    return `<div class="lca-stat-chips">${chips
+      .map(
+        (c) =>
+          `<div class="lca-stat-chip"><span class="lca-stat-chip-val">${escapeHtml(c.val)}</span><span class="lca-stat-chip-lbl">${escapeHtml(c.lbl)}</span></div>`
+      )
+      .join("")}</div>`;
   }
 
-  function renderResumeFitSection(rf) {
-    if (!rf?.available) {
-      const reason = rf?.reason || "";
-      return reason ? renderPanel("Resume", `<div class="lca-panel-empty">${escapeHtml(reason)}</div>`) : "";
+  function renderFitInsights(rec, rf) {
+    if (!rec?.available && !rf?.available) return "";
+    const fit = rf?.available ? partitionResumeFit(rf) : null;
+    const why = buildWhyExplanation(rec, fit);
+    const topMatch = fit?.strong?.[0] || fit?.partial?.[0];
+    const topGap = fit?.gaps?.[0];
+    const highlights = [];
+    if (topMatch) {
+      highlights.push(`<span class="lca-highlight lca-highlight-good">${escapeHtml(stripClaimPrefix(topMatch.claim))}</span>`);
     }
-    const fit = partitionResumeFit(rf);
-    const matches = [...fit.strong, ...fit.partial];
-    const parts = [];
-    if (matches.length) {
-      parts.push(renderPanel("Matches", renderBulletedList(matches)));
+    if (topGap) {
+      highlights.push(`<span class="lca-highlight lca-highlight-gap">Gap: ${escapeHtml(stripClaimPrefix(topGap.claim))}</span>`);
     }
-    if (fit.gaps.length) {
-      parts.push(renderPanel("Gaps", renderBulletedList(fit.gaps, "lca-list-gap")));
-    }
-    if (!matches.length && !fit.gaps.length) {
-      parts.push(renderPanel("Resume", `<div class="lca-panel-empty">No hard skill requirements to score.</div>`));
-    }
-    return parts.join("");
+    return `
+      ${renderStatChips(rec, fit)}
+      ${why ? `<div class="lca-why">${escapeHtml(why)}</div>` : ""}
+      ${highlights.length ? `<div class="lca-highlights">${highlights.join("")}</div>` : ""}`;
   }
 
   const VERDICT_LABELS = {
-    Apply: { text: "Apply", dot: "found" },
-    "Apply with modifications": { text: "Consider", dot: "caution" },
-    "Low priority": { text: "Later", dot: "caution" },
-    Skip: { text: "Skip", dot: "miss" },
+    Apply: { text: "Apply", tone: "apply" },
+    "Apply with modifications": { text: "Consider", tone: "consider" },
+    "Low priority": { text: "Later", tone: "later" },
+    Skip: { text: "Skip", tone: "skip" },
   };
 
   function renderVerdictSection(rec) {
     if (!rec?.available) {
       const reason = rec?.reason || "";
-      return reason ? renderPanel("Fit", `<div class="lca-panel-empty">${escapeHtml(reason)}</div>`) : "";
+      return reason ? `<div class="lca-verdict-card lca-verdict-later"><div class="lca-verdict-empty">${escapeHtml(reason)}</div></div>` : "";
     }
-    const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", dot: "caution" };
+    const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", tone: "later" };
     const track =
       rec.track_label && rec.track_priority != null
         ? `${rec.track_label} · P${rec.track_priority}`
         : rec.track_label || "";
     return `
-      <div class="lca-panel lca-panel-top">
-        <div class="lca-hero">
-          <span class="lca-status-dot lca-status-${meta.dot}"></span>
-          <div class="lca-hero-text">
-            <div class="lca-title">${escapeHtml(meta.text)}</div>
-            ${track ? `<div class="lca-company">${escapeHtml(track)}</div>` : ""}
-          </div>
-        </div>
+      <div class="lca-verdict-card lca-verdict-${meta.tone}">
+        <div class="lca-verdict-word">${escapeHtml(meta.text)}</div>
+        ${track ? `<div class="lca-verdict-meta">${escapeHtml(track)}</div>` : ""}
       </div>`;
   }
 
   function renderRiskSection(risk) {
     if (!risk?.available || !risk.risks?.length) return "";
-    return renderPanel("Risk", renderBulletedList(risk.risks.map((r) => ({ claim: r.claim })), "lca-list-warn", 4));
+    const top = risk.risks[0];
+    const more = risk.risks.length > 1 ? ` +${risk.risks.length - 1} more` : "";
+    return `<div class="lca-risk-line"><span class="lca-risk-tag">Risk</span>${escapeHtml(top.claim)}${more ? `<span class="lca-risk-more">${escapeHtml(more)}</span>` : ""}</div>`;
+  }
+
+  function renderAnalysisInline(report) {
+    const rec = report.recommendation;
+    const rf = report.resume_fit;
+    return `<div class="lca-analyze-inner">${renderVerdictSection(rec)}${renderFitInsights(rec, rf)}${renderRiskSection(report.risk)}${renderJdErrorOnly(report.jd, report.received)}</div>`;
+  }
+
+  function friendlyParseReason(reason) {
+    const r = String(reason || "").toLowerCase();
+    if (!reason) return "Could not parse this job posting.";
+    if (r.includes("no job description")) {
+      return "Couldn't read the job description from this page. Wait for it to load, then retry.";
+    }
+    if (r.includes("llm not configured")) {
+      return "Backend LLM not configured — set LLM_API_KEY in .env and restart docker.";
+    }
+    if (r.includes("no json") || r.includes("parse failed")) {
+      return "AI parser failed — click Run analysis again.";
+    }
+    return reason;
   }
 
   function renderJdErrorOnly(jd, received) {
@@ -807,29 +864,10 @@
     const chars = received?.jd_chars;
     const captureHint =
       typeof chars === "number" && chars < 40
-        ? `Captured ${chars} chars from page — wait for JD to load, then retry.`
+        ? `Captured ${chars} chars — wait for JD to load, then retry.`
         : "";
     if (!reason && !captureHint) return "";
-    return `<div class="lca-block lca-block-muted">${captureHint ? `<div>${escapeHtml(captureHint)}</div>` : ""}${reason ? `<div>${escapeHtml(friendlyParseReason(reason))}</div>` : ""}</div>`;
-  }
-
-  function renderAnalysisInline(report) {
-    return `<div class="lca-analyze-inner">${renderVerdictSection(report.recommendation)}${renderResumeFitSection(report.resume_fit)}${renderRiskSection(report.risk)}${renderJdErrorOnly(report.jd, report.received)}</div>`;
-  }
-
-  function friendlyParseReason(reason) {
-    const r = String(reason || "").toLowerCase();
-    if (!reason) return "Could not parse this job posting.";
-    if (r.includes("no job description")) {
-      return "Couldn't read the job description from this page. Make sure a job is selected in the right panel (not just the job list), wait for it to load, then Analyze again.";
-    }
-    if (r.includes("llm not configured")) {
-      return "Backend LLM not configured — set LLM_API_KEY in .env and restart docker.";
-    }
-    if (r.includes("no json") || r.includes("parse failed")) {
-      return "AI parser failed (free model timeout or bad response). Click Analyze again — often works on retry.";
-    }
-    return reason;
+    return `<div class="lca-parse-err">${captureHint ? `<div>${escapeHtml(captureHint)}</div>` : ""}${reason ? `<div>${escapeHtml(friendlyParseReason(reason))}</div>` : ""}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -845,7 +883,11 @@
     const btn = el.querySelector(".lca-analyze-btn");
     const out = el.querySelector(".lca-analyze-result");
     if (!btn || !out) return;
-    btn.addEventListener("click", () => onAnalyzeClick(btn, out, ctx));
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onAnalyzeClick(btn, out, ctx);
+    });
   }
 
   async function onAnalyzeClick(btn, out, ctx) {
@@ -853,10 +895,10 @@
     if (out.dataset.loaded === "1") {
       if (out.hasAttribute("hidden")) {
         out.removeAttribute("hidden");
-        btn.textContent = "Hide fit";
+        btn.textContent = "Hide";
       } else {
         out.setAttribute("hidden", "");
-        btn.textContent = "Analyze fit";
+        btn.textContent = "Run analysis";
       }
       return;
     }
@@ -872,7 +914,7 @@
       const jdChars = report.received?.jd_chars ?? inputs.jd_text?.length ?? 0;
       if (jdChars >= 40 && report.jd?.available) {
         out.dataset.loaded = "1";
-        btn.textContent = "Hide fit";
+        btn.textContent = "Hide";
       } else {
         btn.textContent = "Retry";
       }

@@ -1,13 +1,13 @@
-/* Job Check — compact efficiency panel for LinkedIn */
+/* Apply Scout — LinkedIn job decision panel */
 
 #lca-sponsor-checker-badge {
   position: fixed;
   top: 80px;
   right: 24px;
   z-index: 99999;
-  width: 308px;
+  width: 300px;
   max-width: calc(100vw - 32px);
-  max-height: min(72vh, 560px);
+  max-height: min(72vh, 520px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -15,15 +15,15 @@
   font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   font-size: 13px;
   line-height: 1.45;
-  color: #1a1a1a;
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.1);
+  color: #0f172a;
+  background: #fafbff;
+  border-radius: 14px;
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
 }
 
 .lca-badge.lca-dragging {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 20px 40px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.16);
   user-select: none;
 }
 
@@ -31,9 +31,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 12px;
-  background: #f7f7f7;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #312e81 0%, #4338ca 100%);
   flex-shrink: 0;
   cursor: grab;
   touch-action: none;
@@ -42,7 +41,7 @@
   cursor: grabbing;
 }
 .lca-drag-handle {
-  color: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.45);
   font-size: 11px;
   letter-spacing: -2px;
   pointer-events: none;
@@ -50,21 +49,25 @@
 .lca-brand {
   flex: 1;
   font-size: 12px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.5);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
   pointer-events: none;
 }
 .lca-close {
   border: none;
-  background: transparent;
-  font-size: 17px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
-  color: rgba(0, 0, 0, 0.38);
-  padding: 0 2px;
+  color: rgba(255, 255, 255, 0.85);
+  padding: 0;
 }
 .lca-close:hover {
-  color: rgba(0, 0, 0, 0.7);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .lca-body {
@@ -72,17 +75,16 @@
   overflow-y: auto;
   flex: 1;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.12) transparent;
+  scrollbar-color: rgba(79, 70, 229, 0.2) transparent;
 }
 .lca-body::-webkit-scrollbar {
   width: 4px;
 }
 .lca-body::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(79, 70, 229, 0.18);
   border-radius: 99px;
 }
 
-/* Shared status row (H-1B + verdict) */
 .lca-hero {
   display: flex;
   align-items: flex-start;
@@ -98,23 +100,23 @@
   border-radius: 50%;
   margin-top: 5px;
   flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
 }
-.lca-status-found { background: #0d7a4a; }
-.lca-status-caution { background: #c45c26; }
-.lca-status-miss { background: #d93025; }
-.lca-status-loading { background: #666; }
+.lca-status-found { background: #059669; }
+.lca-status-caution { background: #d97706; }
+.lca-status-miss { background: #dc2626; }
+.lca-status-loading { background: #6366f1; }
 
 .lca-title {
-  font-weight: 600;
+  font-weight: 650;
   font-size: 14px;
-  color: #111;
+  color: #0f172a;
   line-height: 1.3;
 }
 .lca-company {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.55);
-  margin-top: 1px;
-  line-height: 1.35;
+  color: #64748b;
+  margin-top: 2px;
 }
 
 .lca-stat-row {
@@ -122,90 +124,194 @@
   gap: 10px;
   margin: 6px 0 2px 17px;
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.5);
+  color: #64748b;
 }
 .lca-stat b {
-  color: rgba(0, 0, 0, 0.72);
+  color: #0f172a;
   font-weight: 600;
 }
 
 .lca-action-row {
   margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 .lca-analyze-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  background: none;
-  padding: 0;
+  border-radius: 8px;
+  padding: 7px 14px;
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.3);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-color: rgba(0, 0, 0, 0.2);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .lca-analyze-btn:hover {
-  color: #111;
-  text-decoration-color: rgba(0, 0, 0, 0.45);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(79, 70, 229, 0.35);
+}
+.lca-analyze-btn:active {
+  transform: translateY(0);
 }
 .lca-analyze-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.55;
   cursor: default;
+  transform: none;
 }
 
 .lca-analyze-result {
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .lca-analyze-inner {
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* Analysis panels — same rhythm as H-1B block */
-.lca-panel {
-  margin-bottom: 10px;
+/* Verdict card */
+.lca-verdict-card {
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
 }
-.lca-panel-top {
-  margin-bottom: 12px;
+.lca-verdict-word {
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
-.lca-panel-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.4);
-  margin-bottom: 4px;
-  padding-left: 17px;
-}
-.lca-panel-empty {
+.lca-verdict-meta {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.5);
-  padding-left: 17px;
+  color: #64748b;
+  margin-top: 3px;
 }
-
-.lca-list {
-  margin: 0;
-  padding: 0 0 0 17px;
-  list-style: disc;
-}
-.lca-list li {
+.lca-verdict-empty {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.72);
-  line-height: 1.4;
-  margin-bottom: 3px;
-  padding-left: 2px;
+  color: #64748b;
 }
-.lca-list-gap li {
-  color: rgba(0, 0, 0, 0.55);
+.lca-verdict-apply {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: rgba(5, 150, 105, 0.2);
 }
-.lca-list-warn li {
+.lca-verdict-apply .lca-verdict-word {
+  color: #047857;
+}
+.lca-verdict-consider {
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border-color: rgba(217, 119, 6, 0.2);
+}
+.lca-verdict-consider .lca-verdict-word {
   color: #b45309;
 }
-.lca-list-more {
-  list-style: none;
-  color: rgba(0, 0, 0, 0.4) !important;
-  font-size: 11px !important;
+.lca-verdict-later {
+  background: #f1f5f9;
+  border-color: rgba(100, 116, 139, 0.15);
+}
+.lca-verdict-later .lca-verdict-word {
+  color: #475569;
+}
+.lca-verdict-skip {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border-color: rgba(220, 38, 38, 0.15);
+}
+.lca-verdict-skip .lca-verdict-word {
+  color: #dc2626;
+}
+
+/* Stat chips */
+.lca-stat-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lca-stat-chip {
+  flex: 1;
+  min-width: 56px;
+  background: #fff;
+  border: 1px solid rgba(79, 70, 229, 0.1);
+  border-radius: 8px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.lca-stat-chip-val {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: #312e81;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.lca-stat-chip-lbl {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.lca-why {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.45;
+  padding: 8px 10px;
+  background: #fff;
+  border-radius: 8px;
+  border-left: 3px solid #6366f1;
+}
+
+.lca-highlights {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lca-highlight {
+  font-size: 11px;
+  line-height: 1.35;
+  padding: 5px 8px;
+  border-radius: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lca-highlight-good {
+  background: rgba(5, 150, 105, 0.08);
+  color: #065f46;
+}
+.lca-highlight-gap {
+  background: rgba(100, 116, 139, 0.08);
+  color: #64748b;
+}
+
+.lca-risk-line {
+  font-size: 11px;
+  color: #b45309;
+  line-height: 1.4;
+  padding: 6px 8px;
+  background: rgba(217, 119, 6, 0.06);
+  border-radius: 6px;
+}
+.lca-risk-tag {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 6px;
+  color: #d97706;
+}
+.lca-risk-more {
+  color: #94a3b8;
+}
+
+.lca-parse-err {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
 }
 
 .lca-details {
@@ -214,7 +320,7 @@
 }
 .lca-details summary {
   cursor: pointer;
-  color: rgba(0, 0, 0, 0.45);
+  color: #64748b;
   font-weight: 600;
   font-size: 11px;
   list-style: none;
@@ -223,13 +329,13 @@
   display: none;
 }
 .lca-meta {
-  color: rgba(0, 0, 0, 0.55);
+  color: #64748b;
   font-size: 12px;
 }
 .lca-jobs {
   margin: 4px 0 0;
   padding-left: 16px;
-  color: rgba(0, 0, 0, 0.65);
+  color: #475569;
 }
 .lca-notes,
 .lca-warnings {
@@ -238,18 +344,14 @@
   font-size: 12px;
 }
 .lca-warnings {
-  color: #b45309;
-}
-.lca-alternatives ul {
-  margin: 4px 0 0;
-  padding-left: 16px;
+  color: #d97706;
 }
 
 .lca-foot {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
-  color: rgba(0, 0, 0, 0.38);
+  border-top: 1px solid rgba(79, 70, 229, 0.08);
+  color: #94a3b8;
   font-size: 10px;
   line-height: 1.35;
 }
@@ -258,13 +360,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: rgba(0, 0, 0, 0.5);
+  color: #64748b;
   font-size: 12px;
 }
 .lca-analyze-err {
   color: #dc2626;
   font-size: 12px;
-  line-height: 1.4;
 }
 .lca-analyze-err code {
   font-size: 10px;
@@ -276,8 +377,8 @@
 .lca-spinner {
   width: 13px;
   height: 13px;
-  border: 2px solid rgba(0, 0, 0, 0.08);
-  border-top-color: rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(99, 102, 241, 0.15);
+  border-top-color: #6366f1;
   border-radius: 50%;
   animation: lca-spin 0.7s linear infinite;
 }
@@ -287,7 +388,7 @@
 
 .lca-hint {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.5);
+  color: #64748b;
 }
 
 .lca-badge.lca-found,
