@@ -129,6 +129,7 @@ class JDParse(BaseModel):
 class ResumeFitAnalysis(BaseModel):
     available: bool = False
     reason: Optional[str] = None
+    match_method: Optional[str] = None  # llm | vector
     strong_matches: list[Claim] = []
     partial_matches: list[Claim] = []
     missing: list[Claim] = []

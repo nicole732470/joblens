@@ -1,13 +1,17 @@
-"""Basic resume ↔ JD fit via pgvector retrieval (no LLM classification yet)."""
+"""Resume ↔ JD fit: RAG retrieval + LLM classification (vector distance fallback)."""
 
 from __future__ import annotations
 
+from app.config import settings
 from app.schemas.report import JDParse
+from app.tools.llm import llm_available
+from app.tools.resume_fit_llm import classify_requirements_llm
 from app.tools.resume_store import index_resume, retrieve_resume_evidence
 
-# Cosine distance thresholds (lower = stricter). Tune via golden set / run_eval.
+# Cosine distance thresholds when LLM unavailable or fails (lower = stricter).
 _STRONG_MAX = 0.34
 _PARTIAL_MAX = 0.52
+_RETRIEVE_LIMIT = 3
 
 
 def analyze_resume_fit(jd: JDParse, resume_text: str) -> dict:
@@ -25,6 +29,59 @@ def analyze_resume_fit(jd: JDParse, resume_text: str) -> dict:
         return {"available": False, "reason": indexed.get("reason", "resume index failed")}
 
     resume_key = indexed["resume_key"]
+    mode = (settings.resume_fit_method or "auto").lower()
+
+    if mode in ("auto", "llm") and llm_available():
+        try:
+            return _analyze_with_llm(jd, resume_key)
+        except Exception as e:  # noqa: BLE001
+            if mode == "llm":
+                return {"available": False, "reason": f"LLM resume fit failed: {e}"}
+            # auto → fall through to vector
+
+    return _analyze_with_vector(jd, resume_key)
+
+
+def _analyze_with_llm(jd: JDParse, resume_key: str) -> dict:
+    classified = classify_requirements_llm(jd, resume_key)
+    strong_matches: list[dict] = []
+    partial_matches: list[dict] = []
+    missing: list[dict] = []
+
+    for req in jd.requirements:
+        meta = classified.get(req.id)
+        if not meta:
+            missing.append(_claim(req, [], "Not classified.", "missing"))
+            continue
+
+        level = meta["level"]
+        reasoning = meta.get("reasoning") or ""
+        candidates = meta.get("candidates") or []
+        resume_id = meta.get("resume_evidence_id")
+        resume_ids: list[str] = []
+        if resume_id and any(c["id"] == resume_id for c in candidates):
+            resume_ids = [str(resume_id)]
+        elif candidates and level != "missing":
+            resume_ids = [candidates[0]["id"]]
+
+        if level == "strong":
+            strong_matches.append(_claim(req, resume_ids, reasoning, "strong"))
+        elif level == "partial":
+            partial_matches.append(_claim(req, resume_ids, reasoning, "partial"))
+        else:
+            kind = "weak" if candidates else "missing"
+            missing.append(_claim(req, resume_ids, reasoning or "No resume evidence.", kind))
+
+    return {
+        "available": True,
+        "match_method": "llm",
+        "strong_matches": strong_matches,
+        "partial_matches": partial_matches,
+        "missing": missing,
+    }
+
+
+def _analyze_with_vector(jd: JDParse, resume_key: str) -> dict:
     strong_matches: list[dict] = []
     partial_matches: list[dict] = []
     missing: list[dict] = []
@@ -55,6 +112,7 @@ def analyze_resume_fit(jd: JDParse, resume_text: str) -> dict:
 
     return {
         "available": True,
+        "match_method": "vector",
         "strong_matches": strong_matches,
         "partial_matches": partial_matches,
         "missing": missing,

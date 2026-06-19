@@ -29,5 +29,8 @@ class Settings(BaseSettings):
     embedding_model: str = "openai/text-embedding-3-small"
     embedding_dimensions: int = 1536
 
+    # Resume fit: auto tries LLM after RAG retrieval, falls back to vector thresholds.
+    resume_fit_method: str = "auto"  # auto | llm | vector
+
 
 settings = Settings()
