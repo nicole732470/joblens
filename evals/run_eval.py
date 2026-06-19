@@ -2,9 +2,8 @@
 """Evaluate the platform against the golden set.
 
 Reads golden_set/samples.csv, calls the backend /analyze for each row, and
-scores the system against the manual labels. Only the sponsorship check
-(is the employer in U.S. H-1B data) is implemented today; resume-fit / risk /
-recommendation scoring is added as those analyses land. Stdlib only.
+scores sponsorship labels plus reports resume-fit / recommendation summaries.
+Stdlib only.
 
 Usage:
     python3 run_eval.py
@@ -31,7 +30,6 @@ def load_resume() -> str | None:
     if not RESUME.exists():
         return None
     text = RESUME.read_text(encoding="utf-8")
-    # Ignore the untouched placeholder.
     if "(your resume here)" in text:
         return None
     return text
@@ -65,8 +63,9 @@ def analyze(row: dict, resume_text: str | None) -> dict:
         f"{BASE_URL}/analyze",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
+        method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    with urllib.request.urlopen(req, timeout=120) as resp:
         return json.load(resp)
 
 
@@ -82,8 +81,13 @@ def main() -> None:
     sponsors_total = 0
     sponsors_correct = 0
     errors = 0
+    fit_ran = 0
+    rec_ran = 0
+    rec_counts: dict[str, int] = {}
 
-    print(f"Evaluating {len(rows)} sample(s) against {BASE_URL}\n")
+    print(f"Evaluating {len(rows)} sample(s) against {BASE_URL}")
+    print(f"resume: {'file omitted (backend default)' if not resume_text else 'from resume.md'}\n")
+
     for row in rows:
         rid = row.get("id") or "?"
         try:
@@ -110,6 +114,26 @@ def main() -> None:
         detail = f"matched={matched}"
         if matched:
             detail += f" ({matched_name}, {conf})"
+
+        rf = report.get("resume_fit") or {}
+        if rf.get("available"):
+            fit_ran += 1
+            s = len(rf.get("strong_matches") or [])
+            p = len(rf.get("partial_matches") or [])
+            m = len(rf.get("missing") or [])
+            detail += f" | fit: {s}strong/{p}partial/{m}gap"
+
+        rec = report.get("recommendation") or {}
+        if rec.get("available"):
+            rec_ran += 1
+            decision = rec.get("decision") or "?"
+            rec_counts[decision] = rec_counts.get(decision, 0) + 1
+            detail += f" | rec: {decision}"
+
+        pending = report.get("pending") or []
+        if pending:
+            detail += f" | pending: {','.join(pending)}"
+
         print(f"[{rid}] {detail}{verdict}")
 
     print("\n--- Summary ---")
@@ -121,7 +145,16 @@ def main() -> None:
         print(f"sponsors (in H-1B data) acc:  {sponsors_correct}/{sponsors_total} ({acc:.0%})")
     else:
         print("sponsors acc:  (no rows labeled with expected_sponsors)")
-    print("resume fit / risk / recommendation: pending (analyses not built)")
+    if fit_ran:
+        print(f"resume fit ran:     {fit_ran}/{len(rows) - errors}")
+    if rec_ran:
+        print(f"recommendation ran: {rec_ran}/{len(rows) - errors}")
+        for decision, count in sorted(rec_counts.items()):
+            print(f"  {decision}: {count}")
+    print(
+        "\nNote: recommendation uses profile + JD + resume only (not H-1B DB). "
+        "Tune fit distance thresholds in backend/app/tools/resume_fit.py."
+    )
 
 
 if __name__ == "__main__":

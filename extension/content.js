@@ -402,6 +402,83 @@
     other: "Other",
   };
 
+  function stripClaimPrefix(claim) {
+    return String(claim || "").replace(/^\[(strong|partial|weak|missing)\]\s*/i, "");
+  }
+
+  function renderFitList(items, cssClass, emptyLabel) {
+    if (!items?.length) {
+      return emptyLabel ? `<div class="lca-hint">${escapeHtml(emptyLabel)}</div>` : "";
+    }
+    return `<ul class="lca-fit-list">${items
+      .slice(0, 8)
+      .map(
+        (c) =>
+          `<li class="${cssClass}"><span class="lca-fit-dot"></span>${escapeHtml(stripClaimPrefix(c.claim))}</li>`
+      )
+      .join("")}${items.length > 8 ? `<li class="lca-hint">+${items.length - 8} more</li>` : ""}</ul>`;
+  }
+
+  function renderResumeFitSection(rf) {
+    if (!rf?.available) {
+      const reason = rf?.reason || "";
+      return reason
+        ? `<div class="lca-coming"><div class="lca-label">Resume match</div><div class="lca-hint">${escapeHtml(reason)}</div></div>`
+        : "";
+    }
+    const strong = rf.strong_matches?.length || 0;
+    const partial = rf.partial_matches?.length || 0;
+    const missing = rf.missing?.length || 0;
+    const summary = `${strong} strong · ${partial} partial · ${missing} gap${missing === 1 ? "" : "s"}`;
+    return `
+      <div class="lca-coming">
+        <div class="lca-label">Resume match</div>
+        <div class="lca-hint">${escapeHtml(summary)}</div>
+        ${renderFitList(rf.strong_matches, "lca-fit-strong", "")}
+        ${renderFitList(rf.partial_matches, "lca-fit-partial", "")}
+        ${missing ? `<div class="lca-label" style="margin-top:6px">Gaps</div>${renderFitList(rf.missing, "lca-fit-missing", "")}` : ""}
+      </div>`;
+  }
+
+  const RECOMMENDATION_LABELS = {
+    Apply: { text: "Apply", cls: "lca-rec-apply" },
+    "Apply with modifications": { text: "Apply (tweak resume)", cls: "lca-rec-modify" },
+    "Low priority": { text: "Low priority", cls: "lca-rec-low" },
+    Skip: { text: "Skip", cls: "lca-rec-skip" },
+  };
+
+  function renderRecommendationSection(rec) {
+    if (!rec?.available) {
+      const reason = rec?.reason || "";
+      return reason
+        ? `<div class="lca-coming"><div class="lca-label">Recommendation</div><div class="lca-hint">${escapeHtml(reason)}</div></div>`
+        : "";
+    }
+    const meta = RECOMMENDATION_LABELS[rec.decision] || {
+      text: rec.decision || "Unknown",
+      cls: "lca-rec-low",
+    };
+    return `
+      <div class="lca-coming">
+        <div class="lca-label">Recommendation</div>
+        <div class="lca-rec ${meta.cls}">${escapeHtml(meta.text)}</div>
+        ${rec.reasoning ? `<div class="lca-hint">${escapeHtml(rec.reasoning)}</div>` : ""}
+      </div>`;
+  }
+
+  function renderRiskSection(risk) {
+    if (!risk?.available || !risk.risks?.length) return "";
+    const items = risk.risks
+      .slice(0, 4)
+      .map((r) => `<li>${escapeHtml(r.claim)}</li>`)
+      .join("");
+    return `
+      <div class="lca-coming">
+        <div class="lca-label">Risk signals</div>
+        <ul class="lca-notes lca-risk-list">${items}</ul>
+      </div>`;
+  }
+
   function renderJdSection(jd) {
     if (!jd || !jd.available) {
       const reason = jd?.reason || "";
@@ -435,29 +512,34 @@
     const pending = report.pending || [];
     const labels = {
       jd_parsing: "Job description parsing",
-      resume_fit: "Resume fit vs. your profile",
-      risk: "Risk signals",
-      recommendation: "Apply / skip recommendation",
+      resume_fit: "Resume matching",
+      recommendation: "Apply recommendation",
     };
     const pendingHtml = pending.length
       ? `<div class="lca-coming">
-           <div class="lca-label">Coming soon</div>
+           <div class="lca-label">Still loading</div>
            <ul class="lca-notes">${pending.map((p) => `<li>${escapeHtml(labels[p] || p)}</li>`).join("")}</ul>
          </div>`
       : "";
     return `
       <div class="lca-analyze-inner">
         <div class="lca-ai-head">Job Intelligence <span class="lca-beta">beta</span></div>
-        <div class="lca-kv">
-          <span class="lca-label">Sponsorship odds</span>
-          <b class="${likelihoodClass(likelihood)}">${escapeHtml(String(likelihood))}</b>
-        </div>
-        ${
-          likelihood === "Unknown"
-            ? `<div class="lca-hint">A transparent likelihood score is still being built.</div>`
-            : ""
-        }
+        ${renderRecommendationSection(report.recommendation)}
+        ${renderResumeFitSection(report.resume_fit)}
+        ${renderRiskSection(report.risk)}
         ${renderJdSection(report.jd)}
+        <div class="lca-coming lca-sponsor-note">
+          <div class="lca-label">H-1B database (info only)</div>
+          <div class="lca-kv">
+            <span class="lca-label">Sponsorship odds</span>
+            <b class="${likelihoodClass(likelihood)}">${escapeHtml(String(likelihood))}</b>
+          </div>
+          ${
+            likelihood === "Unknown"
+              ? `<div class="lca-hint">Historical odds score — does not affect recommendation above.</div>`
+              : `<div class="lca-hint">Does not affect recommendation above.</div>`
+          }
+        </div>
         ${pendingHtml}
       </div>`;
   }
