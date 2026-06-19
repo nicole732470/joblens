@@ -8,6 +8,7 @@ is just an env change. Returns raw JSON text; callers validate against Pydantic.
 from __future__ import annotations
 
 import json
+import re
 import time
 from functools import lru_cache
 from typing import Optional
@@ -35,18 +36,29 @@ def llm_available() -> bool:
 
 
 def _extract_json(text: str) -> dict:
-    """Best-effort: parse JSON, falling back to the outermost {...} block.
-
-    Free models sometimes wrap JSON in prose or markdown fences.
-    """
+    """Best-effort: parse JSON from model output (incl. markdown fences / prose)."""
     text = (text or "").strip()
+    if not text:
+        raise ValueError("empty response from model")
+
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
+
+    # ```json ... ``` or ``` ... ```
+    for pattern in (r"```json\s*([\s\S]*?)```", r"```\s*([\s\S]*?)```"):
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            try:
+                return json.loads(m.group(1).strip())
+            except json.JSONDecodeError:
+                pass
+
     start, end = text.find("{"), text.rfind("}")
     if start != -1 and end > start:
         return json.loads(text[start : end + 1])
+
     raise ValueError("no JSON object found in model response")
 
 
@@ -84,11 +96,15 @@ def complete_json(system: str, user: str, max_tokens: int = 1500) -> dict:
         resp = _call(False)
 
     msg = resp.choices[0].message
-    # Thinking models put output in `reasoning`, not `content`.
-    content: Optional[str] = msg.content or getattr(msg, "reasoning", None)
-    if not content:
+    # Thinking models may split output across content and reasoning.
+    content: Optional[str] = msg.content or ""
+    reasoning = getattr(msg, "reasoning", None) or ""
+    merged = content.strip()
+    if reasoning.strip():
+        merged = f"{merged}\n{reasoning}".strip() if merged else reasoning.strip()
+    if not merged:
         raise ValueError("empty response from model")
-    return _extract_json(content)
+    return _extract_json(merged)
 
 
 def complete_json_with_retry(

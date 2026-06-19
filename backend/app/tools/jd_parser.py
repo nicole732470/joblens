@@ -57,11 +57,29 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
     if not llm_available():
         return {"available": False, "reason": "LLM not configured (set LLM_API_KEY)"}
 
-    user = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n{text[:12000]}"
-    try:
-        data = complete_json_with_retry(_SYSTEM, user, max_attempts=3, base_delay_sec=0.8)
-    except Exception as e:  # noqa: BLE001
-        return {"available": False, "reason": f"parse failed after 3 attempts: {e}"}
+    user_base = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n"
+    last_reason = "unknown error"
+    # Long JDs + free models: retry with shorter text if the model returns garbage.
+    char_limits = (12000, 7000, 4000)
+    for i, limit in enumerate(char_limits):
+        user = user_base + text[:limit]
+        try:
+            data = complete_json_with_retry(
+                _SYSTEM, user, max_attempts=2 if i == 0 else 1, base_delay_sec=0.8, max_tokens=3000
+            )
+            break
+        except Exception as e:  # noqa: BLE001
+            last_reason = str(e)
+            data = None
+    if data is None:
+        return {
+            "available": False,
+            "reason": (
+                f"parse failed after retries: {last_reason}. "
+                "Free LLM sometimes fails on long job posts — click Analyze again, "
+                "or check LLM_API_KEY / LLM_MODEL in .env."
+            ),
+        }
 
     requirements = []
     evidence = []

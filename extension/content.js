@@ -561,11 +561,26 @@
       </div>`;
   }
 
+  function friendlyParseReason(reason) {
+    const r = String(reason || "").toLowerCase();
+    if (!reason) return "Could not parse this job posting.";
+    if (r.includes("no job description")) {
+      return "Couldn't read the job description from this page. Scroll the JD into view and try again.";
+    }
+    if (r.includes("llm not configured")) {
+      return "Backend LLM not configured — set LLM_API_KEY in .env and restart docker.";
+    }
+    if (r.includes("no json") || r.includes("parse failed")) {
+      return "AI parser failed (free model timeout or bad response). Click Analyze again — often works on retry.";
+    }
+    return reason;
+  }
+
   function renderJdSection(jd) {
     if (!jd || !jd.available) {
       const reason = jd?.reason || "";
       return reason
-        ? `<div class="lca-section"><div class="lca-label">Job parsing</div><div class="lca-hint">${escapeHtml(reason)}</div></div>`
+        ? `<div class="lca-section"><div class="lca-label">Job parsing failed</div><div class="lca-hint">${escapeHtml(friendlyParseReason(reason))}</div></div>`
         : "";
     }
     const meta = [jd.seniority, jd.location].filter(Boolean).join(" · ");
