@@ -1,12 +1,26 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.config import settings
 from app.db import check_db_connection
+from app.tools.entity_resolver import get_resolver
 from app.tools.sponsorship import search_h1b_company
 
-app = FastAPI(title="Job Intelligence API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Warm the in-memory entity-resolution index so the first /analyze is fast.
+    try:
+        get_resolver()
+    except Exception:
+        pass
+    yield
+
+
+app = FastAPI(title="Job Intelligence API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
