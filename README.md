@@ -1,57 +1,136 @@
 # Hop — LinkedIn Job Intelligence
 
-Chrome extension panel on LinkedIn job pages: **DOL H-1B employer lookup** plus **Apply / Consider / Skip** job-fit analysis backed by a FastAPI backend.
+Chrome extension + FastAPI backend for **evidence-based job decisions** on LinkedIn: DOL H-1B employer lookup (offline) and **Apply / Near apply / Consider / Skip** from your profile, JD, and resume.
 
-> GitHub repo is still named [`lca-linkedin-checker`](https://github.com/nicole732470/lca-linkedin-checker) from the original H-1B-only project. The product UI is **Hop** (extension v2.9+).
+> Repo name is still [`lca-linkedin-checker`](https://github.com/nicole732470/lca-linkedin-checker); the product UI is **Hop** (extension v2.9+).
 
-## What you get on a job posting
+---
 
-| Layer | What it shows |
-|-------|----------------|
-| **H-1B** | Entity-resolved DOL match, filing counts, top sponsored titles — offline in the extension |
-| **Verdict** | Apply · Consider · Skip from profile + JD + resume (never from H-1B alone) |
-| **Fit grid** | Role P · Resume % · Location P · Company P · Prefs · Flags — hover any cell for the reasoning |
-| **Signals** | LinkedIn followers, alumni lines, industry — each on its own row |
+## What this project is for
 
-Personal rules live in [`evals/golden_set/candidate_profile.yaml`](evals/golden_set/candidate_profile.yaml) (tracks, dealbreakers, preferences, technical penalties, alumni schools). Tune without code changes.
+Hop is a **real product** (LinkedIn panel) and an **AI-engineering portfolio**:
 
-**Principle:** evidence over keyword matching — see [`docs/FIT_AND_RECOMMENDATION.md`](docs/FIT_AND_RECOMMENDATION.md).
+| Goal | What you demonstrate |
+|------|----------------------|
+| **Product** | H-1B entity resolution + job-fit verdict on every posting |
+| **RAG** | Resume chunked → pgvector → retrieve evidence per JD requirement |
+| **LLM** | Structured JD parse + **LLM judgment** of resume fit (not distance-only) |
+| **Agents** | **LangGraph** orchestration, **tool registry**, pipeline observability |
+| **Eval** | Golden set + `run_eval.py` for regression |
+
+**Deferred (by design):** MCP server, AWS deploy (needs your cloud account).
+
+---
+
+## Vector vs LLM — how they work together
+
+This is the core mental model. **Embeddings and LLM chat solve different problems.**
+
+```mermaid
+flowchart TB
+  subgraph ingest["Ingest"]
+    JD[Job description text]
+    RES[Resume text]
+  end
+
+  subgraph llm_chat["LLM chat (OpenRouter)"]
+    PARSE[parse_job_description]
+    CLASSIFY[classify_requirements_llm]
+  end
+
+  subgraph embed["Embeddings API (same OpenRouter key)"]
+    EJD[Embed JD requirement queries]
+    ERES[Embed resume chunks]
+    ETITLE[Embed job title ↔ profile tracks]
+  end
+
+  subgraph pg["Postgres + pgvector"]
+    STORE[(resume_chunks)]
+  end
+
+  subgraph rules["Deterministic rules"]
+    REC[Apply / Near apply / Consider / Skip]
+  end
+
+  JD --> PARSE
+  PARSE -->|requirements[]| EJD
+  RES --> ERES --> STORE
+  EJD --> STORE
+  STORE -->|top-k chunks| CLASSIFY
+  CLASSIFY -->|strong / partial / missing| REC
+  ETITLE --> REC
+  PARSE --> REC
+```
+
+| Step | Technology | Why |
+|------|------------|-----|
+| **JD → requirements[]** | **LLM** structured JSON | Free-text JD → typed list with quotes |
+| **Resume → chunks** | Heuristic chunker | Section-aware splits |
+| **Chunks → vectors** | **Embedding API** | Semantic search index in pgvector |
+| **Requirement → evidence** | **Vector search** (RAG) | Find the *right paragraphs* to read — cheap, fast |
+| **Evidence → strong/partial/missing** | **LLM** | Judgment call — "does this resume actually satisfy this req?" |
+| **Title ↔ track (Role P)** | **Embedding** similarity | Semantic match without keyword lists |
+| **Final verdict** | **Rules** on fit counts + profile | Explainable thresholds (see `docs/FIT_THRESHOLDS.md`) |
+
+**Fallback:** if `LLM_API_KEY` is missing or LLM classify fails, resume fit uses **vector distance thresholds only** (`match_method: vector`). Set `RESUME_FIT_METHOD=vector` to force that path.
+
+**Your OpenRouter key powers both:** chat completions (parse + classify) and embeddings (`text-embedding-3-small`).
+
+---
+
+## What you see on LinkedIn
+
+| Layer | Source |
+|-------|--------|
+| **H-1B pill** | Extension offline (`employers.json.gz`) — no backend |
+| **Verdict** | Backend — never from H-1B alone |
+| **Fit grid** | Role · Resume · Location · Company · Preferences · Dealbreakers |
+| **Hover tooltips** | Structured reasoning per metric |
+| **Explain JSON** | `POST /analyze` → `explain` (pipeline trace, `match_method`, flags) |
+
+Profile rules: [`evals/golden_set/candidate_profile.yaml`](evals/golden_set/candidate_profile.yaml)
 
 ---
 
 ## Quick start
 
-### 1. Chrome extension (H-1B works offline)
-
-Ships with `extension/data/employers.json.gz` — no server required for sponsorship lookup.
+### 1. Extension (H-1B offline)
 
 ```bash
 git clone https://github.com/nicole732470/lca-linkedin-checker.git
 cd lca-linkedin-checker
 ```
 
-1. Open `chrome://extensions` → **Developer mode** → **Load unpacked** → `extension/`
-2. Open a [LinkedIn job posting](https://www.linkedin.com/jobs/)
+Chrome → `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`
 
-Fit analysis needs the backend (step 2).
-
-### 2. Backend (JD parsing, resume fit, recommendation)
+### 2. Backend (fit analysis)
 
 ```bash
-cp .env.example .env   # add LLM_API_KEY (OpenRouter or compatible)
+cp .env.example .env
+# Required: LLM_API_KEY from https://openrouter.ai
 docker compose up -d --build
 curl http://localhost:8000/health
 ```
 
-Reload the extension. The panel calls `http://localhost:8000/analyze` automatically.
+Expected health:
 
-### 3. Evaluation (optional)
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "llm": "configured",
+  "resume_fit_method": "auto",
+  "orchestration": "langgraph"
+}
+```
+
+Reload extension. Panel calls `http://localhost:8000/analyze`.
+
+### 3. Evaluation
 
 ```bash
 cd evals && python3 run_eval.py
 ```
-
-Golden set: [`evals/golden_set/samples.csv`](evals/golden_set/samples.csv) · labels: [`evals/golden_set/README.md`](evals/golden_set/README.md).
 
 ---
 
@@ -60,26 +139,60 @@ Golden set: [`evals/golden_set/samples.csv`](evals/golden_set/samples.csv) · la
 ```mermaid
 flowchart LR
   subgraph browser["Chrome · Hop"]
-    LI[LinkedIn job page]
     EXT[content.js]
     MAT[matcher.js + employers.json.gz]
-    LI --> EXT
     EXT --> MAT
   end
 
-  subgraph server["Docker"]
-    API[FastAPI /analyze]
+  subgraph server["Docker · FastAPI"]
+    LG[LangGraph workflow]
+    TOOLS[Tool registry]
+    LG --> TOOLS
     PG[(Postgres + pgvector)]
-    API --> PG
+    LG --> PG
   end
 
-  EXT -->|JD + resume + profile| API
-  API -->|Report + explain| EXT
+  EXT -->|JD + resume + signals| LG
+  LG -->|Report + explain| EXT
+  OR[OpenRouter] -->|chat + embeddings| LG
 ```
 
-- **Extension:** reads visible page text (JD, followers, alumni hints) — no LinkedIn scraping backend.
-- **Backend:** JD parse, resume–requirement fit, role/location/company scoring, recommendation.
-- **H-1B index:** built offline from DOL LCA disclosure data (`data-pipeline/`).
+### `/analyze` pipeline (LangGraph nodes)
+
+1. `sponsorship_lookup` — H-1B SQL (Postgres employer index)
+2. `parse_jd` — LLM structured extract
+3. `resume_fit` — RAG + **LLM classify** (or vector fallback)
+4. `load_profile` — YAML intent
+5. `score_company` + `risk_rules`
+6. `recommend` — rule-based verdict
+
+Each step is traced in `explain.observability` (duration_ms per step).
+
+### Tool-calling API
+
+Same functions the graph uses, exposed for agents / debugging:
+
+```bash
+curl http://localhost:8000/tools
+curl -X POST http://localhost:8000/tools/parse_jd_structured \
+  -H 'Content-Type: application/json' \
+  -d '{"arguments":{"jd_text":"...","title":"AI Engineer"}}'
+```
+
+Tools: `lookup_h1b_sponsorship`, `parse_jd_structured`, `score_resume_against_jd`, `recommend_apply_skip`.
+
+*(MCP wrapper — future; not required for Hop itself.)*
+
+---
+
+## Where data lives
+
+| Data | Location | Cloud? |
+|------|----------|--------|
+| H-1B index | `extension/data/employers.json.gz` | No — bundled |
+| Resume vectors | Docker volume `pgdata` | No — local Postgres |
+| Profile / golden set | `evals/golden_set/` in repo | Git only |
+| LLM / embeddings | OpenRouter API | External API; no AWS needed |
 
 ---
 
@@ -87,65 +200,86 @@ flowchart LR
 
 ```
 .
-├── extension/           # Hop — Chrome MV3 (content.js, matcher.js, styles)
-├── backend/             # FastAPI — /analyze, profile, resume RAG
-├── evals/               # Golden set + run_eval.py
-├── evals/golden_set/    # candidate_profile.yaml, samples.csv, resume.md
-├── data-pipeline/       # DOL Excel → SQLite → employers.json.gz
-├── docs/                # Design, report schema, fit thresholds
+├── extension/              # Hop Chrome MV3
+├── backend/
+│   ├── app/
+│   │   ├── graph/          # LangGraph workflow
+│   │   ├── tools/          # JD parse, RAG, LLM fit, recommendation, tools
+│   │   └── main.py         # FastAPI routes
+│   └── tests/              # Unit tests (run: cd backend && pytest tests/)
+├── evals/                  # Golden set + run_eval.py
+├── data-pipeline/          # DOL Excel → employers.json.gz
+├── docs/                   # Design, thresholds, report schema
 └── docker-compose.yml
 ```
 
 ---
 
-## H-1B entity resolution (extension)
+## Configuration (`.env`)
 
-LinkedIn slug/display name ≠ DOL legal entity name. The matcher is **evidence-first** (meaningful token overlap, ambiguity checks) — not a numeric “match score.”
+| Variable | Purpose |
+|----------|---------|
+| `LLM_API_KEY` | OpenRouter (chat + embeddings) |
+| `LLM_MODEL` | JD parse model (default free tier) |
+| `EMBEDDING_MODEL` | `openai/text-embedding-3-small` |
+| `RESUME_FIT_METHOD` | `auto` \| `llm` \| `vector` |
+| `DATABASE_URL` | Postgres for pgvector + H-1B index |
 
-| Pill | Meaning |
-|------|---------|
-| **H-1B sponsor** | Strong entity match or high filing volume + approval rate |
-| **Likely H-1B sponsor** | Moderate filings, good approval |
-| **Possible sponsor** | Weaker name evidence — verify legal name manually |
-| **No H-1B record** | No reliable DOL match |
+---
 
-Confidence is **name-resolution** confidence, not “will they sponsor this job.”
+## Verdict tiers (rule-based)
 
-Implementation: [`extension/lib/matcher.js`](extension/lib/matcher.js) · index export: [`data-pipeline/export_employer_index.py`](data-pipeline/export_employer_index.py) · tests: `data-pipeline/test_entity_resolution.py`.
+| Verdict | Rule summary |
+|---------|----------------|
+| **Apply** | ≥2 strong matches AND fit ratio ≥ 50% |
+| **Near apply** | P1–P2 track, title sim ≥ 0.30, fit ≥ 22%, below Apply bar |
+| **Consider** | fit ≥ 28% or enough partial/weak touches |
+| **Skip** | P4+ track, dealbreakers, avoid track, or low fit |
 
-### Rebuild H-1B index (optional)
+Details: [`docs/FIT_THRESHOLDS.md`](docs/FIT_THRESHOLDS.md)
 
-Download [DOL LCA Disclosure Data](https://www.dol.gov/agencies/eta/foreign-labor/performance), place the Excel in `data-pipeline/`, then:
+---
+
+## Debug
+
+1. Hover metric cells in the Hop panel  
+2. Console: `__hopLastReport.explain`  
+3. Network → `POST /analyze` → check `explain.resume_fit.match_method`, `explain.observability.steps`  
+4. `curl localhost:8000/health`
+
+---
+
+## Tests
 
 ```bash
-cd data-pipeline
-python3 convert_to_sqlite.py
-python3 export_employer_index.py
+cd backend && python -m pytest tests/ -q
 ```
 
-Reload the extension after re-export.
+| File | Covers |
+|------|--------|
+| `tests/test_resume_fit.py` | Vector fallback path |
+| `tests/test_recommendation_skip.py` | P4 → Skip |
+| `tests/test_profile_signals.py` | Onsite / location |
+| `tests/test_role_priority.py` | Penalties, title keywords |
+| `tests/test_dealbreakers.py` | Dealbreaker matching |
 
-**Current index (shipped):** FY2026 Q2 · ~785k H-1B filings · ~69k employers (FEIN).
-
----
-
-## Debug a verdict
-
-1. Hover a metric cell in the Hop panel (structured tooltip).
-2. DevTools → Console: `__hopLastReport.explain`
-3. DevTools → Network → `POST /analyze` → JSON `explain` field
+Golden-set eval (needs running backend + LLM): `cd evals && python3 run_eval.py`
 
 ---
 
-## Documentation
+## Roadmap status
 
-| Doc | Contents |
-|-----|----------|
-| [`docs/DESIGN.md`](docs/DESIGN.md) | Product goals, architecture, roadmap |
-| [`docs/FIT_AND_RECOMMENDATION.md`](docs/FIT_AND_RECOMMENDATION.md) | Profile model, Apply/Skip logic |
-| [`docs/REPORT_SCHEMA.md`](docs/REPORT_SCHEMA.md) | `/analyze` response shape |
-| [`docs/FIT_THRESHOLDS.md`](docs/FIT_THRESHOLDS.md) | Resume fit weights, tuning notes |
-| [`backend/README.md`](backend/README.md) | API layout |
+| Item | Status |
+|------|--------|
+| RAG + pgvector | ✅ |
+| LLM JD parse | ✅ |
+| LLM resume classify | ✅ |
+| LangGraph orchestration | ✅ |
+| Tool registry + `/tools` API | ✅ |
+| Pipeline observability | ✅ |
+| Golden set expansion | 🔄 ongoing |
+| MCP server | ⏸ skipped |
+| AWS EC2 deploy | ⏸ needs cloud account |
 
 ---
 
@@ -153,9 +287,10 @@ Reload the extension after re-export.
 
 | Layer | Tech |
 |-------|------|
-| Extension | Chrome MV3 · offline DOL index (gzip JSON) |
-| Backend | FastAPI · Postgres · pgvector · LLM (OpenRouter-compatible) |
-| Pipeline | Python · SQLite · DOL LCA Excel |
+| Extension | Chrome MV3, offline DOL gzip index |
+| Backend | FastAPI, LangGraph, Postgres, pgvector |
+| LLM | OpenRouter-compatible (chat + embeddings) |
+| Pipeline | Python, Docker Compose |
 
 ---
 

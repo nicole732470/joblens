@@ -15,20 +15,28 @@ How numbers map to labels today. **Tunable** — adjust constants and re-run
 Example: «Member of Technical Staff» embeds near «AI Engineer» without listing
 that exact string in YAML.
 
-## 2. Resume ↔ each JD requirement (vector / pgvector)
+## 2. Resume ↔ each JD requirement (RAG + LLM)
 
-**File:** `backend/app/tools/resume_fit.py`
+**Files:** `backend/app/tools/resume_store.py`, `resume_fit.py`, `resume_fit_llm.py`
 
-Each JD requirement is embedded and compared to resume chunks (pgvector cosine
-**distance** — lower = closer):
+**Step A — RAG (embeddings + pgvector):** each requirement is embedded; top-**3** resume chunks retrieved by cosine distance.
 
-| Distance | Label in report |
-|----------|-----------------|
+**Step B — Classification:**
+
+| `match_method` | How strong / partial / missing is decided |
+|----------------|-------------------------------------------|
+| **`llm`** | LLM reads retrieved snippets and judges each requirement |
+| **`vector`** | Distance thresholds on closest chunk only (fallback) |
+
+Vector fallback thresholds:
+
+| Distance | Label |
+|----------|-------|
 | ≤ **0.34** | **strong** |
 | **0.34 – 0.52** | **partial** |
-| **> 0.52** | **weak** (shown under gaps) |
+| **> 0.52** | **weak** (in `missing`) |
 
-Constants: `_STRONG_MAX = 0.34`, `_PARTIAL_MAX = 0.52`.
+Set `RESUME_FIT_METHOD=auto|llm|vector` in `.env`.
 
 ## 3. Apply / Skip decision (never uses H-1B DB)
 
@@ -47,6 +55,7 @@ fit_ratio = effective / total_requirements
 | Track **P1–P2**, title sim ≥ **0.30**, fit_ratio ≥ **22%**, below Apply bar | **Near apply** |
 | fit_ratio ≥ **28%**, or enough partial/weak touches | **Consider** |
 | P1–P2 track floor: fit_ratio ≥ **12%** | at least **Consider** (not Skip) |
+| P4–P5 track (research, penalized analyst, etc.) | **Skip** |
 | lower / dealbreakers / avoid track | **Skip** |
 
 **Near apply** = right target track (priority 1–2) but resume has not cleared the
