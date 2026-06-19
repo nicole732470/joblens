@@ -182,17 +182,4 @@ def score_company(
     }
 
 
-def apply_technical_penalties(
-    track_priority: int | None,
-    jd: JDParse,
-    jd_text: str,
-    profile: CandidateProfile,
-) -> tuple[int | None, list[str]]:
-    """Bump Role P-tier when JD mentions profile technical_penalties domains."""
-    if track_priority is None or not profile.technical_penalties:
-        return track_priority, []
-    blob = _jd_scan_blob(jd, jd_text)
-    n, hits = _semantic_phrase_hits(profile.technical_penalties, blob)
-    if n == 0:
-        return track_priority, []
-    return min(5, track_priority + 1), hits
+# Technical penalty logic lives in role_priority.py (Role P-tier, not company score).

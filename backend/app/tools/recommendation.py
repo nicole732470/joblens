@@ -6,7 +6,7 @@ from app.schemas.candidate_profile import CandidateProfile, Track
 from app.schemas.report import JDParse, Recommendation, ResumeFitAnalysis
 from app.tools.profile_signals import evaluate_profile_signals
 from app.tools.risk_rules import _jd_sponsorship_veto
-from app.tools.company_signals import apply_technical_penalties
+from app.tools.role_priority import apply_jd_role_adjustments, apply_technical_penalties
 from app.tools.track_match import match_job_to_profile, resolve_job_title
 
 
@@ -113,15 +113,51 @@ def _signal_fields(signals: dict) -> dict:
 
 def _apply_track_penalties(
     track_fields: dict,
+    title: str,
     jd: JDParse,
     jd_text: str,
     profile: CandidateProfile,
 ) -> dict:
-    priority, hits = apply_technical_penalties(
+    track_id = track_fields.get("track_id")
+    matched: Track | None = None
+    if track_id:
+        for tr in profile.tracks:
+            if tr.id == track_id:
+                matched = tr
+                break
+
+    adjusted_track, priority, jd_reasons = apply_jd_role_adjustments(
+        matched, title, jd, jd_text, profile
+    )
+    if adjusted_track:
+        track_fields = {
+            **track_fields,
+            "track_id": adjusted_track.id,
+            "track_label": adjusted_track.label,
+            "track_priority": priority,
+        }
+
+    pen_priority, hits = apply_technical_penalties(
         track_fields.get("track_priority"), jd, jd_text, profile
     )
-    out = {**track_fields, "track_priority": priority, "technical_penalty_hits": hits}
-    return out
+    return {
+        **track_fields,
+        "track_priority": pen_priority,
+        "technical_penalty_hits": hits + jd_reasons,
+    }
+
+
+def _resolve_display_track(
+    track_fields: dict,
+    profile: CandidateProfile,
+    fallback: Track | None,
+) -> Track | None:
+    tid = track_fields.get("track_id")
+    if tid:
+        for tr in profile.tracks:
+            if tr.id == tid:
+                return tr
+    return fallback
 
 
 def generate_recommendation(
@@ -146,10 +182,13 @@ def generate_recommendation(
             "track_priority": track.priority if track else None,
             "track_similarity": track_sim,
         },
+        title,
         jd,
         raw_jd,
         profile,
     )
+
+    display_track = _resolve_display_track(track_fields, profile, track)
 
     if signals["dealbreakers_matched"] > 0:
         hits = signals.get("dealbreaker_hits") or []
@@ -188,7 +227,7 @@ def generate_recommendation(
             "decision": Recommendation.SKIP,
             "reasoning": f"Title semantically matches your avoid track ({tm['avoid_label']}).",
             "summary": _build_summary(
-                Recommendation.SKIP, track, 0.0, 0, 0, 0, signals, avoid_label=tm["avoid_label"]
+                Recommendation.SKIP, display_track, 0.0, 0, 0, 0, signals, avoid_label=tm["avoid_label"]
             ),
             "evidence_ids": [],
             **_signal_fields(signals),
@@ -210,9 +249,9 @@ def generate_recommendation(
 
     track_note = ""
     penalized_priority = track_fields.get("track_priority")
-    if track:
+    if display_track:
         track_note = (
-            f" Role content matches your «{track.label}» track (priority {penalized_priority}, "
+            f" Role content matches your «{display_track.label}» track (priority {penalized_priority}, "
             f"similarity {track_sim:.0%})."
         )
 
@@ -220,7 +259,7 @@ def generate_recommendation(
 
     # P1–P2 title match: floor at Consider, not Skip (title fit alone is not Apply).
     priority_floor = (
-        track is not None
+        display_track is not None
         and penalized_priority is not None
         and penalized_priority <= 2
         and track_sim >= 0.30
@@ -257,7 +296,7 @@ def generate_recommendation(
         "available": True,
         "decision": decision,
         "reasoning": reasoning.strip(),
-        "summary": _build_summary(decision, track, ratio, strong, partial, pure_gap, signals,
+        "summary": _build_summary(decision, display_track, ratio, strong, partial, pure_gap, signals,
                                   technical_penalty_hits=track_fields.get("technical_penalty_hits")),
         "evidence_ids": _collect_evidence_ids(resume_fit, jd),
         "fit_ratio": round(ratio, 3),
