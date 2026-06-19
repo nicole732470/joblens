@@ -409,75 +409,199 @@
     return null;
   }
 
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  function findJobDetailsRoot() {
+    const selectors = [
+      ".jobs-search__job-details",
+      ".jobs-search__right-rail",
+      ".scaffold-layout__detail",
+      ".jobs-details",
+      "[class*='jobs-details__main-content']",
+      "#job-details",
+      ".jobs-description",
+      "main",
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return document.body;
+  }
+
+  function scrollJobPanelIntoView(root) {
+    root.scrollIntoView({ block: "nearest", behavior: "instant" });
+    const scrollables = root.querySelectorAll
+      ? root.querySelectorAll("[class*='job-details'], [class*='jobs-description'], [class*='scaffold-layout']")
+      : [];
+    scrollables.forEach((el) => {
+      if (el.scrollHeight > el.clientHeight + 8) {
+        el.scrollTop = 0;
+      }
+    });
+  }
+
+  function simulateClick(el) {
+    if (!(el instanceof HTMLElement)) return;
+    el.click();
+    el.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, view: window })
+    );
+  }
+
   function clickShowMoreIn(root) {
     let clicked = false;
     const selectors = [
+      ".jobs-description__footer-button",
+      "[data-tracking-control-name='public_jobs_show-more-html-btn']",
       ".show-more-less-html__button--more",
       ".show-more-less-html__button",
+      "button[aria-expanded='false']",
       "button[aria-label*='Show more' i]",
       "button[aria-label*='See more' i]",
       ".jobs-description__footer button",
       ".feed-shared-inline-show-more-text",
+      ".jobs-description-content__text button",
     ];
     for (const sel of selectors) {
       root.querySelectorAll(sel).forEach((btn) => {
-        if (btn instanceof HTMLElement && btn.offsetParent !== null) {
-          btn.click();
-          clicked = true;
-        }
+        simulateClick(btn);
+        clicked = true;
       });
     }
     root.querySelectorAll("button, [role='button']").forEach((el) => {
       const label = (el.textContent || "").trim().toLowerCase();
-      if (label === "show more" || label === "see more" || label === "show all") {
-        el.click();
+      if (
+        label === "show more" ||
+        label === "see more" ||
+        label === "show all" ||
+        label.endsWith("…more") ||
+        label.endsWith("...more")
+      ) {
+        simulateClick(el);
         clicked = true;
       }
     });
+    root
+      .querySelectorAll(
+        ".jobs-description span, .jobs-description-content__text span, #job-details span, .show-more-less-html span"
+      )
+      .forEach((span) => {
+        const t = (span.textContent || "").trim().toLowerCase();
+        if (span.children.length === 0 && (t === "more" || t === "…more" || t === "...more")) {
+          simulateClick(span.parentElement || span);
+          clicked = true;
+        }
+      });
     return clicked;
   }
 
   /** Expand LinkedIn's collapsed JD ("Show more") before we scrape text. */
   async function expandJobDescription() {
-    const root =
-      document.querySelector("#job-details") ||
-      document.querySelector(".jobs-description") ||
-      document.querySelector(".jobs-search__job-details") ||
-      document.querySelector("[class*='jobs-details']") ||
-      document;
-
-    root.scrollIntoView({ block: "nearest", behavior: "instant" });
-
-    for (let i = 0; i < 6; i++) {
-      const clicked = clickShowMoreIn(root);
-      if (!clicked) break;
-      await new Promise((r) => setTimeout(r, 180));
+    const root = findJobDetailsRoot();
+    scrollJobPanelIntoView(root);
+    for (let i = 0; i < 8; i++) {
+      clickShowMoreIn(root);
+      clickShowMoreIn(document);
+      await sleep(160);
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await sleep(300);
   }
 
-  function extractJobDescription() {
-    const selectors = [
-      "#job-details",
-      ".jobs-description__content",
-      ".jobs-description-content__text",
-      ".jobs-box__html-content",
-      ".jobs-description",
-      ".show-more-less-html__markup",
-    ];
-    for (const sel of selectors) {
-      const text = document.querySelector(sel)?.innerText?.trim();
-      if (text && text.length > 40) return text.replace(/\s+\n/g, "\n");
+  function stripHtml(html) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    return (tmp.innerText || tmp.textContent || "").replace(/\s+\n/g, "\n").trim();
+  }
+
+  function extractJobDescriptionFromJsonLd() {
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const raw = JSON.parse(script.textContent || "");
+        const nodes = Array.isArray(raw) ? raw : raw["@graph"] ? raw["@graph"] : [raw];
+        for (const node of nodes) {
+          const type = node?.["@type"];
+          const isJob =
+            type === "JobPosting" || (Array.isArray(type) && type.includes("JobPosting"));
+          if (isJob && node.description) {
+            const text = typeof node.description === "string" ? stripHtml(node.description) : "";
+            if (text.length > 40) return text;
+          }
+        }
+      } catch (_) {
+        /* ignore malformed JSON-LD */
+      }
     }
     return "";
   }
 
+  function normalizeJdText(text) {
+    return String(text || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\s+\n/g, "\n")
+      .trim();
+  }
+
+  function extractJobDescriptionFromDom() {
+    const selectors = [
+      ".show-more-less-html__markup",
+      "#job-details",
+      ".jobs-description__content",
+      ".jobs-description-content__text",
+      ".jobs-box__html-content",
+      "article.jobs-description__container",
+      ".core-section-container__content",
+      ".description__text",
+      ".jobs-description",
+      "[class*='jobs-description']",
+      "[id*='job-details']",
+    ];
+    let best = "";
+    for (const sel of selectors) {
+      document.querySelectorAll(sel).forEach((el) => {
+        const text = normalizeJdText(el.innerText);
+        if (text.length > best.length) best = text;
+      });
+    }
+    if (best.length > 40) return best;
+
+    const root = findJobDetailsRoot();
+    let largest = "";
+    root.querySelectorAll("div, section, article").forEach((el) => {
+      if (el.closest(`#${BADGE_ID}`)) return;
+      const text = normalizeJdText(el.innerText);
+      if (text.length > largest.length && text.length < 50000) largest = text;
+    });
+    return largest.length > best.length ? largest : best;
+  }
+
+  function extractJobDescription() {
+    const dom = extractJobDescriptionFromDom();
+    if (dom.length > 40) return dom;
+    const jsonLd = extractJobDescriptionFromJsonLd();
+    return jsonLd.length > dom.length ? jsonLd : dom;
+  }
+
+  async function captureJobDescription() {
+    let best = "";
+    for (let attempt = 0; attempt < 16; attempt++) {
+      await expandJobDescription();
+      const text = extractJobDescription();
+      if (text.length > best.length) best = text;
+      if (best.length > 120) break;
+      await sleep(220);
+    }
+    return best;
+  }
+
   async function gatherJobInputs(ctx) {
-    await expandJobDescription();
+    const jd_text = await captureJobDescription();
     return {
       company: ctx.displayName || null,
       title: extractJobTitle(),
-      jd_text: extractJobDescription(),
+      jd_text,
       job_url: window.location.href,
     };
   }
@@ -613,7 +737,7 @@
     const r = String(reason || "").toLowerCase();
     if (!reason) return "Could not parse this job posting.";
     if (r.includes("no job description")) {
-      return "Couldn't read the job description from this page. Try opening the full job view, then Analyze again.";
+      return "Couldn't read the job description from this page. Make sure a job is selected in the right panel (not just the job list), wait for it to load, then Analyze again.";
     }
     if (r.includes("llm not configured")) {
       return "Backend LLM not configured — set LLM_API_KEY in .env and restart docker.";
@@ -624,12 +748,17 @@
     return reason;
   }
 
-  function renderJdSection(jd) {
+  function renderJdSection(jd, received) {
     if (!jd || !jd.available) {
       const reason = jd?.reason || "";
-      return reason
-        ? `<div class="lca-section"><div class="lca-label">Job parsing failed</div><div class="lca-hint">${escapeHtml(friendlyParseReason(reason))}</div></div>`
-        : "";
+      const chars = received?.jd_chars;
+      const captureHint =
+        typeof chars === "number" && chars < 40
+          ? `<div class="lca-hint">Page capture: ${chars} characters — LinkedIn may not have loaded the job text yet. Wait a second, then click Analyze again.</div>`
+          : "";
+      return reason || captureHint
+        ? `<div class="lca-section"><div class="lca-label">Job parsing failed</div>${captureHint}<div class="lca-hint">${escapeHtml(friendlyParseReason(reason))}</div></div>`
+        : captureHint;
     }
     const meta = [jd.seniority, jd.location].filter(Boolean).join(" · ");
     const reqs = (jd.requirements || [])
@@ -666,7 +795,7 @@
         ${renderRecommendationSection(report.recommendation)}
         ${renderResumeFitSection(report.resume_fit)}
         ${renderRiskSection(report.risk)}
-        ${renderJdSection(report.jd)}
+        ${renderJdSection(report.jd, report.received)}
         ${pendingHtml}
       </div>`;
   }
@@ -704,10 +833,17 @@
     out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing…</div>`;
     btn.disabled = true;
     try {
-      const report = await analyzeWithBackend(await gatherJobInputs(ctx));
+      const inputs = await gatherJobInputs(ctx);
+      console.info("[Job Intelligence] captured JD chars:", inputs.jd_text?.length || 0);
+      const report = await analyzeWithBackend(inputs);
       out.innerHTML = renderAnalysisInline(report);
-      out.dataset.loaded = "1";
-      btn.textContent = "Hide analysis";
+      const jdChars = report.received?.jd_chars ?? inputs.jd_text?.length ?? 0;
+      if (jdChars >= 40 && report.jd?.available) {
+        out.dataset.loaded = "1";
+        btn.textContent = "Hide analysis";
+      } else {
+        btn.textContent = "Retry analyze";
+      }
     } catch (err) {
       console.error("[Job Intelligence]", err);
       out.innerHTML = renderAnalysisErrorInline(err);
