@@ -1,37 +1,26 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.config import settings
 from app.db import check_db_connection
+from app.graph.workflow import list_analyze_tools, run_analyze_workflow, run_tool_by_name
 from app.schemas.candidate_profile import CandidateProfile
-from app.schemas.report import (
-    CompanyAnalysis,
-    JDParse,
-    Report,
-    RecommendationResult,
-    ResumeFitAnalysis,
-    RiskAnalysis,
-    SponsorshipAnalysis,
-)
-from app.tools.company_signals import score_company
+from app.schemas.report import Report
 from app.tools.entity_resolver import get_resolver
-from app.tools.jd_parser import parse_job_description
+from app.tools.llm import llm_available
+from app.tools.observability import start_trace
 from app.tools.profile_loader import get_candidate_profile
-from app.tools.recommendation import generate_recommendation
-from app.tools.resume_fit import analyze_resume_fit
-from app.tools.resume_loader import resolve_resume_text
 from app.tools.resume_store import index_resume
-from app.tools.risk_rules import run_risk_rules
-from app.tools.sponsorship import search_h1b_company
 
 
-def _build_explain(
-    recommendation: RecommendationResult,
-    company: CompanyAnalysis,
-) -> dict:
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+
+def _build_explain(recommendation, company) -> dict:
     rec = recommendation
     co = company
     return {
@@ -65,7 +54,6 @@ def _build_explain(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Warm the in-memory entity-resolution index so the first /analyze is fast.
     try:
         get_resolver()
     except Exception:
@@ -73,7 +61,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Job Intelligence API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Job Intelligence API", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -84,8 +72,6 @@ app.add_middleware(
 )
 
 
-# Request/response models live here for the skeleton; they will move into
-# app/schemas/ once the full report contract is defined (see docs/DESIGN.md).
 class AnalyzeRequest(BaseModel):
     jd_text: str
     company: str | None = None
@@ -101,6 +87,10 @@ class IndexResumeRequest(BaseModel):
     resume_key: str | None = None
 
 
+class ToolInvokeRequest(BaseModel):
+    arguments: dict = {}
+
+
 @app.get("/health")
 def health() -> dict:
     db_ok = check_db_connection()
@@ -114,18 +104,37 @@ def health() -> dict:
         "status": "ok",
         "database": "connected" if db_ok else "unavailable",
         "candidate_profile": "loaded" if profile_ok else "unavailable",
+        "llm": "configured" if llm_available() else "missing_key",
+        "resume_fit_method": settings.resume_fit_method,
+        "orchestration": "langgraph",
     }
 
 
 @app.get("/candidate-profile", response_model=CandidateProfile)
 def candidate_profile() -> CandidateProfile:
-    """Return the loaded candidate intent profile (for debugging / extension)."""
     return get_candidate_profile()
+
+
+@app.get("/tools")
+def tools_list() -> dict:
+    """Registered analyze tools (same functions LangGraph nodes and tool-calling use)."""
+    return {"tools": list_analyze_tools()}
+
+
+@app.post("/tools/{tool_name}")
+def tools_invoke(tool_name: str, req: ToolInvokeRequest) -> dict:
+    """Direct tool invocation for debugging / agent tool-calling integrations."""
+    try:
+        result = run_tool_by_name(tool_name, **req.arguments)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown tool: {tool_name}") from None
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"tool": tool_name, "result": result}
 
 
 @app.post("/resume/index")
 def resume_index(req: IndexResumeRequest) -> dict:
-    """Chunk, embed, and store resume text in pgvector."""
     try:
         return index_resume(req.resume_text, req.resume_key)
     except Exception as e:  # noqa: BLE001
@@ -134,93 +143,14 @@ def resume_index(req: IndexResumeRequest) -> dict:
 
 @app.post("/analyze", response_model=Report)
 def analyze(req: AnalyzeRequest) -> Report:
-    """Partial analysis: H-1B sponsorship lookup + JD parsing + resume fit."""
-    if req.company:
-        sponsorship = SponsorshipAnalysis(**search_h1b_company(req.company))
-    else:
-        sponsorship = SponsorshipAnalysis(
-            matched=False, reason="no company provided"
-        )
-
-    jd = JDParse(**parse_job_description(req.jd_text, req.title))
-
-    resume_text, resume_source = resolve_resume_text(req.resume_text)
-
-    resume_fit = ResumeFitAnalysis()
-    if resume_text:
-        try:
-            resume_fit = ResumeFitAnalysis(**analyze_resume_fit(jd, resume_text))
-        except Exception as e:  # noqa: BLE001
-            resume_fit = ResumeFitAnalysis(available=False, reason=str(e))
-
-    try:
-        profile = get_candidate_profile()
-    except Exception:
-        profile = None
-
-    risk = RiskAnalysis()
-    company = CompanyAnalysis()
-    recommendation = RecommendationResult()
-    if profile is not None:
-        try:
-            company = CompanyAnalysis(
-                **score_company(
-                    req.company,
-                    jd,
-                    req.jd_text,
-                    profile,
-                    sponsorship,
-                    linkedin_followers=req.linkedin_followers,
-                    alumni_hints=req.alumni_hints or None,
-                )
-            )
-        except Exception as e:  # noqa: BLE001
-            company = CompanyAnalysis(available=False, reason=str(e))
-        try:
-            risk = RiskAnalysis(**run_risk_rules(jd, resume_fit, profile))
-        except Exception as e:  # noqa: BLE001
-            risk = RiskAnalysis(available=False, reason=str(e))
-        try:
-            recommendation = RecommendationResult(
-                **generate_recommendation(jd, resume_fit, profile, req.title, req.jd_text)
-            )
-        except Exception as e:  # noqa: BLE001
-            recommendation = RecommendationResult(available=False, reason=str(e))
-
-    pending: list[str] = []
-    if not jd.available:
-        pending.append("jd_parsing")
-    if not resume_text:
-        pending.append("resume_fit")
-    elif not resume_fit.available:
-        pending.append("resume_fit")
-    if profile is None:
-        pending.append("recommendation")
-    elif not recommendation.available:
-        pending.append("recommendation")
-
-    status = "complete" if not pending else "partial"
-
-    explain = _build_explain(recommendation, company) if profile is not None else {}
-
-    return Report(
-        status=status,
-        pending=pending,
-        sponsorship=sponsorship,
-        company=company,
-        jd=jd,
-        resume_fit=resume_fit,
-        risk=risk,
-        recommendation=recommendation,
-        received={
-            "company": req.company,
-            "title": req.title,
-            "jd_chars": len(req.jd_text),
-            "has_resume": resume_text is not None,
-            "resume_source": resume_source,
-            "job_url": req.job_url,
-            "linkedin_followers": req.linkedin_followers,
-            "alumni_hints": req.alumni_hints,
-        },
-        explain=explain,
+    start_trace()
+    return run_analyze_workflow(
+        jd_text=req.jd_text,
+        company_name=req.company,
+        title=req.title,
+        resume_text=req.resume_text,
+        job_url=req.job_url,
+        linkedin_followers=req.linkedin_followers,
+        alumni_hints=req.alumni_hints,
+        build_explain=_build_explain,
     )
