@@ -119,20 +119,39 @@ const LcaMatcher = (() => {
     return null;
   })();
 
-  function extensionResourceUrl(path) {
-    if (!EXT_RUNTIME) {
+  async function extensionResourceUrlAsync(path) {
+    if (EXT_RUNTIME?.getURL) {
+      try {
+        void EXT_RUNTIME.id;
+        return EXT_RUNTIME.getURL(path);
+      } catch (_) {
+        /* try background */
+      }
+    }
+    const rt = globalThis.chrome?.runtime ?? globalThis.browser?.runtime;
+    if (!rt?.sendMessage) {
       throw new Error(
-        "Extension disconnected — open chrome://extensions, reload Job Check, then refresh this LinkedIn tab (F5)."
+        "Extension disconnected — open chrome://extensions, click Reload on Job Check, then refresh this LinkedIn tab (F5)."
       );
     }
-    try {
-      void EXT_RUNTIME.id;
-    } catch (_) {
-      throw new Error(
-        "Extension was updated — refresh this LinkedIn tab (F5), then try again."
-      );
-    }
-    return EXT_RUNTIME.getURL(path);
+    return new Promise((resolve, reject) => {
+      rt.sendMessage({ type: "LCA_GET_RESOURCE_URL", path }, (resp) => {
+        const err = rt.lastError;
+        if (err) {
+          reject(
+            new Error(
+              `${err.message} — reload the extension at chrome://extensions, then refresh this tab (F5).`
+            )
+          );
+          return;
+        }
+        if (resp?.ok && resp.url) {
+          resolve(resp.url);
+          return;
+        }
+        reject(new Error(resp?.error || "Could not resolve extension resource URL."));
+      });
+    });
   }
 
   function tokenizeRaw(text) {
@@ -576,7 +595,7 @@ const LcaMatcher = (() => {
     if (loadPromise) return loadPromise;
 
     loadPromise = (async () => {
-      const url = extensionResourceUrl("data/employers.json.gz");
+      const url = await extensionResourceUrlAsync("data/employers.json.gz");
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Failed to load employer index: ${resp.status}`);
 

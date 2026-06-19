@@ -1,9 +1,43 @@
 (function () {
+  const EXTENSION_VERSION = "2.2.5";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
   const BACKEND_URL = "http://localhost:8000";
   let lastPageKey = null;
+  let extensionBroken = false;
+
+  function extensionRuntime() {
+    try {
+      return globalThis.chrome?.runtime ?? globalThis.browser?.runtime ?? null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function showExtensionBrokenBanner() {
+    if (document.getElementById(`${BADGE_ID}-broken`)) return;
+    extensionBroken = true;
+    const el = document.createElement("div");
+    el.id = `${BADGE_ID}-broken`;
+    el.textContent =
+      "Job Check extension disconnected — open chrome://extensions, reload it, then refresh this page (F5).";
+    el.style.cssText =
+      "position:fixed;bottom:16px;right:16px;z-index:2147483647;max-width:320px;padding:12px 14px;" +
+      "background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;font:13px/1.4 system-ui,sans-serif;" +
+      "color:#991b1b;box-shadow:0 4px 16px rgba(0,0,0,.12);";
+    document.body.appendChild(el);
+  }
+
+  const runtime = extensionRuntime();
+  if (!runtime?.getURL || !runtime?.id) {
+    showExtensionBrokenBanner();
+    console.error(
+      "[LCA Sponsor Checker] Extension APIs unavailable (chrome.runtime.getURL missing). " +
+        "Reload the extension at chrome://extensions, then refresh this LinkedIn tab."
+    );
+    return;
+  }
 
   const CONFIDENCE_META = {
     high: { title: "H-1B sponsor", sub: "Strong match", status: "found", icon: "✓" },
@@ -343,7 +377,7 @@
         }
         <button type="button" class="lca-analyze-btn">Analyze job</button>
         <div class="lca-analyze-result" hidden></div>
-        <div class="lca-foot">${sourceLabel(ctx)} · U.S. DOL H-1B data</div>
+        <div class="lca-foot">${sourceLabel(ctx)} · U.S. DOL H-1B data · v${EXTENSION_VERSION}</div>
       </div>`;
     finishBadge(el, ctx);
   }
@@ -857,6 +891,7 @@
   }
 
   async function run() {
+    if (extensionBroken) return;
     const ctx = extractPageContext();
     const onJobs = window.location.pathname.includes("/jobs");
     const onCompany = window.location.pathname.includes("/company/");
