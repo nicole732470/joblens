@@ -1,45 +1,43 @@
-# Backend (Job Intelligence Platform)
+# Backend — Hop Job Intelligence API
 
-FastAPI service that orchestrates the agentic job-analysis workflow. This is the
-new product surface that grows on top of the existing offline H-1B/LCA work.
+FastAPI service for `/analyze`: JD parsing, resume fit, role/location/company scoring, and Apply/Consider/Skip recommendation.
 
-## Status
+H-1B **entity resolution** still runs in the Chrome extension (`extension/lib/matcher.js`). The backend uses Postgres for employer index (optional) and pgvector for resume chunks.
 
-Skeleton only. Implemented incrementally per the phased plan:
+## Run
 
-1. Restructure into monorepo — **done**
-2. Port entity resolution from `extension/lib/matcher.js` to Python tool functions
-3. Postgres + pgvector via Docker Compose; load employer index
-4. FastAPI skeleton (`/health`, `/analyze` returning stub data)
-
-Later phases add: golden-set evaluation, single-LLM vertical slice, RAG
-(resume + JD), LangGraph orchestration, company research, deployment.
-
-## Planned layout
-
-```
-backend/
-├── app/
-│   ├── main.py              # FastAPI app + routes
-│   ├── tools/               # typed tool functions (the future MCP tool layer)
-│   │   ├── sponsorship.py   # search_h1b_company, resolve_company_alias (ported)
-│   │   ├── resume.py        # retrieve_resume_evidence
-│   │   └── ...
-│   ├── agents/              # LangGraph nodes (added in a later phase)
-│   ├── db/                  # Postgres + pgvector access
-│   └── schemas/             # pydantic models (report, evidence-cited claims)
-├── tests/
-└── requirements.txt
+```bash
+# from repo root
+cp .env.example .env
+docker compose up -d --build
+curl http://localhost:8000/health
 ```
 
-## Design decisions
+## Key routes
 
-- **Entity resolution is ported to Python**, not called via a separate Node
-  service. Keeps the backend single-stack (Python) alongside pgvector and the
-  agent runtime. Source of truth for the algorithm: `extension/lib/matcher.js`
-  and the normalization logic in `data-pipeline/export_employer_index.py` /
-  `data-pipeline/generic_tokens.py`.
-- **Tools are plain typed functions first.** MCP wrapping is deferred to a late
-  phase so the protocol does not shape the core architecture.
-- **Evidence-first.** Every report claim must carry evidence IDs, mirroring the
-  existing matcher's evidence-over-score philosophy.
+| Route | Purpose |
+|-------|---------|
+| `GET /health` | DB + profile status |
+| `POST /analyze` | Full report (sponsorship from extension; fit + recommendation here) |
+| `GET /candidate-profile` | Loaded YAML profile (debug) |
+| `POST /resume/index` | Chunk + embed resume into pgvector |
+
+## Layout
+
+```
+backend/app/
+├── main.py              # FastAPI routes
+├── tools/
+│   ├── jd_parser.py     # LLM JD → structured requirements
+│   ├── resume_fit.py    # Vector resume ↔ JD requirements
+│   ├── track_match.py   # Title ↔ profile tracks
+│   ├── role_priority.py # JD + resume P-tier adjustments
+│   ├── company_signals.py
+│   ├── recommendation.py
+│   └── profile_signals.py
+└── schemas/             # Report, CandidateProfile
+```
+
+Profile YAML path: `CANDIDATE_PROFILE_PATH` env or `evals/golden_set/candidate_profile.yaml`.
+
+See [`docs/REPORT_SCHEMA.md`](../docs/REPORT_SCHEMA.md) and [`docs/DESIGN.md`](../docs/DESIGN.md).
