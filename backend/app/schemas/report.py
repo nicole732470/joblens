@@ -50,8 +50,7 @@ class SponsorshipLikelihood(str, Enum):
 
 class Recommendation(str, Enum):
     APPLY = "Apply"
-    APPLY_WITH_MODIFICATIONS = "Apply with modifications"
-    LOW_PRIORITY = "Low priority"
+    CONSIDER = "Consider"
     SKIP = "Skip"
 
 
@@ -146,6 +145,14 @@ class RecommendationResult(BaseModel):
     track_priority: Optional[int] = None
     track_similarity: Optional[float] = None
     fit_ratio: Optional[float] = None
+    location_score: Optional[float] = None
+    location_label: Optional[str] = None
+    location_tier: Optional[int] = None
+    summary: str = ""
+    preferences_matched: int = 0
+    preferences_total: int = 0
+    dealbreakers_matched: int = 0
+    dealbreakers_total: int = 0
 
 
 class RiskAnalysis(BaseModel):

@@ -128,7 +128,7 @@ def analyze(req: AnalyzeRequest) -> Report:
             risk = RiskAnalysis(available=False, reason=str(e))
         try:
             recommendation = RecommendationResult(
-                **generate_recommendation(jd, resume_fit, profile, req.title)
+                **generate_recommendation(jd, resume_fit, profile, req.title, req.jd_text)
             )
         except Exception as e:  # noqa: BLE001
             recommendation = RecommendationResult(available=False, reason=str(e))

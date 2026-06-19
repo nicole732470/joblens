@@ -1,10 +1,9 @@
 (function () {
-  const EXTENSION_VERSION = "2.5.2";
+  const EXTENSION_VERSION = "2.7.9";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
   const BACKEND_URL = "http://localhost:8000";
-  let lastPageKey = null;
   let extensionBroken = false;
 
   function extensionRuntime() {
@@ -48,14 +47,12 @@
   const SOFT_REQUIREMENT_RE =
     /\b(leadership|lead\b|collaborat|cross[- ]?functional|teamwork|communicat|stakeholder|mentor|passion|fast[- ]?paced|self[- ]?starter|culture|interpersonal|organiz|detail[- ]?oriented|problem[- ]?solving|work across| agile|ownership|motivated|dynamic|ambitious|innovative mindset|people skills|verbal and written)\b/i;
 
+  let lastFingerprint = null;
+
   function renderFoot(ctx, parts) {
     const bits = (parts || []).filter(Boolean);
     bits.push(`v${EXTENSION_VERSION}`);
     return `<div class="lca-foot">${bits.map((p) => escapeHtml(p)).join(" · ")}</div>`;
-  }
-
-  function renderDisclaimer(text) {
-    return renderFoot(null, [`Disclaimer: ${text}`]);
   }
 
   function footLinkedInHint(ctx, legalName) {
@@ -94,6 +91,71 @@
       .trim();
   }
 
+  function hardRequirementFit(rf) {
+    if (!rf?.available) return null;
+    const strong = [];
+    const partial = [];
+    const weak = [];
+    const gaps = [];
+    for (const c of rf.strong_matches || []) {
+      if (isSoftRequirement(c)) continue;
+      strong.push(c);
+    }
+    for (const c of rf.partial_matches || []) {
+      if (isSoftRequirement(c)) continue;
+      partial.push(c);
+    }
+    for (const c of rf.missing || []) {
+      if (isSoftRequirement(c)) continue;
+      if (/^\[weak\]/i.test(c.claim || "")) weak.push(c);
+      else gaps.push(c);
+    }
+    return { strong, partial, weak, gaps };
+  }
+
+  function truncateText(text, max = 40) {
+    const s = String(text || "").trim();
+    if (s.length <= max) return s;
+    return `${s.slice(0, max - 1)}…`;
+  }
+
+  function extractCompanyLogoUrl() {
+    const selectors = [
+      ".job-details-jobs-unified-top-card__company-logo img",
+      ".jobs-unified-top-card__company-logo img",
+      ".job-details-jobs-unified-top-card__company-logo a img",
+      ".jobs-unified-top-card__content--main-company img",
+      "a[data-tracking-control-name='public_jobs_topcard-org-image'] img",
+      "a[href*='/company/'] img[src*='licdn.com']",
+      "img[class*='CompanyLogo']",
+      ".artdeco-entity-lockup__image img",
+    ];
+    for (const sel of selectors) {
+      const img = document.querySelector(sel);
+      if (img?.src && !/ghost|placeholder|data:image|profile-display/i.test(img.src)) {
+        return img.src;
+      }
+    }
+    return null;
+  }
+
+  function renderCompanyLine(name) {
+    if (!name) return "";
+    const logoUrl = extractCompanyLogoUrl();
+    const logo = logoUrl
+      ? `<img class="lca-co-logo" src="${escapeHtml(logoUrl)}" alt="" width="20" height="20" />`
+      : "";
+    return `<div class="lca-company-line">${logo}<span class="lca-company">${escapeHtml(name)}</span></div>`;
+  }
+
+  function renderHeadBlock(pillHtml, companyName) {
+    return `<div class="lca-head-block">${companyName ? renderCompanyLine(companyName) : ""}${pillHtml}</div>`;
+  }
+
+  function statusPill(text, tone) {
+    return `<span class="lca-pill lca-pill-${tone}">${escapeHtml(text)}</span>`;
+  }
+
   function renderAlternatives(alternatives) {
     if (!alternatives?.length) return "";
     const items = alternatives
@@ -117,7 +179,32 @@
     const fromQuery = params.get("currentJobId");
     if (fromQuery) return fromQuery;
     const m = window.location.pathname.match(/\/jobs\/view\/(\d+)/i);
-    return m ? m[1] : null;
+    if (m) return m[1];
+    for (const sel of [
+      ".jobs-search__job-details [data-job-id]",
+      ".job-details-jobs-unified-top-card[data-job-id]",
+      "[data-current-job-id]",
+    ]) {
+      const el = document.querySelector(sel);
+      const raw = el?.getAttribute("data-job-id") || el?.getAttribute("data-current-job-id");
+      if (raw) {
+        const digits = raw.replace(/\D/g, "");
+        if (digits.length >= 6) return digits;
+      }
+    }
+    return null;
+  }
+
+  function contextFingerprint(ctx) {
+    const jobId = extractJobId() || "";
+    const title = (extractJobTitle() || "").slice(0, 100).toLowerCase();
+    return [
+      ctx.pageKey || "",
+      ctx.slug || "",
+      (ctx.displayName || "").toLowerCase(),
+      jobId,
+      title,
+    ].join("|");
   }
 
   function slugFromCompanyHref(href) {
@@ -235,13 +322,14 @@
       const displayName =
         fromLinks.name || resolveDisplayName(extractCompanyNameFromDom(false), fromLinks.slug);
       const slug = fromLinks.slug;
+      const nameKey = (displayName || "unknown").toLowerCase().slice(0, 40);
       return {
         slug,
         displayName,
         pageKey: jobId
-          ? `job:${jobId}:${slug || "unknown"}`
-          : slug
-            ? `job:unknown:${slug}`
+          ? `job:${jobId}:${slug || "unknown"}:${nameKey}`
+          : slug || displayName
+            ? `job:unknown:${slug || "unknown"}:${nameKey}`
             : null,
         source: "job page",
       };
@@ -291,12 +379,12 @@
     }
   }
 
-  function renderChrome(showAnalyze = true) {
+  function renderChrome(showRefresh = true) {
     const logo = runtime.getURL("icons/rabbit.png");
-    const analyzeBtn = showAnalyze
-      ? `<button type="button" class="lca-analyze-btn">Analyze</button>`
+    const refreshBtn = showRefresh
+      ? `<button type="button" class="lca-refresh-btn" title="Reload for this job">Refresh</button>`
       : "";
-    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><img class="lca-logo" src="${logo}" alt="" width="18" height="18" /><span class="lca-brand">Hop</span>${analyzeBtn}<button type="button" class="lca-close" aria-label="Close">×</button></div>`;
+    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><img class="lca-logo" src="${logo}" alt="" width="18" height="18" /><span class="lca-brand">Hop</span>${refreshBtn}<button type="button" class="lca-close" aria-label="Close">×</button></div>`;
   }
 
   function initDrag(el) {
@@ -332,7 +420,7 @@
     };
 
     el.addEventListener("pointerdown", (e) => {
-      if (!e.target.closest(".lca-chrome") || e.target.closest(".lca-close") || e.target.closest(".lca-analyze-btn")) return;
+      if (!e.target.closest(".lca-chrome") || e.target.closest(".lca-close") || e.target.closest(".lca-refresh-btn")) return;
       e.preventDefault();
       dragging = true;
       pointerId = e.pointerId;
@@ -351,7 +439,31 @@
     initDrag(el);
     const close = el.querySelector(".lca-close");
     if (close) close.addEventListener("click", () => el.remove());
-    if (ctx) wireAnalyzeButton(el, ctx);
+    wireRefreshButton(el);
+    if (ctx) runAutoAnalyze(el, ctx);
+  }
+
+  function wireRefreshButton(el) {
+    const btn = el.querySelector(".lca-refresh-btn");
+    if (!btn || btn.dataset.wired === "1") return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      lastFingerprint = null;
+      const out = el.querySelector(".lca-analyze-result");
+      if (out) out.dataset.analyzedFor = "";
+      run({ force: true });
+    });
+  }
+
+  async function runAutoAnalyze(el, ctx) {
+    const out = el.querySelector(".lca-analyze-result");
+    if (!out || !ctx?.pageKey) return;
+    const fp = contextFingerprint(ctx);
+    if (out.dataset.analyzedFor === fp) return;
+    out.dataset.analyzedFor = fp;
+    await runAnalysis(out, ctx);
   }
 
   function renderWarnings(warnings) {
@@ -368,58 +480,59 @@
       .join("")}</ul>`;
   }
 
+  function renderMetricGrid(cells) {
+    if (!cells.length) return "";
+    const cols = Math.min(cells.length, 5);
+    return `<div class="lca-metrics" style="grid-template-columns:repeat(${cols},1fr)">${cells
+      .map(
+        (c) =>
+          `<div class="lca-metric" title="${escapeHtml(c.hint || c.lbl || "")}"><span class="lca-metric-val">${escapeHtml(c.val)}</span><span class="lca-metric-lbl">${escapeHtml(c.lbl)}</span></div>`
+      )
+      .join("")}</div>`;
+  }
+
+  function renderH1bSummary(employer) {
+    const filings = Number(employer.lca_count) || 0;
+    if (filings <= 0) return "";
+
+    const approvedPct = Math.round((employer.certified_count / filings) * 100);
+    const grid = renderMetricGrid([
+      { val: `${approvedPct}%`, lbl: "Approved", hint: "Certified LCA share" },
+      { val: filings.toLocaleString(), lbl: "Filings", hint: "Total H-1B filings on record" },
+    ]);
+
+    const jobRows = (employer.top_jobs || []).slice(0, 2).map((j) => {
+      const wage = formatWage(j.wage_from);
+      const title = escapeHtml(j.title);
+      const wageHtml = wage ? `<span class="lca-h1b-wage">${escapeHtml(wage)}</span>` : "";
+      return `<div class="lca-h1b-role" title="${escapeHtml(j.title)}${wage ? ` · ${wage}` : ""}">${title}${wageHtml}</div>`;
+    });
+
+    if (!jobRows.length) return grid;
+    return `${grid}<div class="lca-h1b-roles">${jobRows.join("")}</div>`;
+  }
+
+  function buildVerdictNote(rec) {
+    if (!rec?.available) return "";
+    if (rec.summary) return rec.summary;
+    const decision = rec.decision || "";
+    if (decision === "Skip") return "Not a strong fit";
+    if (rec.track_label) return rec.track_label;
+    return "";
+  }
+
   function renderBadge(result, ctx) {
-    const { employer, confidence, warnings, notes, alternatives } = result;
+    const { employer, confidence } = result;
     const meta = CONFIDENCE_META[confidence] || CONFIDENCE_META.medium;
     const el = ensureBadge();
-
-    const filings = Number(employer.lca_count) || 0;
-    const approvedPct =
-      filings > 0 ? Math.round((employer.certified_count / filings) * 100) : 0;
-
-    const jobsHtml = (employer.top_jobs || [])
-      .slice(0, 3)
-      .map((j) => {
-        const wage = formatWage(j.wage_from);
-        const level = j.level && !String(j.level).includes("/") ? ` · ${j.level}` : "";
-        return `<li>${escapeHtml(j.title)}${level}${wage ? ` · ${wage}` : ""}</li>`;
-      })
-      .join("");
-
-    const location = [employer.city, employer.state].filter(Boolean).join(", ");
-
-    const showAlternatives =
-      confidence !== "high" && alternatives?.length ? renderAlternatives(alternatives) : "";
 
     el.className = `lca-badge lca-${meta.status}`;
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        <div class="lca-hero lca-hero-${meta.status}">
-          <span class="lca-status-dot lca-status-${meta.status === "found" ? "found" : "caution"}"></span>
-          <div class="lca-hero-text">
-            <div class="lca-title">${meta.title}</div>
-            <div class="lca-company">${escapeHtml(employer.name)}</div>
-          </div>
-        </div>
-        ${
-          filings > 0
-            ? `<div class="lca-stat-row"><span class="lca-stat"><b>${approvedPct}%</b> approved</span><span class="lca-stat">${filings.toLocaleString()} filings</span></div>`
-            : ""
-        }
-        ${
-          jobsHtml || location || showAlternatives
-            ? `<details class="lca-details">
-                 <summary>H-1B details</summary>
-                 ${location ? `<div class="lca-meta">${escapeHtml(location)}</div>` : ""}
-                 ${jobsHtml ? `<ul class="lca-jobs">${jobsHtml}</ul>` : ""}
-                 ${renderNotes(notes)}
-                 ${renderWarnings(warnings)}
-                 ${showAlternatives}
-               </details>`
-            : `${renderNotes(notes)}${renderWarnings(warnings)}`
-        }
-        <div class="lca-analyze-result" hidden></div>
+        ${renderHeadBlock(statusPill(meta.title, meta.status === "found" ? "ok" : "caution"), employer.name)}
+        ${renderH1bSummary(employer)}
+        <div class="lca-analyze-result"></div>
         ${renderFoot(ctx, [footLinkedInHint(ctx, employer.name), "Source: U.S. DOL H-1B"])}
       </div>`;
     finishBadge(el, ctx);
@@ -428,21 +541,14 @@
   function renderMiss(ctx) {
     const el = ensureBadge();
     el.className = "lca-badge lca-miss";
-    const companyLine = ctx.displayName
-      ? `<div class="lca-company">${escapeHtml(ctx.displayName)}</div>`
-      : "";
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        <div class="lca-hero lca-hero-miss">
-          <span class="lca-status-dot lca-status-miss"></span>
-          <div class="lca-hero-text">
-            <div class="lca-title">No H-1B record</div>
-            ${companyLine}
-          </div>
-        </div>
-        <div class="lca-analyze-result" hidden></div>
-        ${renderDisclaimer("employer may file under a different legal name")}
+        ${renderHeadBlock(statusPill("No H-1B record", "neutral"), ctx.displayName || "")}
+        <div class="lca-analyze-result"></div>
+        ${renderFoot(ctx, [
+          "Disclaimer: employer may file under a different legal name",
+        ])}
       </div>`;
     finishBadge(el, ctx);
   }
@@ -451,7 +557,7 @@
     const el = ensureBadge();
     el.className = "lca-badge lca-loading";
     el.innerHTML = `
-      ${renderChrome(false)}
+      ${renderChrome()}
       <div class="lca-body">
         <div class="lca-loading-row"><span class="lca-spinner"></span> Checking H-1B records…</div>
       </div>`;
@@ -462,7 +568,7 @@
     const el = ensureBadge();
     el.className = "lca-badge lca-waiting";
     el.innerHTML = `
-      ${renderChrome(false)}
+      ${renderChrome()}
       <div class="lca-body">
         <div class="lca-title">Waiting for job details…</div>
         <div class="lca-hint">Open a job posting to detect the employer.</div>
@@ -479,10 +585,17 @@
       ".job-details-jobs-unified-top-card__job-title h1",
       "h1.jobs-unified-top-card__job-title",
       ".top-card-layout__title",
+      ".jobs-details-top-card__job-title",
+      "h1.t-24",
     ];
     for (const sel of selectors) {
       const text = document.querySelector(sel)?.textContent?.trim();
       if (text) return text.replace(/\s+/g, " ");
+    }
+    const og = document.querySelector('meta[property="og:title"]')?.content;
+    if (og) {
+      const bit = og.split("|")[0].trim();
+      if (bit.length >= 6) return bit;
     }
     return null;
   }
@@ -491,10 +604,148 @@
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  function linkedInCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta?.content) return meta.content;
+    const match = document.cookie.match(/JSESSIONID="([^"]+)"/);
+    return match ? match[1] : "";
+  }
+
+  function isInsideBadge(el) {
+    return Boolean(el?.closest?.(`#${BADGE_ID}`));
+  }
+
+  function pickDescriptionFromVoyagerPayload(json) {
+    const tryText = (obj) => {
+      if (!obj) return "";
+      if (typeof obj === "string") return stripHtml(obj);
+      if (typeof obj.text === "string") return normalizeJdText(obj.text);
+      if (typeof obj.description === "string") return stripHtml(obj.description);
+      return "";
+    };
+
+    let best = tryText(json?.data?.description);
+    if (best.length > 40) return best;
+
+    const included = json?.included || json?.data?.included;
+    if (Array.isArray(included)) {
+      for (const item of included) {
+        const t = tryText(item?.description) || tryText(item?.message) || tryText(item);
+        if (t.length > best.length) best = t;
+      }
+    }
+
+    const walk = (obj, depth) => {
+      if (!obj || depth > 10 || typeof obj !== "object") return "";
+      if (obj.description) {
+        const t = tryText(obj.description);
+        if (t.length > 40) return t;
+      }
+      for (const val of Object.values(obj)) {
+        if (val && typeof val === "object") {
+          const t = walk(val, depth + 1);
+          if (t.length > 40) return t;
+        }
+      }
+      return "";
+    };
+    const walked = walk(json?.data, 0);
+    return walked.length > best.length ? walked : best;
+  }
+
+  async function fetchJobDescriptionFromApi(jobId) {
+    const csrf = linkedInCsrfToken();
+    if (!csrf || !jobId) return "";
+
+    const headers = {
+      accept: "application/vnd.linkedin.normalized+json+2.1",
+      "csrf-token": csrf,
+      "x-restli-protocol-version": "2.0.0",
+    };
+    const urls = [
+      `https://www.linkedin.com/voyager/api/jobs/jobPostings/${jobId}?decorationId=com.linkedin.voyager.deco.jobs.web.shared.WebFullJobPosting-65`,
+      `https://www.linkedin.com/voyager/api/jobs/jobPostings/${jobId}?decorationId=com.linkedin.voyager.deco.jobs.web.shared.WebFullJobPosting-67`,
+      `https://www.linkedin.com/voyager/api/jobs/jobPostings/urn:li:fs_jobPosting:${jobId}`,
+    ];
+
+    for (const url of urls) {
+      try {
+        const resp = await fetch(url, { credentials: "include", headers });
+        if (!resp.ok) continue;
+        const json = await resp.json();
+        const text = pickDescriptionFromVoyagerPayload(json);
+        if (text.length > 40) return text;
+      } catch (_) {
+        /* try next URL */
+      }
+    }
+    return "";
+  }
+
+  function expandAllShowMoreOnPage() {
+    let clicked = false;
+    document.querySelectorAll("button, span, a").forEach((el) => {
+      if (isInsideBadge(el)) return;
+      const t = (el.textContent || "").trim().toLowerCase();
+      if (t !== "show more" && t !== "…more" && t !== "...more" && t !== "see more") return;
+      if (!el.closest("main, [class*='job'], [class*='jobs'], section, article")) return;
+      simulateClick(el);
+      clicked = true;
+    });
+    return clicked;
+  }
+
+  function extractJobDescriptionByMetadataAnchor() {
+    const anchorTexts = new Set(["Seniority level", "Employment type", "Job function", "Industries"]);
+    let best = "";
+
+    document.querySelectorAll("h3, h4, span, dt, strong").forEach((el) => {
+      if (isInsideBadge(el)) return;
+      if (el.children.length > 1) return;
+      const txt = (el.textContent || "").trim();
+      if (!anchorTexts.has(txt)) return;
+
+      let node = el.closest("ul, ol, section, div");
+      for (let hop = 0; hop < 6 && node; hop++) {
+        let prev = node.previousElementSibling;
+        for (let i = 0; i < 4 && prev; i++) {
+          const t = elementPlainText(prev);
+          if (t.length > best.length && t.length > 120 && !/Similar jobs|People also viewed/i.test(t)) {
+            best = t;
+          }
+          prev = prev.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+    });
+    return best.replace(/\bShow more\b|\bShow less\b/gi, "").trim();
+  }
+
+  function extractFromShowMoreContainer() {
+    let best = "";
+    document.querySelectorAll('[class*="show-more-less"], [class*="description"]').forEach((el) => {
+      if (isInsideBadge(el)) return;
+      const t = elementPlainText(el);
+      if (t.length > best.length && t.length > 80) best = t;
+    });
+
+    document.querySelectorAll("button, span").forEach((el) => {
+      if (isInsideBadge(el)) return;
+      const t = (el.textContent || "").trim().toLowerCase();
+      if (t !== "show more" && t !== "…more" && t !== "...more") return;
+      const host = el.closest('[class*="description"], [class*="show-more"], section, article, div');
+      if (!host) return;
+      const text = elementPlainText(host).replace(/\bShow more\b|\bShow less\b/gi, "").trim();
+      if (text.length > best.length) best = text;
+    });
+    return best;
+  }
+
   function findJobDetailsRoot() {
     const selectors = [
       "#job-details",
       ".show-more-less-html",
+      "[class*='show-more-less-html']",
       ".jobs-description",
       ".jobs-description__content",
       ".jobs-description-content__text",
@@ -502,7 +753,9 @@
       ".jobs-search__right-rail",
       ".scaffold-layout__detail",
       "[class*='jobs-details__main-content']",
+      "[class*='job-details-jobs-unified-top-card']",
       ".jobs-details",
+      "main",
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
@@ -574,11 +827,17 @@
   /** Expand LinkedIn's collapsed JD ("Show more") before we scrape text. */
   async function expandJobDescription() {
     const root = findJobDetailsRoot();
-    if (!root) return;
-    scrollJobPanelIntoView(root);
-    for (let i = 0; i < 6; i++) {
-      clickShowMoreIn(root);
-      await sleep(160);
+    if (root) {
+      scrollJobPanelIntoView(root);
+      for (let i = 0; i < 6; i++) {
+        clickShowMoreIn(root);
+        await sleep(160);
+      }
+    } else {
+      for (let i = 0; i < 4; i++) {
+        expandAllShowMoreOnPage();
+        await sleep(160);
+      }
     }
     await sleep(250);
   }
@@ -662,7 +921,9 @@
   function extractJobDescriptionFromDom() {
     const selectors = [
       ".show-more-less-html__markup",
+      "[class*='show-more-less-html__markup']",
       ".show-more-less-html",
+      "[class*='show-more-less-html']",
       "#job-details",
       ".jobs-description__content",
       ".jobs-description-content__text",
@@ -675,31 +936,37 @@
       "[class*='jobs-description-content']",
       "[class*='jobs-description']",
       "[id*='job-details']",
+      "[class*='about-the-job']",
     ];
     let best = "";
     for (const sel of selectors) {
       document.querySelectorAll(sel).forEach((el) => {
-        if (el.closest(`#${BADGE_ID}`)) return;
+        if (isInsideBadge(el)) return;
         const text = elementPlainText(el);
         if (text.length > best.length) best = text;
       });
     }
-    if (best.length > 40) return best;
 
-    const heuristic = extractFromJobPanelHeuristic();
-    if (heuristic.length > best.length) return heuristic;
+    for (const fn of [
+      extractFromShowMoreContainer,
+      extractJobDescriptionByMetadataAnchor,
+      extractFromJobPanelHeuristic,
+    ]) {
+      const t = fn();
+      if (t.length > best.length) best = t;
+    }
 
     const root = findJobDetailsRoot();
-    if (root) {
+    if (root && best.length < 120) {
       let largest = "";
       root.querySelectorAll("div, section, article").forEach((el) => {
-        if (el.closest(`#${BADGE_ID}`)) return;
+        if (isInsideBadge(el)) return;
         const text = elementPlainText(el);
         if (text.length > largest.length && text.length < 50000) largest = text;
       });
-      if (largest.length > best.length) return largest;
+      if (largest.length > best.length) best = largest;
     }
-    return best;
+    return best.replace(/\bShow more\b|\bShow less\b/gi, "").trim();
   }
 
   function extractJobDescription() {
@@ -709,19 +976,36 @@
   }
 
   async function captureJobDescription() {
+    const isDirectJobView = /\/jobs\/view\/\d+/i.test(window.location.pathname);
+    const maxAttempts = isDirectJobView ? 28 : 20;
     let best = "";
-    for (let attempt = 0; attempt < 20; attempt++) {
+    let source = "dom";
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await expandJobDescription();
       const text = extractJobDescription();
       if (text.length > best.length) best = text;
       if (best.length > 120) break;
-      await sleep(280);
+      await sleep(isDirectJobView ? 350 : 280);
     }
+
     if (best.length < 40) {
       const retry = extractFromJobPanelHeuristic();
       if (retry.length > best.length) best = retry;
     }
-    console.info("[Hop] JD capture:", best.length, "chars");
+
+    if (best.length < 40) {
+      const jobId = extractJobId();
+      if (jobId) {
+        const apiText = await fetchJobDescriptionFromApi(jobId);
+        if (apiText.length > best.length) {
+          best = apiText;
+          source = "api";
+        }
+      }
+    }
+
+    console.info("[Hop] JD capture:", best.length, "chars via", source);
     return best;
   }
 
@@ -784,151 +1068,150 @@
     return String(claim || "").replace(/^\[(strong|partial|weak|missing)\]\s*/i, "");
   }
 
-  function buildWhyExplanation(rec, fit) {
-    if (!rec?.available) return "";
-    const decision = rec.decision || "";
-    const track = rec.track_label;
-    const priority = rec.track_priority;
-    const titlePct =
-      rec.track_similarity != null ? Math.round(rec.track_similarity * 100) : null;
-    const gaps = fit?.gaps?.length ?? 0;
-    const matched = fit ? fit.strong.length + fit.partial.length : 0;
-    const hardTotal = fit ? matched + gaps : 0;
-
-    if (decision === "Skip") {
-      if (rec.reasoning?.toLowerCase().includes("avoid track")) {
-        return "Title matches a track you marked as avoid.";
-      }
-      if (rec.reasoning?.toLowerCase().includes("no sponsorship")) {
-        return "Job posting states no visa sponsorship.";
-      }
-      return "Low overlap with your target tracks and resume skills.";
+  function isSkillEvidence(claim) {
+    const t = stripClaimPrefix(claim || "").trim();
+    if (t.length < 10) return false;
+    const lower = t.toLowerCase();
+    if (/^(in person|in-person|on-?site|hybrid|remote only|must be located|based in)/i.test(lower)) {
+      return false;
     }
-
-    if (priority != null && priority <= 2 && track) {
-      if (gaps > 0 && (decision === "Apply with modifications" || decision === "Consider")) {
-        return `P${priority} target track (${track})${titlePct != null ? `, ${titlePct}% title match` : ""} — skill gaps (${gaps}) outweighed by role fit.`;
-      }
-      return `Matches your P${priority} target track: ${track}${titlePct != null ? ` (${titlePct}% title)` : ""}.`;
+    if (/^[A-Za-z .'-]+,\s*[A-Z]{2}\b/.test(t) && t.length < 64) return false;
+    if (/^(san francisco|palo alto|new york|chicago|seattle|austin|boston)/i.test(lower) && t.length < 48) {
+      return false;
     }
-
-    if (decision === "Apply") {
-      return hardTotal
-        ? `Strong skill overlap (${matched}/${hardTotal} hard requirements).`
-        : "Strong fit with your profile and this role.";
-    }
-
-    if (decision === "Apply with modifications" || decision === "Consider") {
-      return hardTotal
-        ? `${matched}/${hardTotal} hard skills match — worth applying if you can address gaps on resume.`
-        : "Partial fit — review before applying.";
-    }
-
-    if (decision === "Low priority") {
-      return "Some overlap, but not a top-priority track for you.";
-    }
-
-    return simplifyReasoning(rec.reasoning || "");
+    return true;
   }
 
-  function renderStatChips(rec, fit) {
-    const chips = [];
-    if (rec.track_priority != null) {
-      chips.push({ val: `P${rec.track_priority}`, lbl: "Track" });
+  function renderMetricsGrid(rec) {
+    const cells = [];
+
+    cells.push({
+      val: rec.track_priority != null ? `P${rec.track_priority}` : "—",
+      lbl: "Role",
+      hint:
+        rec.track_label ||
+        (rec.track_priority != null ? `Priority ${rec.track_priority} track` : "No track match"),
+    });
+
+    if (rec.fit_ratio != null) {
+      cells.push({
+        val: `${Math.round(rec.fit_ratio * 100)}%`,
+        lbl: "Resume",
+        hint: "Parsed JD requirements vs your resume",
+      });
     }
-    if (rec.track_similarity != null) {
-      chips.push({ val: `${Math.round(rec.track_similarity * 100)}%`, lbl: "Title" });
-    }
-    if (fit) {
-      const matched = fit.strong.length + fit.partial.length;
-      const hard = matched + fit.gaps.length;
-      if (hard > 0) chips.push({ val: `${matched}/${hard}`, lbl: "Skills" });
-    }
-    if (!chips.length) return "";
-    return `<div class="lca-stat-chips">${chips
-      .map(
-        (c) =>
-          `<div class="lca-stat-chip"><span class="lca-stat-chip-val">${escapeHtml(c.val)}</span><span class="lca-stat-chip-lbl">${escapeHtml(c.lbl)}</span></div>`
-      )
-      .join("")}</div>`;
+
+    cells.push({
+      val: rec.location_tier != null ? `P${rec.location_tier}` : "—",
+      lbl: "Location",
+      hint: rec.location_label || "Location tier",
+    });
+
+    const pref = rec.preferences_matched ?? 0;
+    cells.push({
+      val: String(pref),
+      lbl: "Prefs",
+      hint:
+        (rec.preferences_total ?? 0) > 0
+          ? `${pref} of ${rec.preferences_total} preference(s) matched`
+          : "No preferences configured",
+    });
+
+    const deal = rec.dealbreakers_matched ?? 0;
+    cells.push({
+      val: String(deal),
+      lbl: "Flags",
+      hint:
+        (rec.dealbreakers_total ?? 0) > 0
+          ? `${deal} dealbreaker(s) matched in JD`
+          : "No dealbreakers configured",
+    });
+
+    return renderMetricGrid(cells);
   }
 
-  function renderFitInsights(rec, rf) {
-    if (!rec?.available && !rf?.available) return "";
-    const fit = rf?.available ? partitionResumeFit(rf) : null;
-    const why = buildWhyExplanation(rec, fit);
-    const topMatch = fit?.strong?.[0] || fit?.partial?.[0];
-    const topGap = fit?.gaps?.[0];
-    const highlights = [];
-    if (topMatch) {
-      highlights.push(`<span class="lca-highlight lca-highlight-good">${escapeHtml(stripClaimPrefix(topMatch.claim))}</span>`);
+  function renderEvidenceLine(rf) {
+    const buckets = rf?.available ? hardRequirementFit(rf) : null;
+    if (!buckets) return "";
+    const pick = (list) => list.find((c) => isSkillEvidence(c.claim));
+    const topStrong = pick(buckets.strong);
+    const topPartial = pick(buckets.partial);
+    const topGap = pick(buckets.gaps);
+    if (!topStrong && !topPartial && !topGap) return "";
+    const bits = [];
+    if (topStrong) {
+      bits.push(
+        `<span class="lca-ev lca-ev-match" title="${escapeHtml(stripClaimPrefix(topStrong.claim))}">${escapeHtml(truncateText(stripClaimPrefix(topStrong.claim), 36))}</span>`
+      );
+    } else if (topPartial) {
+      bits.push(
+        `<span class="lca-ev lca-ev-match" title="${escapeHtml(stripClaimPrefix(topPartial.claim))}">${escapeHtml(truncateText(stripClaimPrefix(topPartial.claim), 36))}</span>`
+      );
     }
     if (topGap) {
-      highlights.push(`<span class="lca-highlight lca-highlight-gap">Gap: ${escapeHtml(stripClaimPrefix(topGap.claim))}</span>`);
+      bits.push(
+        `<span class="lca-ev lca-ev-gap" title="${escapeHtml(stripClaimPrefix(topGap.claim))}">${escapeHtml(truncateText(stripClaimPrefix(topGap.claim), 36))}</span>`
+      );
     }
-    return `
-      ${renderStatChips(rec, fit)}
-      ${why ? `<div class="lca-why">${escapeHtml(why)}</div>` : ""}
-      ${highlights.length ? `<div class="lca-highlights">${highlights.join("")}</div>` : ""}`;
+    return `<div class="lca-evidence">${bits.join("")}</div>`;
   }
 
   const VERDICT_LABELS = {
     Apply: { text: "Apply", tone: "apply" },
-    "Apply with modifications": { text: "Consider", tone: "consider" },
-    "Low priority": { text: "Later", tone: "later" },
+    Consider: { text: "Consider", tone: "consider" },
     Skip: { text: "Skip", tone: "skip" },
+    // legacy API strings (cached responses)
+    "Apply with modifications": { text: "Consider", tone: "consider" },
+    "Low priority": { text: "Consider", tone: "consider" },
   };
 
-  function renderVerdictSection(rec) {
+  function renderAnalysisBlock(rec, rf) {
+    if (!rec?.available && !rf?.available) return "";
     if (!rec?.available) return "";
+
     const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", tone: "later" };
-    const track =
-      rec.track_label && rec.track_priority != null
-        ? `${rec.track_label} · P${rec.track_priority}`
-        : rec.track_label || "";
+    const note = buildVerdictNote(rec);
+
     return `
-      <div class="lca-verdict-card lca-verdict-${meta.tone}">
-        <div class="lca-verdict-word">${escapeHtml(meta.text)}</div>
-        ${track ? `<div class="lca-verdict-meta">${escapeHtml(track)}</div>` : ""}
+      <div class="lca-analysis">
+        <div class="lca-verdict-row">
+          ${statusPill(meta.text, meta.tone)}
+          ${note ? `<span class="lca-verdict-note">${escapeHtml(note)}</span>` : ""}
+        </div>
+        ${renderMetricsGrid(rec)}
+        ${renderEvidenceLine(rf)}
       </div>`;
   }
 
   function renderRiskSection(risk) {
     if (!risk?.available || !risk.risks?.length) return "";
     const top = risk.risks[0];
-    const more = risk.risks.length > 1 ? ` +${risk.risks.length - 1} more` : "";
-    return `<div class="lca-risk-line"><span class="lca-risk-tag">Risk</span>${escapeHtml(top.claim)}${more ? `<span class="lca-risk-more">${escapeHtml(more)}</span>` : ""}</div>`;
+    const more = risk.risks.length > 1 ? ` · +${risk.risks.length - 1}` : "";
+    return `<p class="lca-risk-line">⚠ ${escapeHtml(truncateText(top.claim, 56))}${more ? `<span class="lca-risk-more">${escapeHtml(more)}</span>` : ""}</p>`;
   }
 
   function probeJdOnPage() {
     const jobDetails = document.querySelector("#job-details");
-    const markup = document.querySelector(".show-more-less-html__markup");
+    const markup =
+      document.querySelector(".show-more-less-html__markup") ||
+      document.querySelector('[class*="show-more-less-html__markup"]');
+    const showMoreLess = document.querySelector('[class*="show-more-less"]');
     return {
       jobDetails: jobDetails ? normalizeJdText(jobDetails.textContent).length : 0,
       markup: markup ? normalizeJdText(markup.textContent).length : 0,
+      showMoreLess: showMoreLess ? elementPlainText(showMoreLess).length : 0,
+      metaAnchor: extractJobDescriptionByMetadataAnchor().length,
+      jsonLd: extractJobDescriptionFromJsonLd().length,
     };
   }
 
   function renderCaptureMeta(captured, probe) {
     const n = captured || 0;
-    const cls = n >= 40 ? "lca-capture-ok" : "lca-capture-bad";
-    const probeBit =
-      n < 40 && probe
-        ? ` · page #job-details ${probe.jobDetails}, markup ${probe.markup}`
-        : "";
-    return `<p class="lca-capture-meta ${cls}">JD captured: ${n} chars${probeBit}</p>`;
-  }
-
-    if (typeof chars === "number" && chars < 40) {
-      return `Couldn't read job description (${chars} chars). Expand it on the page, wait a moment, Retry.`;
-    }
-    const reason = jd?.reason || "";
-    if (!reason) return "";
-    const r = reason.toLowerCase();
-    if (r.includes("no job description")) return "No job text sent to server.";
-    if (r.includes("llm not configured")) return "Server LLM not configured.";
-    if (r.includes("parse failed")) return "Server parse failed — Retry.";
-    return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
+    if (n >= 40) return "";
+    const probeBit = probe
+      ? ` (debug: legacy ${probe.jobDetails}/${probe.markup}, alt ${probe.showMoreLess}/${probe.metaAnchor})`
+      : "";
+    return `<p class="lca-err-mini">Couldn't read job description${probeBit}. Expand on LinkedIn, wait, Retry.</p>`;
   }
 
   function shortJdError(chars, jd) {
@@ -947,15 +1230,15 @@
   function renderAnalysisInline(report, captureProbe) {
     const chars = report.received?.jd_chars ?? 0;
     const jd = report.jd;
-    const meta = renderCaptureMeta(chars, captureProbe);
-    if (!jd?.available && chars < 40) {
-      return `<div class="lca-analyze-inner">${meta}<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p></div>`;
-    }
-
     const rec = report.recommendation;
     const rf = report.resume_fit;
+
+    if (!jd?.available && chars < 40) {
+      return `<div class="lca-analyze-inner">${renderCaptureMeta(chars, captureProbe)}<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p></div>`;
+    }
+
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    return `<div class="lca-analyze-inner">${meta}${errLine}${renderVerdictSection(rec)}${renderFitInsights(rec, rf)}${renderRiskSection(report.risk)}</div>`;
+    return `<div class="lca-analyze-inner">${errLine}${renderAnalysisBlock(rec, rf)}${renderRiskSection(report.risk)}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -967,58 +1250,21 @@
     }</div>`;
   }
 
-  function wireAnalyzeButton(el, ctx) {
-    const btn = el.querySelector(".lca-analyze-btn");
-    const out = el.querySelector(".lca-analyze-result");
-    if (!btn || !out) return;
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      onAnalyzeClick(btn, out, ctx);
-    });
-  }
-
-  async function onAnalyzeClick(btn, out, ctx) {
-    if (btn.textContent === "Retry") {
-      out.dataset.loaded = "0";
-    }
-    // Already loaded once → just toggle visibility.
-    if (out.dataset.loaded === "1") {
-      if (out.hasAttribute("hidden")) {
-        out.removeAttribute("hidden");
-        btn.textContent = "Hide";
-      } else {
-        out.setAttribute("hidden", "");
-        btn.textContent = "Analyze";
-      }
-      return;
-    }
-
-    out.removeAttribute("hidden");
-    out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing…</div>`;
-    btn.disabled = true;
+  async function runAnalysis(out, ctx) {
+    if (!out) return;
+    out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Checking fit…</div>`;
     try {
       const inputs = await gatherJobInputs(ctx);
-      console.info("[Job Intelligence] captured JD chars:", inputs.jd_text?.length || 0);
       const report = await analyzeWithBackend(inputs);
       out.innerHTML = renderAnalysisInline(report, inputs.captureProbe);
-      const jdChars = report.received?.jd_chars ?? inputs.jd_text?.length ?? 0;
-      const ok = (report.jd?.available || report.recommendation?.available) && jdChars >= 40;
-      if (ok) {
-        out.dataset.loaded = "1";
-        btn.textContent = "Hide";
-      } else {
-        btn.textContent = "Retry";
-      }
     } catch (err) {
       console.error("[Job Intelligence]", err);
       out.innerHTML = renderAnalysisErrorInline(err);
-    } finally {
-      btn.disabled = false;
+      out.dataset.analyzedFor = "";
     }
   }
 
-  async function run() {
+  async function run(options = {}) {
     if (extensionBroken) return;
     const ctx = extractPageContext();
     const onJobs = window.location.pathname.includes("/jobs");
@@ -1026,7 +1272,7 @@
 
     if (!onJobs && !onCompany) {
       document.getElementById(BADGE_ID)?.remove();
-      lastPageKey = null;
+      lastFingerprint = null;
       return;
     }
 
@@ -1035,8 +1281,9 @@
       return;
     }
 
-    if (ctx.pageKey === lastPageKey) return;
-    lastPageKey = ctx.pageKey;
+    const fp = contextFingerprint(ctx);
+    if (!options.force && fp === lastFingerprint) return;
+    lastFingerprint = fp;
 
     renderLoading();
 
@@ -1058,15 +1305,15 @@
         <div class="lca-body">
           <div class="lca-title">H-1B lookup failed</div>
           ${hint}
-          <button type="button" class="lca-analyze-btn">Analyze job</button>
-          <div class="lca-analyze-result" hidden></div>
+          <button type="button" class="lca-refresh-btn">Refresh</button>
+          <div class="lca-analyze-result"></div>
         </div>`;
       finishBadge(el, ctx);
     }
   }
 
   function onNavigate() {
-    lastPageKey = null;
+    lastFingerprint = null;
     scheduleRun();
   }
 
@@ -1092,7 +1339,7 @@
       lastHref = location.href;
       onNavigate();
     }
-  }, 600);
+  }, 400);
 
   const obs = new MutationObserver(scheduleRun);
   obs.observe(document.body, { childList: true, subtree: true });

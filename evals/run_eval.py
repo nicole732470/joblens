@@ -60,7 +60,7 @@ def norm_sponsors(raw: str) -> str:
 
 
 def norm_priority(raw: str) -> str:
-    """Golden-set priority label: 1-5, skip, unknown, or blank."""
+    """Golden-set track tier label: 1-5, skip, unknown, or blank."""
     v = (raw or "").strip().lower().replace("_", " ")
     if v in ("skip", "pass"):
         return "skip"
@@ -68,6 +68,38 @@ def norm_priority(raw: str) -> str:
         return "unknown"
     if v.isdigit() and 1 <= int(v) <= 5:
         return v
+    return ""
+
+
+def norm_decision(raw: str) -> str:
+    """Golden-set verdict label: apply, consider, skip, unknown, or blank."""
+    v = (raw or "").strip().lower().replace("_", " ")
+    if v in ("apply", "yes", "y"):
+        return "apply"
+    if v in (
+        "consider",
+        "maybe",
+        "modifications",
+        "apply with modifications",
+        "low priority",
+        "later",
+    ):
+        return "consider"
+    if v in ("skip", "no", "pass"):
+        return "skip"
+    if v in ("unknown", "unk", "not sure", "not_sure", "unsure", "?"):
+        return "unknown"
+    return ""
+
+
+def api_decision_bucket(decision: str | None) -> str:
+    d = (decision or "").strip().lower()
+    if d == "apply":
+        return "apply"
+    if d in ("consider", "apply with modifications", "low priority"):
+        return "consider"
+    if d == "skip":
+        return "skip"
     return ""
 
 
@@ -101,6 +133,7 @@ def main() -> None:
 
     sponsors_total = sponsors_correct = sponsors_unknown = 0
     priority_total = priority_correct = priority_unknown = 0
+    decision_total = decision_correct = decision_unknown = 0
     errors = 0
 
     print(f"Evaluating {len(rows)} sample(s) against {BASE_URL}\n")
@@ -145,7 +178,7 @@ def main() -> None:
             verdict.append("priority=unknown (skipped)")
         elif expected_pri == "skip":
             priority_total += 1
-            ok = rec.get("decision") == "Skip"
+            ok = api_decision_bucket(rec.get("decision")) == "skip"
             priority_correct += int(ok)
             verdict.append("priority OK" if ok else "priority MISMATCH (want skip)")
         elif expected_pri in ("1", "2", "3", "4", "5"):
@@ -155,6 +188,22 @@ def main() -> None:
             priority_correct += int(ok)
             verdict.append(
                 f"priority OK" if ok else f"priority MISMATCH (want P{expected_pri}, got P{actual})"
+            )
+
+        raw_dec = row.get("expected_decision") or ""
+        expected_dec = norm_decision(raw_dec)
+        if expected_dec == "unknown":
+            decision_unknown += 1
+            verdict.append("decision=unknown (skipped)")
+        elif expected_dec in ("apply", "consider", "skip"):
+            decision_total += 1
+            actual_dec = api_decision_bucket(rec.get("decision"))
+            ok = actual_dec == expected_dec
+            decision_correct += int(ok)
+            verdict.append(
+                "decision OK"
+                if ok
+                else f"decision MISMATCH (want {expected_dec}, got {actual_dec or '?'})"
             )
 
         pending = report.get("pending") or []
@@ -176,6 +225,13 @@ def main() -> None:
         print(f"priority acc: {priority_correct}/{priority_total} ({priority_correct/priority_total:.0%})")
     if priority_unknown:
         print(f"priority unknown (skipped): {priority_unknown}")
+    if decision_total:
+        print(
+            f"decision acc: {decision_correct}/{decision_total} "
+            f"({decision_correct/decision_total:.0%})"
+        )
+    if decision_unknown:
+        print(f"decision unknown (skipped): {decision_unknown}")
     print("\nThresholds: docs/FIT_THRESHOLDS.md")
 
 

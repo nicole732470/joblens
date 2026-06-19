@@ -68,7 +68,7 @@ def run_risk_rules(
         if missing > 0 and strong == 0 and missing >= 3:
             risks.append(
                 {
-                    "claim": "Resume shows few strong matches for stated requirements.",
+                    "claim": f"{missing} JD requirements not closely supported on resume.",
                     "claim_type": "risk",
                     "jd_evidence_ids": [
                         c.jd_evidence_ids[0]

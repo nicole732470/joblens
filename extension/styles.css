@@ -1,6 +1,9 @@
-/* Hop — LinkedIn-adjacent job panel */
+/* Hop — unified LinkedIn-adjacent panel */
 
 #lca-sponsor-checker-badge {
+  --lca-fs: 13px;
+  --lca-fs-sm: 11px;
+  --lca-fs-xs: 10px;
   position: fixed;
   top: 80px;
   right: 24px;
@@ -13,7 +16,7 @@
   flex-direction: column;
   box-sizing: border-box;
   font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  font-size: 14px;
+  font-size: var(--lca-fs);
   line-height: 1.43;
   color: rgba(0, 0, 0, 0.9);
   background: #fff;
@@ -58,24 +61,26 @@
   color: rgba(0, 0, 0, 0.75);
   pointer-events: none;
 }
+.lca-refresh-btn,
 .lca-analyze-btn {
   flex-shrink: 0;
-  border: 1px solid #0a66c2;
+  border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 16px;
   background: #fff;
-  color: #0a66c2;
+  color: rgba(0, 0, 0, 0.65);
   font: inherit;
   font-size: 12px;
   font-weight: 600;
   line-height: 1;
   padding: 5px 12px;
   cursor: pointer;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
+  transition: background 0.12s ease;
 }
+.lca-refresh-btn:hover,
 .lca-analyze-btn:hover {
-  background: rgba(10, 102, 194, 0.08);
-  box-shadow: inset 0 0 0 1px #0a66c2;
+  background: #f3f2ef;
 }
+.lca-refresh-btn:disabled,
 .lca-analyze-btn:disabled {
   opacity: 0.5;
   cursor: default;
@@ -109,192 +114,222 @@
   border-radius: 99px;
 }
 
-.lca-hero {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-.lca-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 6px;
+/* Shared status pills — H-1B + verdict use the same system */
+.lca-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
   flex-shrink: 0;
 }
-.lca-status-found { background: #057642; }
-.lca-status-caution { background: #b24020; }
-.lca-status-miss { background: #cc1016; }
-.lca-status-loading { background: #0a66c2; }
+.lca-pill-ok,
+.lca-pill-apply {
+  background: rgba(5, 118, 66, 0.12);
+  color: #057642;
+}
+.lca-pill-caution,
+.lca-pill-consider {
+  background: rgba(145, 89, 7, 0.12);
+  color: #915907;
+}
+.lca-pill-neutral,
+.lca-pill-later {
+  background: #f3f2ef;
+  color: rgba(0, 0, 0, 0.6);
+}
+.lca-pill-skip {
+  background: rgba(204, 16, 22, 0.1);
+  color: #cc1016;
+}
+
+.lca-head-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.lca-company-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 20px;
+}
+.lca-co-logo {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: #f3f2ef;
+}
+.lca-company {
+  font-size: var(--lca-fs);
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lca-disclaimer {
+  font-size: var(--lca-fs-xs);
+  color: rgba(0, 0, 0, 0.38);
+  line-height: 1.3;
+  margin: 4px 0 0;
+}
 
 .lca-title {
   font-weight: 600;
-  font-size: 16px;
+  font-size: var(--lca-fs);
   color: rgba(0, 0, 0, 0.9);
   line-height: 1.25;
-}
-.lca-company {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.6);
-  margin-top: 2px;
 }
 
 .lca-stat-row {
   display: flex;
   gap: 12px;
-  margin: 6px 0 2px 16px;
-  font-size: 12px;
+  margin: 6px 0 2px;
+  font-size: var(--lca-fs-sm);
   color: rgba(0, 0, 0, 0.6);
 }
 .lca-stat b {
   color: #057642;
   font-weight: 600;
 }
-
 .lca-analyze-result {
-  margin-top: 4px;
+  margin-top: 8px;
 }
 .lca-analyze-inner {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 4px;
+  gap: 8px;
+  padding-top: 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.lca-verdict-card {
-  border-radius: 8px;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: #f9fafb;
-}
-.lca-verdict-word {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-}
-.lca-verdict-meta {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.6);
-  margin-top: 2px;
-}
-.lca-verdict-empty {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.6);
-}
-.lca-verdict-apply {
-  background: #eefbf3;
-  border-color: rgba(5, 118, 66, 0.2);
-}
-.lca-verdict-apply .lca-verdict-word { color: #057642; }
-.lca-verdict-consider {
-  background: #fff8e6;
-  border-color: rgba(178, 64, 32, 0.15);
-}
-.lca-verdict-consider .lca-verdict-word { color: #b24020; }
-.lca-verdict-later {
-  background: #f3f2ef;
-}
-.lca-verdict-later .lca-verdict-word { color: rgba(0, 0, 0, 0.65); }
-.lca-verdict-skip {
-  background: #fef2f2;
-  border-color: rgba(204, 16, 22, 0.12);
-}
-.lca-verdict-skip .lca-verdict-word { color: #cc1016; }
-
-.lca-stat-chips {
-  display: flex;
-  gap: 6px;
-}
-.lca-stat-chip {
-  flex: 1;
-  background: #f3f2ef;
-  border-radius: 8px;
-  padding: 6px 4px;
-  text-align: center;
-}
-.lca-stat-chip-val {
-  display: block;
-  font-size: 15px;
-  font-weight: 700;
-  color: rgba(0, 0, 0, 0.85);
-}
-.lca-stat-chip-lbl {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.45);
-  margin-top: 1px;
-}
-
-.lca-why {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.65);
-  line-height: 1.4;
-  padding-left: 2px;
-}
-
-.lca-highlights {
+.lca-analysis {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.lca-verdict-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  line-height: 1.35;
+}
+.lca-verdict-note {
+  font-size: var(--lca-fs-sm);
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.6);
+  line-height: 1.25;
+  flex: 1;
+  min-width: 0;
+}
+
+.lca-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
 }
-.lca-highlight {
-  font-size: 12px;
+.lca-metric {
+  text-align: center;
+  padding: 5px 2px;
+  background: #f9fafb;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: default;
+}
+.lca-metric-val {
+  display: block;
+  font-size: var(--lca-fs-sm);
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.82);
+  line-height: 1.2;
+}
+.lca-metric-lbl {
+  display: block;
+  font-size: var(--lca-fs-xs);
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.42);
+  margin-top: 2px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.lca-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lca-ev {
+  font-size: var(--lca-fs-sm);
   line-height: 1.35;
-  padding: 4px 0;
-  color: rgba(0, 0, 0, 0.55);
+  color: rgba(0, 0, 0, 0.5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lca-highlight-good::before {
-  content: "✓ ";
+.lca-ev-match::before {
+  content: "+ ";
   color: #057642;
-  font-weight: 700;
+  font-weight: 600;
 }
-.lca-highlight-gap::before {
-  content: "○ ";
+.lca-ev-gap::before {
+  content: "− ";
   color: rgba(0, 0, 0, 0.35);
+  font-weight: 600;
+}
+.lca-ev-neutral {
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.lca-h1b-roles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+.lca-h1b-role {
+  font-size: var(--lca-fs-sm);
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lca-h1b-wage {
+  color: rgba(0, 0, 0, 0.38);
+}
+.lca-h1b-wage::before {
+  content: " · ";
 }
 
 .lca-risk-line {
-  font-size: 12px;
-  color: #b24020;
-  line-height: 1.4;
-}
-.lca-risk-tag {
-  font-weight: 600;
-  margin-right: 4px;
+  font-size: var(--lca-fs-sm);
+  color: #915907;
+  line-height: 1.35;
+  margin: 0;
 }
 .lca-risk-more {
-  color: rgba(0, 0, 0, 0.4);
-}
-
-.lca-capture-meta {
-  font-size: 10px;
-  line-height: 1.35;
-  margin: 0 0 6px;
-  color: rgba(0, 0, 0, 0.45);
-}
-.lca-capture-ok {
-  color: rgba(0, 0, 0, 0.45);
-}
-.lca-capture-bad {
-  color: #b24020;
-}
-
-  font-size: 11px;
-  line-height: 1.35;
-  color: #b24020;
-  margin: 0 0 6px;
+  color: rgba(0, 0, 0, 0.38);
 }
 
 .lca-err-mini {
   font-size: 11px;
   line-height: 1.35;
   color: #b24020;
-  margin: 0 0 6px;
+  margin: 0;
 }
 
 .lca-parse-err {
@@ -360,10 +395,11 @@
 .lca-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(10, 102, 194, 0.2);
-  border-top-color: #0a66c2;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  border-top-color: rgba(0, 0, 0, 0.35);
   border-radius: 50%;
   animation: lca-spin 0.7s linear infinite;
+  flex-shrink: 0;
 }
 @keyframes lca-spin {
   to { transform: rotate(360deg); }
