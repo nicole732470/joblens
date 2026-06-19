@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Candidate intent (tracks, locations, …) — separate from resume text.
     candidate_profile_path: str = "evals/golden_set/candidate_profile.yaml"
 
+    # Dev/eval default resume; extension uploads override per request.
+    default_resume_path: str = "evals/golden_set/resume.md"
+
     # Embeddings for resume RAG (OpenAI-compatible API).
     embedding_model: str = "openai/text-embedding-3-small"
     embedding_dimensions: int = 1536

@@ -85,7 +85,7 @@ avoid_tracks:
 # Fill summary alone, tiers alone, or both. Rough wording OK — not a rigid whitelist.
 # ---------------------------------------------------------------------------
 locations:
-  summary: ""              # one loose sentence, e.g. "US major metros OK; prefer hybrid; open to remote"
+  summary: "US major metros OK; prefer public transport; prefer hybrid; open to remote"              # one loose sentence, e.g. "US major metros OK; prefer hybrid; open to remote"
   tier_1: [Chicago]        # optional — most want
   tier_2:                  # optional — acceptable
     - Texas
@@ -113,16 +113,22 @@ trajectory:
 dealbreakers: []
 # dealbreakers example (pick one style):
 # dealbreakers:
-#   - 
+#   - rural areas
+#   - small local companies in tranditional industries
+#   - no one in the company studied in a prestigious university
 #   - unpaid internship
 #   - no visa sponsorship stated in JD
 
 preferences: []
 # preferences example:
 # preferences:
-#   - startup
-#   - works on LLMs directly
+#   - Y combinator startup 
+#   - VC funded startup
+#   - pre-IPO company
+#   - tech industry
 #   - Python stack
+#   - non Chinese background company
+#   - Northwestern alumni
 
 # ---------------------------------------------------------------------------
 # CONSTRAINTS

@@ -38,8 +38,10 @@ Tips:
 
 ## Resume
 
-`resume.md` — paste your resume text once. It's reused for every sample's
-resume-fit evaluation (added in a later phase).
+`resume.md` — **dev/eval default only.** The backend reads this file when
+`/analyze` gets no `resume_text`. Later, the Chrome extension sends each user's
+own upload in the request, which overrides this file. Do not assume every user
+shares one repo-bundled resume in production.
 
 ## Running the evaluation
 

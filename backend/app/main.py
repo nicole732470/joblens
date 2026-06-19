@@ -12,6 +12,7 @@ from app.tools.entity_resolver import get_resolver
 from app.tools.jd_parser import parse_job_description
 from app.tools.profile_loader import get_candidate_profile
 from app.tools.resume_fit import analyze_resume_fit
+from app.tools.resume_loader import resolve_resume_text
 from app.tools.resume_store import index_resume
 from app.tools.sponsorship import search_h1b_company
 
@@ -95,17 +96,19 @@ def analyze(req: AnalyzeRequest) -> Report:
 
     jd = JDParse(**parse_job_description(req.jd_text, req.title))
 
+    resume_text, resume_source = resolve_resume_text(req.resume_text)
+
     resume_fit = ResumeFitAnalysis()
-    if req.resume_text:
+    if resume_text:
         try:
-            resume_fit = ResumeFitAnalysis(**analyze_resume_fit(jd, req.resume_text))
+            resume_fit = ResumeFitAnalysis(**analyze_resume_fit(jd, resume_text))
         except Exception as e:  # noqa: BLE001
             resume_fit = ResumeFitAnalysis(available=False, reason=str(e))
 
     pending = ["risk", "recommendation"]
     if not jd.available:
         pending.insert(0, "jd_parsing")
-    if not req.resume_text:
+    if not resume_text:
         pending.insert(0, "resume_fit")
     elif not resume_fit.available:
         pending.insert(0, "resume_fit")
@@ -120,7 +123,8 @@ def analyze(req: AnalyzeRequest) -> Report:
             "company": req.company,
             "title": req.title,
             "jd_chars": len(req.jd_text),
-            "has_resume": req.resume_text is not None,
+            "has_resume": resume_text is not None,
+            "resume_source": resume_source,
             "job_url": req.job_url,
         },
     )
