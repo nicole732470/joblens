@@ -44,6 +44,10 @@ def _title_matches_example(job_title: str, example: str) -> bool:
 
 # Title keywords → track id (checked before embedding so JD hardware text cannot override).
 _TITLE_KEYWORD_RULES: list[tuple[str, str]] = [
+    (r"\bcustomer success\b", "customer_success"),
+    (r"\bcsm\b", "customer_success"),
+    (r"\bapplied research engineer\b", "research_eng"),
+    (r"\bresearch engineer\b", "research_eng"),
     (r"\b(data|business)\s+analyst\b", "business_analyst"),
     (r"\banalyst\b", "business_analyst"),
     (r"\bconsultant\b", "business_analyst"),

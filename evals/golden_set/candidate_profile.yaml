@@ -36,8 +36,22 @@ tracks:
       - AI Builder
       - Agentic AI Engineer
       - Member of Technical Staff
-      - Research Engineer
+
+  - id: customer_success
+    label: "Customer Success / technical account"
+    priority: 3
+    example_titles:
+      - Customer Success Manager
+      - Technical Customer Success Manager
+      - CSM
+
+  - id: research_eng
+    label: "Research Engineer"
+    priority: 4
+    example_titles:
       - Applied Research Engineer
+      - Research Engineer
+      - Research Scientist
 
   - id: sde_eng
     label: "SDE roles"
