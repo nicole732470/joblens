@@ -931,6 +931,19 @@
     return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
   }
 
+  function shortJdError(chars, jd) {
+    if (typeof chars === "number" && chars < 40) {
+      return `Expand the description on LinkedIn, wait a moment, then Retry.`;
+    }
+    const reason = jd?.reason || "";
+    if (!reason) return "";
+    const r = reason.toLowerCase();
+    if (r.includes("no job description")) return "No job text sent to server.";
+    if (r.includes("llm not configured")) return "Server LLM not configured.";
+    if (r.includes("parse failed")) return "Server parse failed — Retry.";
+    return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
+  }
+
   function renderAnalysisInline(report, captureProbe) {
     const chars = report.received?.jd_chars ?? 0;
     const jd = report.jd;
