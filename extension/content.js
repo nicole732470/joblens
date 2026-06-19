@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.5.1";
+  const EXTENSION_VERSION = "2.5.2";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -727,11 +727,13 @@
 
   async function gatherJobInputs(ctx) {
     const jd_text = await captureJobDescription();
+    const probe = probeJdOnPage();
     return {
       company: ctx.displayName || null,
       title: extractJobTitle(),
       jd_text,
       job_url: window.location.href,
+      captureProbe: probe,
     };
   }
 
@@ -898,7 +900,25 @@
     return `<div class="lca-risk-line"><span class="lca-risk-tag">Risk</span>${escapeHtml(top.claim)}${more ? `<span class="lca-risk-more">${escapeHtml(more)}</span>` : ""}</div>`;
   }
 
-  function shortJdError(chars, jd) {
+  function probeJdOnPage() {
+    const jobDetails = document.querySelector("#job-details");
+    const markup = document.querySelector(".show-more-less-html__markup");
+    return {
+      jobDetails: jobDetails ? normalizeJdText(jobDetails.textContent).length : 0,
+      markup: markup ? normalizeJdText(markup.textContent).length : 0,
+    };
+  }
+
+  function renderCaptureMeta(captured, probe) {
+    const n = captured || 0;
+    const cls = n >= 40 ? "lca-capture-ok" : "lca-capture-bad";
+    const probeBit =
+      n < 40 && probe
+        ? ` · page #job-details ${probe.jobDetails}, markup ${probe.markup}`
+        : "";
+    return `<p class="lca-capture-meta ${cls}">JD captured: ${n} chars${probeBit}</p>`;
+  }
+
     if (typeof chars === "number" && chars < 40) {
       return `Couldn't read job description (${chars} chars). Expand it on the page, wait a moment, Retry.`;
     }
@@ -911,17 +931,18 @@
     return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
   }
 
-  function renderAnalysisInline(report) {
+  function renderAnalysisInline(report, captureProbe) {
     const chars = report.received?.jd_chars ?? 0;
     const jd = report.jd;
+    const meta = renderCaptureMeta(chars, captureProbe);
     if (!jd?.available && chars < 40) {
-      return `<div class="lca-analyze-inner"><p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p></div>`;
+      return `<div class="lca-analyze-inner">${meta}<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p></div>`;
     }
 
     const rec = report.recommendation;
     const rf = report.resume_fit;
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    return `<div class="lca-analyze-inner">${errLine}${renderVerdictSection(rec)}${renderFitInsights(rec, rf)}${renderRiskSection(report.risk)}</div>`;
+    return `<div class="lca-analyze-inner">${meta}${errLine}${renderVerdictSection(rec)}${renderFitInsights(rec, rf)}${renderRiskSection(report.risk)}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -967,7 +988,7 @@
       const inputs = await gatherJobInputs(ctx);
       console.info("[Job Intelligence] captured JD chars:", inputs.jd_text?.length || 0);
       const report = await analyzeWithBackend(inputs);
-      out.innerHTML = renderAnalysisInline(report);
+      out.innerHTML = renderAnalysisInline(report, inputs.captureProbe);
       const jdChars = report.received?.jd_chars ?? inputs.jd_text?.length ?? 0;
       const ok = (report.jd?.available || report.recommendation?.available) && jdChars >= 40;
       if (ok) {

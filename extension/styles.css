@@ -271,7 +271,19 @@
   color: rgba(0, 0, 0, 0.4);
 }
 
-.lca-err-mini {
+.lca-capture-meta {
+  font-size: 10px;
+  line-height: 1.35;
+  margin: 0 0 6px;
+  color: rgba(0, 0, 0, 0.45);
+}
+.lca-capture-ok {
+  color: rgba(0, 0, 0, 0.45);
+}
+.lca-capture-bad {
+  color: #b24020;
+}
+
   font-size: 11px;
   line-height: 1.35;
   color: #b24020;
