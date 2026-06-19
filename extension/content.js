@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.8.2";
+  const EXTENSION_VERSION = "2.9.0";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -44,21 +44,29 @@
     low: { title: "Possible sponsor", status: "caution" },
   };
 
+  /** One sponsor label for the pill — filing volume can upgrade medium → sponsor. */
+  function resolveSponsorMeta(confidence, employer) {
+    const filings = Number(employer?.lca_count) || 0;
+    const certified = Number(employer?.certified_count) || 0;
+    const approval = filings > 0 ? certified / filings : 0;
+    if (confidence === "high" || (filings >= 100 && approval >= 0.8)) {
+      return { title: "H-1B sponsor", status: "found" };
+    }
+    if (filings >= 25 && approval >= 0.7) {
+      return { title: "Likely H-1B sponsor", status: "ok" };
+    }
+    return CONFIDENCE_META[confidence] || CONFIDENCE_META.medium;
+  }
+
   const SOFT_REQUIREMENT_RE =
     /\b(leadership|lead\b|collaborat|cross[- ]?functional|teamwork|communicat|stakeholder|mentor|passion|fast[- ]?paced|self[- ]?starter|culture|interpersonal|organiz|detail[- ]?oriented|problem[- ]?solving|work across| agile|ownership|motivated|dynamic|ambitious|innovative mindset|people skills|verbal and written)\b/i;
 
   let lastFingerprint = null;
 
-  function renderFoot(ctx, parts) {
+  function renderFoot(parts) {
     const bits = (parts || []).filter(Boolean);
     bits.push(`v${EXTENSION_VERSION}`);
     return `<div class="lca-foot">${bits.map((p) => escapeHtml(p)).join(" · ")}</div>`;
-  }
-
-  function footLinkedInHint(ctx, legalName) {
-    if (!ctx.displayName) return null;
-    if (legalName && ctx.displayName.toLowerCase() === legalName.toLowerCase()) return null;
-    return `LinkedIn: ${ctx.displayName}`;
   }
 
   function isSoftRequirement(claim) {
@@ -139,17 +147,27 @@
     return null;
   }
 
-  function renderCompanyLine(name) {
-    if (!name) return "";
+  function renderCompanyLine(name, legalName) {
+    if (!name && !legalName) return "";
     const logoUrl = extractCompanyLogoUrl();
     const logo = logoUrl
       ? `<img class="lca-co-logo" src="${escapeHtml(logoUrl)}" alt="" width="20" height="20" />`
       : "";
-    return `<div class="lca-company-line">${logo}<span class="lca-company">${escapeHtml(name)}</span></div>`;
+    const primary = name || legalName || "";
+    const sub =
+      legalName && name && legalName.toLowerCase() !== name.toLowerCase()
+        ? `<span class="lca-legal-name">DOL: ${escapeHtml(legalName)}</span>`
+        : "";
+    return `<div class="lca-company-line">${logo}<div class="lca-company-text"><span class="lca-company">${escapeHtml(primary)}</span>${sub}</div></div>`;
   }
 
-  function renderHeadBlock(pillHtml, companyName) {
-    return `<div class="lca-head-block">${companyName ? renderCompanyLine(companyName) : ""}${pillHtml}</div>`;
+  function renderJobTitleLine(title) {
+    if (!title) return "";
+    return `<div class="lca-job-title">${escapeHtml(title)}</div>`;
+  }
+
+  function renderHeadBlock(pillHtml, displayName, legalName) {
+    return `<div class="lca-head-block">${renderCompanyLine(displayName, legalName)}${pillHtml ? `<div class="lca-head-pill">${pillHtml}</div>` : ""}</div>`;
   }
 
   function statusPill(text, tone) {
@@ -480,14 +498,25 @@
       .join("")}</ul>`;
   }
 
+  function renderMetricTip(title, rows) {
+    if (!rows?.length) return "";
+    const body = rows
+      .map(
+        (r) =>
+          `<div class="lca-tip-row"><span class="lca-tip-k">${escapeHtml(r.k)}</span><span class="lca-tip-v">${escapeHtml(r.v)}</span></div>`
+      )
+      .join("");
+    return `<div class="lca-metric-tip"><div class="lca-tip-title">${escapeHtml(title)}</div>${body}</div>`;
+  }
+
   function renderMetricGrid(cells) {
     if (!cells.length) return "";
-    const cols = Math.min(cells.length, 5);
+    const cols = cells.length > 4 ? 3 : Math.min(cells.length, 3);
     return `<div class="lca-metrics" style="grid-template-columns:repeat(${cols},1fr)">${cells
-      .map(
-        (c) =>
-          `<div class="lca-metric" title="${escapeHtml(c.hint || c.lbl || "")}"><span class="lca-metric-val">${escapeHtml(c.val)}</span><span class="lca-metric-lbl">${escapeHtml(c.lbl)}</span></div>`
-      )
+      .map((c) => {
+        const tip = c.tip ? renderMetricTip(c.tipTitle || c.lbl, c.tip) : "";
+        return `<div class="lca-metric${tip ? " lca-has-tip" : ""}" tabindex="0">${tip}<span class="lca-metric-val">${escapeHtml(c.val)}</span><span class="lca-metric-lbl">${escapeHtml(c.lbl)}</span></div>`;
+      })
       .join("")}</div>`;
   }
 
@@ -514,26 +543,28 @@
 
   function buildVerdictNote(rec) {
     if (!rec?.available) return "";
-    if (rec.summary) return rec.summary;
+    if (rec.track_label) return rec.track_label;
     const decision = rec.decision || "";
     if (decision === "Skip") return "Not a strong fit";
-    if (rec.track_label) return rec.track_label;
     return "";
   }
 
   function renderBadge(result, ctx) {
     const { employer, confidence } = result;
-    const meta = CONFIDENCE_META[confidence] || CONFIDENCE_META.medium;
+    const meta = resolveSponsorMeta(confidence, employer);
     const el = ensureBadge();
+    const displayName = ctx.displayName || employer.name;
+    const jobTitle = extractJobTitle();
 
     el.className = `lca-badge lca-${meta.status}`;
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        ${renderHeadBlock(statusPill(meta.title, meta.status === "found" ? "ok" : "caution"), employer.name)}
+        ${renderHeadBlock(statusPill(meta.title, meta.status === "found" || meta.status === "ok" ? "ok" : "caution"), displayName, employer.name)}
+        ${renderJobTitleLine(jobTitle)}
         ${renderH1bSummary(employer)}
         <div class="lca-analyze-result"></div>
-        ${renderFoot(ctx, [footLinkedInHint(ctx, employer.name), "Source: U.S. DOL H-1B"])}
+        ${renderFoot(["Source: U.S. DOL H-1B"])}
       </div>`;
     finishBadge(el, ctx);
   }
@@ -544,11 +575,10 @@
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        ${renderHeadBlock(statusPill("No H-1B record", "neutral"), ctx.displayName || "")}
+        ${renderHeadBlock(statusPill("No H-1B record", "neutral"), ctx.displayName || "", null)}
+        ${renderJobTitleLine(extractJobTitle())}
         <div class="lca-analyze-result"></div>
-        ${renderFoot(ctx, [
-          "Disclaimer: employer may file under a different legal name",
-        ])}
+        ${renderFoot(["May file under a different legal name"])}
       </div>`;
     finishBadge(el, ctx);
   }
@@ -1125,46 +1155,75 @@
     return true;
   }
 
-  function renderMetricsGrid(rec, co, explain) {
+  function renderMetricsGrid(rec, co, explain, rf) {
     const cells = [];
-
+    const roleTip = [
+      { k: "Track", v: rec.track_label || "—" },
+      { k: "Priority", v: rec.track_priority != null ? `P${rec.track_priority}` : "—" },
+    ];
+    if (rec.track_similarity != null) {
+      roleTip.push({ k: "Title match", v: `${Math.round(rec.track_similarity * 100)}%` });
+    }
+    if (explain?.role?.adjustments?.length) {
+      roleTip.push({ k: "Adjustments", v: explain.role.adjustments.join("; ") });
+    }
     cells.push({
       val: rec.track_priority != null ? `P${rec.track_priority}` : "—",
       lbl: "Role",
-      hint:
-        rec.track_label ||
-        (rec.track_priority != null ? `Priority ${rec.track_priority} track` : "No track match"),
+      tipTitle: "Role fit",
+      tip: roleTip,
     });
 
     if (rec.fit_ratio != null) {
+      const buckets = rf?.available ? hardRequirementFit(rf) : null;
+      const strong = buckets?.strong.length ?? 0;
+      const partial = buckets?.partial.length ?? 0;
+      const weak = buckets?.weak.length ?? 0;
+      const gaps = buckets?.gaps.length ?? 0;
+      const total = strong + partial + weak + gaps;
+      const resumeTip = [
+        { k: "Fit ratio", v: `${Math.round(rec.fit_ratio * 100)}%` },
+        { k: "Strong", v: String(strong) },
+        { k: "Partial", v: String(partial) },
+        { k: "Gaps", v: String(gaps) },
+      ];
+      if (total > 0) {
+        resumeTip.push({
+          k: "Formula",
+          v: `(strong + ½×partial + 0.3×weak) / ${total}`,
+        });
+      }
       cells.push({
         val: `${Math.round(rec.fit_ratio * 100)}%`,
         lbl: "Resume",
-        hint: "Parsed JD requirements vs your resume",
+        tipTitle: "Resume vs JD",
+        tip: resumeTip,
       });
     }
 
     cells.push({
       val: rec.location_tier != null ? `P${rec.location_tier}` : "—",
-      lbl: "Location",
-      hint: rec.location_label || "Location tier",
+      lbl: "Loc",
+      tipTitle: "Location",
+      tip: [{ k: "Tier", v: rec.location_label || "—" }],
     });
 
     if (co?.company_tier != null) {
-      const coHits = co.dealbreaker_hits?.length
-        ? co.dealbreaker_hits
-        : explain?.company?.dealbreaker_hits || [];
-      let coHint = co.company_label || co.summary || "Employer vs your preferences";
-      if (coHits.length) {
-        coHint = `Dealbreaker → P3: ${coHits[0]}`;
-      } else if (explain?.company?.breakdown?.combined != null && !explain.company.breakdown.reason) {
-        const pct = Math.round(explain.company.breakdown.combined * 100);
-        coHint = `Score ${pct}% (≥52 P1, ≥38 P2) · ${coHint}`;
+      const bd = explain?.company?.breakdown || co.score_breakdown || {};
+      const coTip = [{ k: "Tier", v: co.company_label || `P${co.company_tier}` }];
+      if (bd.reason === "dealbreaker") {
+        coTip.push({ k: "Reason", v: bd.hit || co.dealbreaker_hits?.[0] || "dealbreaker" });
+      } else if (bd.combined != null) {
+        coTip.push({ k: "Score", v: `${Math.round(bd.combined * 100)}%` });
+        if (bd.preference != null) coTip.push({ k: "Preferences", v: `${Math.round(bd.preference * 100)}%` });
+        if (bd.industry != null) coTip.push({ k: "Industry", v: `${Math.round(bd.industry * 100)}%` });
+        coTip.push({ k: "Bands", v: "≥52% P1 · ≥38% P2 · else P3" });
       }
       cells.push({
         val: `P${co.company_tier}`,
-        lbl: "Company",
-        hint: coHint,
+        lbl: "Co",
+        tipTitle: "Company fit",
+        tip: coTip,
       });
     }
 
@@ -1172,91 +1231,61 @@
     const prefHits = rec.preference_hits?.length
       ? rec.preference_hits
       : explain?.company?.preference_hits || [];
+    const prefTip = [{ k: "Matched", v: `${pref} / ${rec.preferences_total ?? 0}` }];
+    if (prefHits.length) {
+      prefHits.slice(0, 4).forEach((h, i) => prefTip.push({ k: `Hit ${i + 1}`, v: h }));
+    } else {
+      prefTip.push({ k: "Note", v: "No preference phrases matched in JD" });
+    }
     cells.push({
       val: String(pref),
       lbl: "Prefs",
-      hint:
-        prefHits.length > 0
-          ? `Hit: ${prefHits.slice(0, 2).join(", ")}`
-          : (rec.preferences_total ?? 0) > 0
-            ? `${pref} of ${rec.preferences_total} preference(s) in JD`
-            : "No preferences configured",
+      tipTitle: "Preferences",
+      tip: prefTip,
     });
 
     const deal = rec.dealbreakers_matched ?? 0;
     const flagHits = rec.dealbreaker_hits?.length
       ? rec.dealbreaker_hits
       : explain?.flags?.hits || [];
+    const flagTip = [{ k: "Matched", v: `${deal} / ${rec.dealbreakers_total ?? 0}` }];
+    if (flagHits.length) {
+      flagHits.slice(0, 4).forEach((h, i) => flagTip.push({ k: `Flag ${i + 1}`, v: h }));
+    } else {
+      flagTip.push({ k: "Note", v: "No dealbreakers matched" });
+    }
     cells.push({
       val: String(deal),
       lbl: "Flags",
-      hint:
-        deal > 0 && flagHits.length
-          ? `Dealbreaker: ${flagHits[0]}`
-          : (rec.dealbreakers_total ?? 0) > 0
-            ? `${deal} dealbreaker(s) matched in JD`
-            : "No dealbreakers configured",
+      tipTitle: "Dealbreakers",
+      tip: flagTip,
     });
 
     return renderMetricGrid(cells);
   }
 
-  function renderExplainLine(explain) {
-    if (!explain) return "";
-    const bits = [];
-    if (explain.flags?.hits?.length) {
-      bits.push(`Flag «${explain.flags.hits[0]}»`);
-    }
-    if (explain.company?.dealbreaker_hits?.length) {
-      bits.push(`Company P3: «${explain.company.dealbreaker_hits[0]}»`);
-    } else if (explain.company?.breakdown?.combined != null && !explain.company.breakdown.reason) {
-      bits.push(`Company score ${Math.round(explain.company.breakdown.combined * 100)}% → P${explain.company.tier}`);
-    }
-    if (explain.role?.adjustments?.length) {
-      bits.push(`Role: ${explain.role.adjustments.join("; ")}`);
-    }
-    if (!bits.length) return "";
-    return `<div class="lca-evidence"><span class="lca-ev lca-ev-neutral lca-why" title="Full breakdown: DevTools → Network → /analyze → explain">${escapeHtml(bits.join(" · "))}</span></div>`;
-  }
-
-  function renderCompanyLine(co) {
+  function renderCompanySignals(co) {
     if (!co?.available) return "";
-    const bits = [];
+    const rows = [];
     if (co.linkedin_followers != null) {
-      bits.push(`${co.linkedin_followers.toLocaleString()} followers`);
+      rows.push({ label: "Followers", value: co.linkedin_followers.toLocaleString() });
     }
-    if (co.alumni_hits?.length) {
-      bits.push(`${co.alumni_hits.slice(0, 2).join(", ")} alumni`);
+    for (const s of co.alumni_hits || []) {
+      rows.push({ label: "Alumni", value: `${s} on LinkedIn` });
     }
-    if (co.summary) bits.push(co.summary);
-    if (!bits.length) return "";
-    return `<div class="lca-evidence"><span class="lca-ev lca-ev-neutral">${escapeHtml(truncateText(bits.join(" · "), 80))}</span></div>`;
-  }
-
-  function renderEvidenceLine(rf) {
-    const buckets = rf?.available ? hardRequirementFit(rf) : null;
-    if (!buckets) return "";
-    const pick = (list) => list.find((c) => isSkillEvidence(c.claim));
-    const topStrong = pick(buckets.strong);
-    const topPartial = pick(buckets.partial);
-    const topGap = pick(buckets.gaps);
-    if (!topStrong && !topPartial && !topGap) return "";
-    const bits = [];
-    if (topStrong) {
-      bits.push(
-        `<span class="lca-ev lca-ev-match" title="${escapeHtml(stripClaimPrefix(topStrong.claim))}">${escapeHtml(truncateText(stripClaimPrefix(topStrong.claim), 36))}</span>`
-      );
-    } else if (topPartial) {
-      bits.push(
-        `<span class="lca-ev lca-ev-match" title="${escapeHtml(stripClaimPrefix(topPartial.claim))}">${escapeHtml(truncateText(stripClaimPrefix(topPartial.claim), 36))}</span>`
-      );
+    if (co.industry_label) {
+      rows.push({ label: "Industry", value: co.industry_label });
     }
-    if (topGap) {
-      bits.push(
-        `<span class="lca-ev lca-ev-gap" title="${escapeHtml(stripClaimPrefix(topGap.claim))}">${escapeHtml(truncateText(stripClaimPrefix(topGap.claim), 36))}</span>`
-      );
+    for (const p of (co.preference_hits || []).slice(0, 2)) {
+      rows.push({ label: "Preference", value: p });
     }
-    return `<div class="lca-evidence">${bits.join("")}</div>`;
+    if (!rows.length) return "";
+    return `<div class="lca-signal-lines">${rows
+      .map(
+        (r) =>
+          `<div class="lca-signal-row"><span class="lca-signal-lbl">${escapeHtml(r.label)}</span><span class="lca-signal-val">${escapeHtml(r.value)}</span></div>`
+      )
+      .join("")}</div>`;
   }
 
   const VERDICT_LABELS = {
@@ -1281,10 +1310,8 @@
           ${statusPill(meta.text, meta.tone)}
           ${note ? `<span class="lca-verdict-note">${escapeHtml(note)}</span>` : ""}
         </div>
-        ${renderMetricsGrid(rec, co, explain)}
-        ${renderExplainLine(explain)}
-        ${renderCompanyLine(co)}
-        ${renderEvidenceLine(rf)}
+        ${renderMetricsGrid(rec, co, explain, rf)}
+        ${renderCompanySignals(co)}
       </div>`;
   }
 
