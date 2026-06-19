@@ -1,9 +1,9 @@
 (function () {
-  const EXTENSION_VERSION = "3.0.0";
+  const EXTENSION_VERSION = "3.0.1";
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
-  // Backend for JobLens analyze. Override for deployed envs.
-  const BACKEND_URL = "http://localhost:8000";
+  // Production API on EC2 (elastic IP). Use localhost for local dev.
+  const BACKEND_URL = "http://3.128.164.130:8000";
   let extensionBroken = false;
 
   function extensionRuntime() {
