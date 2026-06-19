@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import csv
+import io
 import json
 import os
 import urllib.error
@@ -34,6 +35,21 @@ def load_resume() -> str | None:
     if "(your resume here)" in text:
         return None
     return text
+
+
+def read_rows() -> list[dict]:
+    """Read samples.csv, tolerating non-UTF-8 exports from Excel/Numbers."""
+    raw = SAMPLES.read_bytes()
+    text = None
+    for enc in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode("utf-8", errors="replace")
+    return list(csv.DictReader(io.StringIO(text)))
 
 
 def analyze(row: dict, resume_text: str | None) -> dict:
@@ -59,7 +75,7 @@ def main() -> None:
         raise SystemExit(f"No samples file at {SAMPLES}")
 
     resume_text = load_resume()
-    rows = list(csv.DictReader(SAMPLES.open(encoding="utf-8")))
+    rows = read_rows()
     if not rows:
         raise SystemExit("samples.csv has no rows to evaluate")
 
