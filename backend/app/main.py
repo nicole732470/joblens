@@ -57,6 +57,8 @@ class AnalyzeRequest(BaseModel):
     title: str | None = None
     resume_text: str | None = None
     job_url: str | None = None
+    linkedin_followers: int | None = None
+    alumni_hints: list[str] = []
 
 
 class IndexResumeRequest(BaseModel):
@@ -127,7 +129,15 @@ def analyze(req: AnalyzeRequest) -> Report:
     if profile is not None:
         try:
             company = CompanyAnalysis(
-                **score_company(req.company, jd, req.jd_text, profile, sponsorship)
+                **score_company(
+                    req.company,
+                    jd,
+                    req.jd_text,
+                    profile,
+                    sponsorship,
+                    linkedin_followers=req.linkedin_followers,
+                    alumni_hints=req.alumni_hints or None,
+                )
             )
         except Exception as e:  # noqa: BLE001
             company = CompanyAnalysis(available=False, reason=str(e))
@@ -172,5 +182,7 @@ def analyze(req: AnalyzeRequest) -> Report:
             "has_resume": resume_text is not None,
             "resume_source": resume_source,
             "job_url": req.job_url,
+            "linkedin_followers": req.linkedin_followers,
+            "alumni_hints": req.alumni_hints,
         },
     )

@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.8.0";
+  const EXTENSION_VERSION = "2.8.1";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -1012,13 +1012,54 @@
   async function gatherJobInputs(ctx) {
     const jd_text = await captureJobDescription();
     const probe = probeJdOnPage();
+    const linkedin = extractLinkedInCompanySignals();
     return {
       company: ctx.displayName || null,
       title: extractJobTitle(),
       jd_text,
       job_url: window.location.href,
       captureProbe: probe,
+      linkedin_followers: linkedin.followers,
+      alumni_hints: linkedin.alumni_hints,
     };
+  }
+
+  function parseFollowerCount(raw) {
+    const s = String(raw || "").replace(/,/g, "").trim();
+    const m = s.match(/^([\d.]+)\s*([KMB])?$/i);
+    if (!m) return null;
+    let n = parseFloat(m[1]);
+    if (Number.isNaN(n)) return null;
+    const u = (m[2] || "").toUpperCase();
+    if (u === "K") n *= 1000;
+    else if (u === "M") n *= 1_000_000;
+    else if (u === "B") n *= 1_000_000_000;
+    return Math.round(n);
+  }
+
+  /** Read follower / alumni lines from the open LinkedIn page (no backend crawl). */
+  function extractLinkedInCompanySignals() {
+    const root =
+      document.querySelector(
+        ".jobs-unified-top-card, .job-details-jobs-unified-top-card, .org-top-card, main"
+      ) || document.body;
+    const text = root.innerText || "";
+
+    let followers = null;
+    const fm = text.match(/([\d,.]+[KMB]?)\s+followers?\b/i);
+    if (fm) followers = parseFollowerCount(fm[1]);
+
+    const alumni_hints = [];
+    const re = /([\d,.]+)\s+([^\n·|]{3,80}?)\s+alumni\s+work\s+here/gi;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      alumni_hints.push(`${m[1].trim()} ${m[2].trim()} alumni`.replace(/\s+/g, " "));
+    }
+    if (/people from your (?:school|network)/i.test(text)) {
+      alumni_hints.push("people from your school");
+    }
+
+    return { followers, alumni_hints: [...new Set(alumni_hints)].slice(0, 5) };
   }
 
   async function analyzeWithBackend(inputs) {
@@ -1030,6 +1071,8 @@
         company: inputs.company,
         title: inputs.title,
         job_url: inputs.job_url,
+        linkedin_followers: inputs.linkedin_followers ?? null,
+        alumni_hints: inputs.alumni_hints || [],
       }),
     });
     if (!resp.ok) {
@@ -1139,8 +1182,17 @@
   }
 
   function renderCompanyLine(co) {
-    if (!co?.available || !co.summary) return "";
-    return `<div class="lca-evidence"><span class="lca-ev lca-ev-neutral">${escapeHtml(truncateText(co.summary, 72))}</span></div>`;
+    if (!co?.available) return "";
+    const bits = [];
+    if (co.linkedin_followers != null) {
+      bits.push(`${co.linkedin_followers.toLocaleString()} followers`);
+    }
+    if (co.alumni_hits?.length) {
+      bits.push(`${co.alumni_hits.slice(0, 2).join(", ")} alumni`);
+    }
+    if (co.summary) bits.push(co.summary);
+    if (!bits.length) return "";
+    return `<div class="lca-evidence"><span class="lca-ev lca-ev-neutral">${escapeHtml(truncateText(bits.join(" · "), 80))}</span></div>`;
   }
 
   function renderEvidenceLine(rf) {
