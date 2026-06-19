@@ -116,9 +116,9 @@ def _preference_component(
 
 
 def _score_to_tier(score: float) -> int:
-    if score >= 0.72:
+    if score >= 0.68:
         return 1
-    if score >= 0.45:
+    if score >= 0.42:
         return 2
     return 3
 
