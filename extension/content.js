@@ -1,45 +1,19 @@
 (function () {
   const BADGE_ID = "lca-sponsor-checker-badge";
-  const PANEL_ID = "lca-job-intelligence-panel";
-  const RABBIT_ICON = chrome.runtime.getURL("icons/rabbit.png");
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
   const BACKEND_URL = "http://localhost:8000";
   let lastPageKey = null;
 
   const CONFIDENCE_META = {
-    high: {
-      label: "Likely same legal employer in DOL data",
-      badgeClass: "lca-found",
-      emoji: "✅",
-    },
-    medium: {
-      label: "Possible match — verify manually",
-      badgeClass: "lca-caution",
-      emoji: "⚠️",
-    },
-    low: {
-      label: "Possible match — verify manually",
-      badgeClass: "lca-caution",
-      emoji: "⚠️",
-    },
+    high: { title: "H-1B sponsor", sub: "Strong match", status: "found", icon: "✓" },
+    medium: { title: "Possible H-1B sponsor", sub: "Verify — uncertain match", status: "caution", icon: "?" },
+    low: { title: "Possible H-1B sponsor", sub: "Verify — uncertain match", status: "caution", icon: "?" },
   };
 
   function sourceLabel(ctx) {
-    if (ctx.source === "job page") {
-      return `Detected from job posting · slug: <code>${escapeHtml(ctx.slug || "")}</code>`;
-    }
-    if (ctx.source === "company page") {
-      return `Detected from company page · slug: <code>${escapeHtml(ctx.slug || "")}</code>`;
-    }
+    if (ctx.source === "job page") return "Detected on this job posting";
+    if (ctx.source === "company page") return "Detected on this company page";
     return "";
-  }
-
-  function industryLine(employer) {
-    if (!employer.naics_sector && !employer.naics_code) return "";
-    const parts = [];
-    if (employer.naics_sector) parts.push(employer.naics_sector);
-    if (employer.naics_code) parts.push(`NAICS ${employer.naics_code}`);
-    return `<div class="lca-industry"><span class="lca-label">Industry</span> ${escapeHtml(parts.join(" · "))}</div>`;
   }
 
   function renderAlternatives(alternatives) {
@@ -47,8 +21,9 @@
     const items = alternatives
       .map(({ employer }) => {
         const loc = [employer.city, employer.state].filter(Boolean).join(", ");
-        const industry = employer.naics_sector || "";
-        const meta = [loc, industry, `${employer.lca_count} LCA`].filter(Boolean).join(" · ");
+        const meta = [loc, `${Number(employer.lca_count).toLocaleString()} filings`]
+          .filter(Boolean)
+          .join(" · ");
         return `<li><b>${escapeHtml(employer.name)}</b>${meta ? `<br><span class="lca-alt-meta">${escapeHtml(meta)}</span>` : ""}</li>`;
       })
       .join("");
@@ -237,10 +212,9 @@
     const meta = CONFIDENCE_META[confidence] || CONFIDENCE_META.medium;
     const el = ensureBadge();
 
-    const certifiedPct =
-      employer.lca_count > 0
-        ? Math.round((employer.certified_count / employer.lca_count) * 100)
-        : 0;
+    const filings = Number(employer.lca_count) || 0;
+    const approvedPct =
+      filings > 0 ? Math.round((employer.certified_count / filings) * 100) : 0;
 
     const jobsHtml = (employer.top_jobs || [])
       .slice(0, 3)
@@ -251,49 +225,44 @@
       })
       .join("");
 
-    const altNames =
-      employer.names.length > 1
-        ? `<div class="lca-muted">Also filed as: ${escapeHtml(employer.names.slice(1, 3).join("; "))}</div>`
-        : "";
-
     const location = [employer.city, employer.state].filter(Boolean).join(", ");
 
-    const linkedInLine = ctx.displayName
-      ? `<div class="lca-compare"><span class="lca-label">LinkedIn</span> ${escapeHtml(ctx.displayName)}</div>`
-      : "";
+    const linkedInLine =
+      ctx.displayName && ctx.displayName.toLowerCase() !== (employer.name || "").toLowerCase()
+        ? `<div class="lca-compare">LinkedIn shows <b>${escapeHtml(ctx.displayName)}</b></div>`
+        : "";
 
     const showAlternatives =
       confidence !== "high" && alternatives?.length ? renderAlternatives(alternatives) : "";
 
-    el.className = `lca-badge ${meta.badgeClass}`;
+    el.className = `lca-badge lca-${meta.status}`;
     el.innerHTML = `
       <button class="lca-close" aria-label="Close">×</button>
       <div class="lca-header">
-        <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
+        <span class="lca-icon lca-icon-${meta.status}">${meta.icon}</span>
         <div>
-          <div class="lca-title">${meta.emoji} Found in LCA database</div>
-          <div class="lca-confidence lca-confidence-${confidence}">${meta.label}</div>
+          <div class="lca-title">${meta.title}</div>
+          <div class="lca-sub">${meta.sub}</div>
         </div>
       </div>
       <div class="lca-company">${escapeHtml(employer.name)}</div>
       ${linkedInLine}
-      ${industryLine(employer)}
-      ${altNames}
-      <div class="lca-stats">
-        <span>${employer.lca_count.toLocaleString()} LCA</span>
-        <span>${employer.h1b_count.toLocaleString()} H-1B</span>
-        <span>${certifiedPct}% Certified</span>
-      </div>
-      ${location ? `<div class="lca-meta">${escapeHtml(location)} · FEIN ${escapeHtml(employer.fein)}</div>` : `<div class="lca-meta">FEIN ${escapeHtml(employer.fein)}</div>`}
-      ${jobsHtml ? `<ul class="lca-jobs">${jobsHtml}</ul>` : ""}
+      ${
+        filings > 0
+          ? `<div class="lca-rate"><b>${approvedPct}% approved</b><span class="lca-rate-sub"> · ${filings.toLocaleString()} visa filings</span></div>`
+          : ""
+      }
+      ${location ? `<div class="lca-meta">${escapeHtml(location)}</div>` : ""}
+      ${jobsHtml ? `<div class="lca-jobs-label">Top sponsored roles</div><ul class="lca-jobs">${jobsHtml}</ul>` : ""}
       ${renderNotes(notes)}
       ${renderWarnings(warnings)}
       ${showAlternatives}
-      <button class="lca-analyze-btn">🔍 Analyze This Job</button>
-      <div class="lca-foot">${sourceLabel(ctx)}</div>
+      <button class="lca-analyze-btn">Analyze this job ▾</button>
+      <div class="lca-analyze-result" hidden></div>
+      <div class="lca-foot">${sourceLabel(ctx)} · Source: U.S. DOL H-1B data</div>
     `;
     el.querySelector(".lca-close").addEventListener("click", () => el.remove());
-    el.querySelector(".lca-analyze-btn")?.addEventListener("click", () => onAnalyzeClick(ctx));
+    wireAnalyzeButton(el, ctx);
   }
 
   function renderMiss(ctx) {
@@ -302,25 +271,26 @@
     el.innerHTML = `
       <button class="lca-close" aria-label="Close">×</button>
       <div class="lca-header">
-        <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
+        <span class="lca-icon lca-icon-miss">–</span>
         <div>
-          <div class="lca-title">❌ Not found in LCA database</div>
-          <div class="lca-confidence">No confident match</div>
+          <div class="lca-title">No sponsorship record found</div>
+          <div class="lca-sub">Not in U.S. H-1B visa data</div>
         </div>
       </div>
-      <div class="lca-meta">
-        ${ctx.displayName ? `<div class="lca-compare"><span class="lca-label">LinkedIn</span> ${escapeHtml(ctx.displayName)}</div>` : ""}
-        ${ctx.slug ? `<div><span class="lca-label">Slug</span> <code>${escapeHtml(ctx.slug)}</code></div>` : "Could not detect company on this page yet."}
-      </div>
+      ${
+        ctx.displayName
+          ? `<div class="lca-compare">LinkedIn shows <b>${escapeHtml(ctx.displayName)}</b></div>`
+          : `<div class="lca-meta">Couldn't detect the company on this page yet.</div>`
+      }
       <ul class="lca-warnings">
-        <li>May not sponsor H-1B, file under a different legal name, or use a parent company.</li>
-        <li>No meaningful token overlap with DOL legal names on file.</li>
+        <li>They may not sponsor, file under a different legal name, or use a parent company.</li>
       </ul>
-      <button class="lca-analyze-btn">🔍 Analyze This Job</button>
-      <div class="lca-foot">Absence here is not proof of no sponsorship.</div>
+      <button class="lca-analyze-btn">Analyze this job ▾</button>
+      <div class="lca-analyze-result" hidden></div>
+      <div class="lca-foot">Not finding a record isn't proof they don't sponsor.</div>
     `;
     el.querySelector(".lca-close").addEventListener("click", () => el.remove());
-    el.querySelector(".lca-analyze-btn")?.addEventListener("click", () => onAnalyzeClick(ctx));
+    wireAnalyzeButton(el, ctx);
   }
 
   function renderLoading() {
@@ -328,8 +298,8 @@
     el.className = "lca-badge lca-loading";
     el.innerHTML = `
       <div class="lca-header">
-        <img class="lca-mascot lca-mascot-bounce" src="${RABBIT_ICON}" alt="Bunny mascot" />
-        <div class="lca-title">Checking LCA records…</div>
+        <span class="lca-spinner"></span>
+        <div class="lca-title">Checking sponsorship records…</div>
       </div>
     `;
   }
@@ -340,7 +310,6 @@
     el.innerHTML = `
       <button class="lca-close" aria-label="Close">×</button>
       <div class="lca-header">
-        <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
         <div class="lca-title">Waiting for job details…</div>
       </div>
       <div class="lca-foot">Open a job posting to detect the employer.</div>
@@ -413,137 +382,88 @@
     return resp.json();
   }
 
-  function ensurePanel() {
-    let el = document.getElementById(PANEL_ID);
-    if (!el) {
-      el = document.createElement("div");
-      el.id = PANEL_ID;
-      document.body.appendChild(el);
-    }
-    return el;
-  }
-
-  function renderAnalysisLoading() {
-    const el = ensurePanel();
-    el.className = "lca-panel lca-panel-loading";
-    el.innerHTML = `
-      <div class="lca-header">
-        <img class="lca-mascot lca-mascot-bounce" src="${RABBIT_ICON}" alt="Bunny mascot" />
-        <div class="lca-title">Analyzing job…</div>
-      </div>
-      <div class="lca-foot">Contacting backend at ${escapeHtml(BACKEND_URL)}</div>
-    `;
-  }
-
-  function renderAnalysisError(err) {
-    const el = ensurePanel();
-    el.className = "lca-panel lca-panel-error";
-    const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(err.message);
-    el.innerHTML = `
-      <button class="lca-close" aria-label="Close">×</button>
-      <div class="lca-header">
-        <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
-        <div class="lca-title">Analysis unavailable</div>
-      </div>
-      ${
-        isNetwork
-          ? `<div class="lca-meta">Couldn't reach the backend at <code>${escapeHtml(BACKEND_URL)}</code>.</div>
-             <div class="lca-foot">Start it locally with <code>docker compose up -d</code>, then try again.</div>`
-          : `<div class="lca-meta">${escapeHtml(err.message)}</div>`
-      }
-    `;
-    el.querySelector(".lca-close").addEventListener("click", () => el.remove());
-  }
-
   function likelihoodClass(likelihood) {
     const v = String(likelihood || "").toLowerCase();
-    if (v === "high") return "lca-confidence-high";
-    if (v === "medium") return "lca-confidence-medium";
-    if (v === "low") return "lca-confidence-low";
-    return "";
+    if (v === "high") return "lca-odds-high";
+    if (v === "medium") return "lca-odds-medium";
+    if (v === "low") return "lca-odds-low";
+    return "lca-odds-unknown";
   }
 
-  function renderSponsorshipSection(sp) {
-    if (!sp || !sp.matched) {
-      const reason = sp?.reason || "No confident match in H-1B data.";
-      return `
-        <div class="lca-section">
-          <div class="lca-label">Sponsorship</div>
-          <div class="lca-meta">❌ ${escapeHtml(reason)}</div>
-        </div>`;
-    }
-    const c = sp.company || {};
-    const loc = [c.city, c.state].filter(Boolean).join(", ");
+  function renderAnalysisInline(report) {
+    const sp = report.sponsorship || {};
     const likelihood = sp.sponsorship_likelihood || "Unknown";
-    const titles = (sp.sponsored_titles || [])
-      .slice(0, 3)
-      .map((t) => `<li>${escapeHtml(typeof t === "string" ? t : t.title || "")}</li>`)
-      .join("");
-    return `
-      <div class="lca-section">
-        <div class="lca-label">Sponsorship</div>
-        <div class="lca-company">${escapeHtml(c.name || sp.query || "")}</div>
-        <div class="lca-confidence ${likelihoodClass(likelihood)}">
-          Likelihood: ${escapeHtml(String(likelihood))}${
-            sp.match_confidence ? ` · match ${escapeHtml(String(sp.match_confidence))}` : ""
-          }
-        </div>
-        <div class="lca-stats">
-          ${sp.total_lca_count != null ? `<span>${Number(sp.total_lca_count).toLocaleString()} LCA</span>` : ""}
-          ${sp.h1b_count != null ? `<span>${Number(sp.h1b_count).toLocaleString()} H-1B</span>` : ""}
-          ${sp.certified_count != null ? `<span>${Number(sp.certified_count).toLocaleString()} Certified</span>` : ""}
-        </div>
-        ${loc ? `<div class="lca-meta">${escapeHtml(loc)}${c.fein ? ` · FEIN ${escapeHtml(c.fein)}` : ""}</div>` : ""}
-        ${titles ? `<ul class="lca-jobs">${titles}</ul>` : ""}
-        ${renderWarnings(sp.warnings)}
-      </div>`;
-  }
-
-  function renderPendingSection(report) {
     const pending = report.pending || [];
-    if (!pending.length) return "";
     const labels = {
       jd_parsing: "Job description parsing",
-      resume_fit: "Resume fit",
-      risk: "Risk analysis",
-      recommendation: "Recommendation",
+      resume_fit: "Resume fit vs. your profile",
+      risk: "Risk signals",
+      recommendation: "Apply / skip recommendation",
     };
-    const items = pending.map((p) => `<li>${escapeHtml(labels[p] || p)}</li>`).join("");
+    const pendingHtml = pending.length
+      ? `<div class="lca-coming">
+           <div class="lca-label">Coming soon</div>
+           <ul class="lca-notes">${pending.map((p) => `<li>${escapeHtml(labels[p] || p)}</li>`).join("")}</ul>
+         </div>`
+      : "";
     return `
-      <div class="lca-section">
-        <div class="lca-label">Coming soon</div>
-        <ul class="lca-notes">${items}</ul>
+      <div class="lca-analyze-inner">
+        <div class="lca-ai-head">Job Intelligence <span class="lca-beta">beta</span></div>
+        <div class="lca-kv">
+          <span class="lca-label">Sponsorship odds</span>
+          <b class="${likelihoodClass(likelihood)}">${escapeHtml(String(likelihood))}</b>
+        </div>
+        ${
+          likelihood === "Unknown"
+            ? `<div class="lca-hint">A transparent likelihood score is still being built.</div>`
+            : ""
+        }
+        ${pendingHtml}
       </div>`;
   }
 
-  function renderAnalysis(report, inputs) {
-    const el = ensurePanel();
-    el.className = "lca-panel";
-    el.innerHTML = `
-      <button class="lca-close" aria-label="Close">×</button>
-      <div class="lca-header">
-        <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
-        <div>
-          <div class="lca-title">🔍 Job Intelligence <span class="lca-beta">beta</span></div>
-          ${inputs.title ? `<div class="lca-confidence">${escapeHtml(inputs.title)}</div>` : ""}
-        </div>
-      </div>
-      ${renderSponsorshipSection(report.sponsorship)}
-      ${renderPendingSection(report)}
-      <div class="lca-foot">Powered by ${escapeHtml(BACKEND_URL)}</div>
-    `;
-    el.querySelector(".lca-close").addEventListener("click", () => el.remove());
+  function renderAnalysisErrorInline(err) {
+    const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(err.message);
+    return `<div class="lca-analyze-inner lca-analyze-err">${
+      isNetwork
+        ? `Can't reach the analysis server. Start it with <code>docker compose up -d</code>, then retry.`
+        : escapeHtml(err.message)
+    }</div>`;
   }
 
-  async function onAnalyzeClick(ctx) {
-    const inputs = gatherJobInputs(ctx);
-    renderAnalysisLoading();
+  function wireAnalyzeButton(el, ctx) {
+    const btn = el.querySelector(".lca-analyze-btn");
+    const out = el.querySelector(".lca-analyze-result");
+    if (!btn || !out) return;
+    btn.addEventListener("click", () => onAnalyzeClick(btn, out, ctx));
+  }
+
+  async function onAnalyzeClick(btn, out, ctx) {
+    // Already loaded once → just toggle visibility.
+    if (out.dataset.loaded === "1") {
+      if (out.hasAttribute("hidden")) {
+        out.removeAttribute("hidden");
+        btn.textContent = "Hide analysis ▴";
+      } else {
+        out.setAttribute("hidden", "");
+        btn.textContent = "Analyze this job ▾";
+      }
+      return;
+    }
+
+    out.removeAttribute("hidden");
+    out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing…</div>`;
+    btn.disabled = true;
     try {
-      const report = await analyzeWithBackend(inputs);
-      renderAnalysis(report, inputs);
+      const report = await analyzeWithBackend(gatherJobInputs(ctx));
+      out.innerHTML = renderAnalysisInline(report);
+      out.dataset.loaded = "1";
+      btn.textContent = "Hide analysis ▴";
     } catch (err) {
       console.error("[Job Intelligence]", err);
-      renderAnalysisError(err);
+      out.innerHTML = renderAnalysisErrorInline(err);
+    } finally {
+      btn.disabled = false;
     }
   }
 
@@ -579,7 +499,7 @@
       el.className = "lca-badge lca-miss";
       el.innerHTML = `
         <div class="lca-header">
-          <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
+          <span class="lca-icon lca-icon-miss">!</span>
           <div class="lca-title">Lookup failed</div>
         </div>
         <div class="lca-foot">${escapeHtml(err.message)}</div>

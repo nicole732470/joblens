@@ -5,60 +5,34 @@
   z-index: 99999;
   width: 320px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   line-height: 1.45;
   border-radius: 14px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid #9ca3af;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
   padding: 14px 16px 12px;
-  color: #111;
+  color: #1f2937;
 }
 
+/* Status accents (subtle: left border + icon chip carry the color) */
 .lca-badge.lca-found {
-  background: linear-gradient(160deg, #f0fdf4 0%, #ecfdf5 100%);
-  border: 1px solid #86efac;
+  border-left-color: #16a34a;
 }
-
+.lca-badge.lca-caution {
+  border-left-color: #d97706;
+}
 .lca-badge.lca-miss {
-  background: linear-gradient(160deg, #fef2f2 0%, #fff1f2 100%);
-  border: 1px solid #fca5a5;
+  border-left-color: #dc2626;
 }
-
 .lca-badge.lca-loading,
 .lca-badge.lca-waiting {
-  background: linear-gradient(160deg, #fdf4ff 0%, #faf5ff 100%);
-  border: 1px solid #e9d5ff;
-}
-
-.lca-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-  padding-right: 20px;
-}
-
-.lca-mascot {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-}
-
-.lca-mascot-bounce {
-  animation: lca-bounce 0.9s ease-in-out infinite;
-}
-
-@keyframes lca-bounce {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
+  border-left-color: #6366f1;
 }
 
 .lca-close {
@@ -70,224 +44,278 @@
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  color: #666;
+  color: #9ca3af;
   padding: 0;
+}
+.lca-close:hover {
+  color: #4b5563;
+}
+
+.lca-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding-right: 20px;
+}
+
+.lca-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: #fff;
+}
+.lca-icon-found {
+  background: #16a34a;
+}
+.lca-icon-caution {
+  background: #d97706;
+}
+.lca-icon-miss {
+  background: #dc2626;
 }
 
 .lca-title {
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
+}
+
+.lca-sub {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 1px;
 }
 
 .lca-company {
   font-weight: 600;
   font-size: 14px;
-  margin-bottom: 4px;
+  margin: 6px 0 2px;
 }
 
-.lca-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 4px;
-}
-
-.lca-stats span {
-  background: rgba(255, 255, 255, 0.75);
-  border-radius: 999px;
-  padding: 2px 8px;
+.lca-compare {
+  margin: 2px 0 4px;
   font-size: 12px;
+  color: #4b5563;
+}
+
+.lca-rate {
+  margin: 8px 0 4px;
+  font-size: 14px;
+}
+.lca-rate b {
+  font-size: 16px;
+  color: #16a34a;
+}
+.lca-badge.lca-caution .lca-rate b {
+  color: #b45309;
+}
+.lca-rate-sub {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lca-meta {
+  color: #6b7280;
+  font-size: 12px;
+  margin: 2px 0;
+}
+
+.lca-jobs-label {
+  margin-top: 8px;
+  font-size: 11px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #9ca3af;
 }
-
-.lca-meta,
-.lca-muted,
-.lca-foot {
-  color: #555;
-  font-size: 12px;
-}
-
-.lca-muted {
-  margin-bottom: 4px;
-}
-
 .lca-jobs {
-  margin: 8px 0 4px;
+  margin: 4px 0 4px;
   padding-left: 18px;
-  color: #333;
+  color: #374151;
 }
-
 .lca-jobs li {
   margin-bottom: 2px;
 }
 
-.lca-foot {
-  margin-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  padding-top: 6px;
-}
-
-.lca-badge.lca-caution {
-  background: linear-gradient(160deg, #fffbeb 0%, #fef3c7 100%);
-  border: 1px solid #fbbf24;
-}
-
-.lca-confidence {
-  font-size: 11px;
-  font-weight: 600;
-  margin-top: 2px;
-}
-
-.lca-confidence-high {
-  color: #15803d;
-}
-
-.lca-confidence-medium,
-.lca-confidence-low {
-  color: #b45309;
-}
-
 .lca-label {
   display: inline-block;
-  min-width: 88px;
-  color: #666;
+  color: #9ca3af;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
 
-.lca-compare {
-  margin: 4px 0;
-  font-size: 12px;
-}
-
 .lca-notes {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   padding-left: 18px;
   color: #166534;
   font-size: 11px;
 }
-
 .lca-warnings {
   margin: 8px 0 0;
   padding-left: 18px;
   color: #92400e;
   font-size: 11px;
 }
-
 .lca-warnings li {
   margin-bottom: 4px;
-}
-
-.lca-industry {
-  margin: 6px 0 4px;
-  font-size: 12px;
-  color: #334155;
 }
 
 .lca-alternatives {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid #f1f1f4;
   font-size: 11px;
 }
-
 .lca-alternatives ul {
   margin: 6px 0 0;
   padding-left: 18px;
-  color: #333;
+  color: #374151;
 }
-
 .lca-alternatives li {
   margin-bottom: 6px;
 }
-
 .lca-alt-meta {
-  color: #64748b;
+  color: #9ca3af;
   font-size: 10px;
 }
 
-.lca-alt-score {
-  color: #94a3b8;
-  font-size: 10px;
-}
-
-.lca-foot code {
-  font-size: 10px;
-  background: rgba(0, 0, 0, 0.05);
-  padding: 1px 4px;
-  border-radius: 4px;
-}
-
+/* Analyze button + inline expansion */
 .lca-analyze-btn {
   display: block;
   width: 100%;
-  margin-top: 10px;
-  padding: 8px 12px;
+  margin-top: 12px;
+  padding: 9px 12px;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(160deg, #6366f1 0%, #4f46e5 100%);
+  background: #4f46e5;
   color: #fff;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
-  transition: filter 0.15s ease;
+  transition: background 0.15s ease;
 }
-
 .lca-analyze-btn:hover {
-  filter: brightness(1.08);
+  background: #4338ca;
+}
+.lca-analyze-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
 }
 
-/* Job Intelligence panel (pinned left so it doesn't cover the LCA badge) */
-#lca-job-intelligence-panel {
-  position: fixed;
-  top: 72px;
-  left: 16px;
-  z-index: 99999;
-  width: 340px;
-  max-width: calc(100vw - 32px);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  font-size: 13px;
-  line-height: 1.45;
-  border-radius: 14px;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  padding: 14px 16px 12px;
-  color: #111;
-  background: linear-gradient(160deg, #eef2ff 0%, #f5f3ff 100%);
-  border: 1px solid #c7d2fe;
-}
-
-#lca-job-intelligence-panel.lca-panel-error {
-  background: linear-gradient(160deg, #fef2f2 0%, #fff1f2 100%);
-  border: 1px solid #fca5a5;
-}
-
-#lca-job-intelligence-panel.lca-panel-loading {
-  background: linear-gradient(160deg, #fdf4ff 0%, #faf5ff 100%);
-  border: 1px solid #e9d5ff;
-}
-
-.lca-section {
+.lca-analyze-result {
   margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.lca-section:first-of-type {
-  border-top: none;
-  padding-top: 0;
+.lca-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 12px;
+  padding: 4px 0;
 }
 
+.lca-analyze-inner {
+  border: 1px solid #e0e7ff;
+  background: #f5f6ff;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.lca-analyze-err {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.lca-ai-head {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
 .lca-beta {
   font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  background: rgba(79, 70, 229, 0.15);
+  background: rgba(79, 70, 229, 0.14);
   color: #4f46e5;
   border-radius: 999px;
   padding: 1px 6px;
   vertical-align: middle;
+}
+
+.lca-kv {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin: 2px 0;
+}
+.lca-odds-high {
+  color: #16a34a;
+}
+.lca-odds-medium {
+  color: #d97706;
+}
+.lca-odds-low {
+  color: #dc2626;
+}
+.lca-odds-unknown {
+  color: #6b7280;
+}
+
+.lca-hint {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+.lca-coming {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e7ff;
+}
+.lca-coming .lca-notes {
+  color: #4b5563;
+}
+
+.lca-foot {
+  margin-top: 10px;
+  border-top: 1px solid #f1f1f4;
+  padding-top: 6px;
+  color: #9ca3af;
+  font-size: 11px;
+}
+.lca-foot code,
+.lca-analyze-err code {
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+/* Spinner */
+.lca-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(99, 102, 241, 0.25);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  display: inline-block;
+  animation: lca-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes lca-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
