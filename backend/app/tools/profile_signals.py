@@ -104,6 +104,69 @@ def _anchor_tokens(phrase: str) -> list[str]:
     return [t for t in tokens if t not in _LOOSE_SKIP and (len(t) >= 3 or t in ("yc",))]
 
 
+def _token_in_blob(token: str, blob_lower: str) -> bool:
+    return bool(re.search(rf"\b{re.escape(token)}\b", blob_lower))
+
+
+_PAID_COMP_RE = re.compile(
+    r"\$[\d,.]+|"
+    r"\bhourly rate\b|\bpay transparency\b|\bcompensation description\b|"
+    r"\b\d+[\d,.]*\s*(?:usd|dollars)?\s*/?\s*(?:hour|hr|year|yr|annually)\b",
+    re.I,
+)
+
+
+def _has_paid_compensation(blob_lower: str) -> bool:
+    return bool(_PAID_COMP_RE.search(blob_lower))
+
+
+def _dealbreaker_phrase_hit(phrase: str, blob_lower: str) -> bool:
+    """Strict dealbreaker match — avoids «intern»/«company» substring false positives."""
+    p = (phrase or "").strip().lower()
+    if not p or not blob_lower:
+        return False
+
+    if p == "unpaid internship":
+        if _has_paid_compensation(blob_lower):
+            return False
+        if "unpaid internship" in blob_lower or "unpaid intern" in blob_lower:
+            return True
+        return _token_in_blob("unpaid", blob_lower) and bool(
+            re.search(r"\bintern(?:ship)?\b", blob_lower)
+        )
+
+    if p == "no one in the company studied in a prestigious university":
+        return (
+            _token_in_blob("prestigious", blob_lower)
+            and _token_in_blob("university", blob_lower)
+            and bool(
+                re.search(
+                    r"\b(studied|alumni|graduated|degree from|attended)\b",
+                    blob_lower,
+                )
+            )
+        )
+
+    if p in blob_lower:
+        return True
+
+    anchors = _anchor_tokens(phrase)
+    if len(anchors) >= 2:
+        return all(_token_in_blob(a, blob_lower) for a in anchors)
+    if len(anchors) == 1:
+        return _token_in_blob(anchors[0], blob_lower)
+    return False
+
+
+def _dealbreaker_hits(phrases: list[str], job_blob: str) -> tuple[int, list[str]]:
+    """Dealbreakers use strict literal rules only — no embedding (too many false positives)."""
+    if not phrases or not job_blob.strip():
+        return 0, []
+    blob_lower = job_blob.lower()
+    hits = [p for p in phrases if _dealbreaker_phrase_hit(p, blob_lower)]
+    return len(hits), hits
+
+
 def _loose_phrase_hit(phrase: str, blob_lower: str) -> bool:
     p = (phrase or "").strip().lower()
     if not p:
@@ -295,7 +358,7 @@ def evaluate_profile_signals(
     job_blob = _full_job_blob(jd, jd_text, job_title)
     loc = score_location(jd, jd_text, profile)
     pref_n, pref_hits = _semantic_phrase_hits(profile.preferences, job_blob)
-    deal_n, deal_hits = _semantic_phrase_hits(profile.dealbreakers, job_blob)
+    deal_n, deal_hits = _dealbreaker_hits(profile.dealbreakers, job_blob)
     return {
         **loc,
         "preferences_matched": pref_n,

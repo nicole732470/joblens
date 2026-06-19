@@ -11,7 +11,7 @@ import re
 
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import JDParse, SponsorshipAnalysis
-from app.tools.profile_signals import _jd_scan_blob, _semantic_phrase_hits
+from app.tools.profile_signals import _dealbreaker_hits, _jd_scan_blob, _semantic_phrase_hits
 
 _TECH_NAICS = frozenset({"51", "54"})
 _FINANCE_NAICS = frozenset({"52", "55"})
@@ -119,7 +119,7 @@ def score_company(
     if not blob.strip():
         return {"available": False, "reason": "no company or JD text"}
 
-    deal_n, deal_hits = _semantic_phrase_hits(profile.dealbreakers, blob)
+    deal_n, deal_hits = _dealbreaker_hits(profile.dealbreakers, blob)
     if deal_n > 0:
         hit = deal_hits[0][:48]
         return {
