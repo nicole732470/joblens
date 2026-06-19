@@ -90,6 +90,12 @@ flowchart TB
 
 Profile rules: [`evals/golden_set/candidate_profile.yaml`](evals/golden_set/candidate_profile.yaml)
 
+### Web (Lovable)
+
+The **website** is designed and hosted on Lovable, synced to [`vision-job-glow`](https://github.com/nicole732470/vision-job-glow). It calls the same EC2 API (`VITE_API_URL=http://3.128.164.130:8000`). See [`docs/LOVABLE.md`](docs/LOVABLE.md) and [`docs/MULTI_SURFACE.md`](docs/MULTI_SURFACE.md).
+
+Extension v3.2+ uses the same visual tokens as the Lovable web app.
+
 ---
 
 ## Quick start
@@ -370,7 +376,7 @@ Shortest path after a clean AWS account:
      -H "Content-Type: application/json" \
      -d "$(jq -n --rawfile t evals/golden_set/resume.md '{resume_text: $t}')"
    ```
-8. **Lovable** — web UI at `app.joblens.app` calling `POST /analyze` (CORS defaults to `*`)
+8. **Lovable** — web UI in [`vision-job-glow`](https://github.com/nicole732470/vision-job-glow); Publish on Lovable for `*.lovable.app` URL
 
 | Secret | Purpose |
 |--------|---------|

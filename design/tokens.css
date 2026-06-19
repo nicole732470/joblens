@@ -1,18 +1,39 @@
 /**
- * JobLens — Notion-inspired design tokens (extension + web).
- * Import or mirror these variables in each surface.
+ * JobLens design tokens — aligned with Lovable web (vision-job-glow).
+ * Extension mirrors these in styles.css; web UI lives in that repo.
  */
 :root {
   --jn-bg: #ffffff;
-  --jn-bg-subtle: #f7f6f3;
+  --jn-bg-page: #fbf9f5;
+  --jn-bg-subtle: #fbfaf6;
+  --jn-bg-warm: #f7f5f0;
   --jn-text: #37352f;
   --jn-text-secondary: #787774;
-  --jn-border: #e9e9e7;
-  --jn-border-strong: #d3d1cb;
+  --jn-text-muted: #6f6c66;
+  --jn-text-faint: #9b9a97;
+  --jn-border: #ece9e1;
+  --jn-border-input: #e6e3dc;
+  --jn-primary: #37352f;
+  --jn-primary-hover: #2f2d28;
   --jn-accent: #2383e2;
-  --jn-accent-hover: #1a6fc9;
-  --jn-radius: 6px;
-  --jn-radius-lg: 8px;
-  --jn-shadow: 0 1px 3px rgba(15, 15, 15, 0.06);
-  --jn-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  --jn-accent-soft: rgba(35, 131, 226, 0.18);
+  --jn-radius: 8px;
+  --jn-radius-lg: 14px;
+  --jn-radius-xl: 16px;
+  --jn-shadow: 0 1px 2px rgba(15, 15, 15, 0.04), 0 8px 24px -12px rgba(15, 15, 15, 0.08);
+  --jn-shadow-hero: 0 1px 2px rgba(15, 15, 15, 0.04), 0 18px 40px -20px rgba(15, 15, 15, 0.18);
+  --jn-font: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Verdict pills (vision-job-glow) */
+  --jn-verdict-apply-bg: #d8f1de;
+  --jn-verdict-apply-fg: #1c5b2e;
+  --jn-verdict-apply-ring: #bfe3c9;
+  --jn-verdict-near-bg: #dbeafe;
+  --jn-verdict-near-fg: #1e3a8a;
+  --jn-verdict-near-ring: #c7daf6;
+  --jn-verdict-consider-bg: #fff1c2;
+  --jn-verdict-consider-fg: #7a5b00;
+  --jn-verdict-consider-ring: #f3e2a0;
+  --jn-verdict-skip-bg: #fde1df;
+  --jn-verdict-skip-fg: #8a1f1c;
+  --jn-verdict-skip-ring: #f3c8c5;
 }

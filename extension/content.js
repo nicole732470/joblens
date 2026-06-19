@@ -1,9 +1,11 @@
 (function () {
-  const EXTENSION_VERSION = "3.1.0";
+  const EXTENSION_VERSION = "3.2.0";
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
   const BACKEND_URL = "http://3.128.164.130:8000";
+  // Lovable web app — set after Publish (vision-job-glow). Empty = no footer link.
+  const WEB_APP_URL = "";
   let extensionBroken = false;
 
   function extensionRuntime() {
@@ -64,9 +66,12 @@
   let lastFingerprint = null;
 
   function renderFoot(parts) {
-    const bits = (parts || []).filter(Boolean);
+    const bits = (parts || []).map((p) => escapeHtml(p)).filter(Boolean);
+    if (WEB_APP_URL) {
+      bits.push(`<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener">Open web</a>`);
+    }
     bits.push(`v${EXTENSION_VERSION}`);
-    return `<div class="lca-foot">${bits.map((p) => escapeHtml(p)).join(" · ")}</div>`;
+    return `<div class="lca-foot">${bits.join(" · ")}</div>`;
   }
 
   function isSoftRequirement(claim) {
@@ -1476,9 +1481,11 @@
 
       return `
       <div class="lca-analysis">
-        <div class="lca-verdict-row">
-          ${statusPill(meta.text, meta.tone)}
-          ${note ? `<span class="lca-verdict-note">${escapeHtml(note)}</span>` : ""}
+        <div class="lca-verdict-card">
+          <div class="lca-verdict-row">
+            ${statusPill(meta.text, meta.tone)}
+            ${note ? `<span class="lca-verdict-note">${escapeHtml(note)}</span>` : ""}
+          </div>
         </div>
         ${renderMetricsGrid(rec, co, explain, rf)}
         ${renderCompanySignals(co)}

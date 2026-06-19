@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobLens",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "JobLens — See a company before you apply. H-1B lookup + fit on LinkedIn.",
   "host_permissions": [
     "https://www.linkedin.com/*",
