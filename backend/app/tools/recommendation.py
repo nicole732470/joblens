@@ -5,64 +5,7 @@ from __future__ import annotations
 from app.schemas.candidate_profile import CandidateProfile, Track
 from app.schemas.report import JDParse, Recommendation, ResumeFitAnalysis
 from app.tools.risk_rules import _jd_sponsorship_veto
-
-# Title hints when profile example_titles don't list a variant (e.g. "Member of Technical Staff").
-_AI_TITLE_HINTS = (
-    "technical staff",
-    "member of technical staff",
-    "research engineer",
-    "applied research",
-    "ml engineer",
-    "ai engineer",
-    "software engineer",
-    "staff engineer",
-    "founding engineer",
-)
-
-
-def _title_tokens(title: str) -> set[str]:
-    return {w.lower() for w in title.replace("/", " ").replace("-", " ").split() if len(w) > 2}
-
-
-def _title_hits_track(title: str, track: Track) -> bool:
-    t = (title or "").lower()
-    if not t:
-        return False
-    needles = [track.label, *track.example_titles]
-    for needle in needles:
-        n = (needle or "").lower().strip()
-        if not n:
-            continue
-        if n in t or t in n:
-            return True
-        if _title_tokens(t) & _title_tokens(n):
-            return True
-    return False
-
-
-def _title_looks_ai_engineering(title: str) -> bool:
-    t = (title or "").lower()
-    return any(h in t for h in _AI_TITLE_HINTS)
-
-
-def _best_track(title: str, profile: CandidateProfile) -> Track | None:
-    hits = [tr for tr in profile.tracks if _title_hits_track(title, tr)]
-    if hits:
-        return min(hits, key=lambda tr: tr.priority)
-    if _title_looks_ai_engineering(title):
-        ai_tracks = [tr for tr in profile.tracks if tr.id == "ai_eng" or "ai" in tr.label.lower()]
-        if ai_tracks:
-            return min(ai_tracks, key=lambda tr: tr.priority)
-    return None
-
-
-def _avoid_track_hit(title: str, profile: CandidateProfile) -> bool:
-    for avoid in profile.avoid_tracks:
-        if _title_hits_track(title, avoid):
-            return True
-        if avoid.label.lower() in (title or "").lower():
-            return True
-    return False
+from app.tools.track_match import match_title_to_profile
 
 
 def _fit_counts(resume_fit: ResumeFitAnalysis) -> tuple[int, int, int, int, float]:
@@ -123,18 +66,30 @@ def generate_recommendation(
                 "evidence_ids": [e for e in jd_ids if e],
             }
 
-    if _avoid_track_hit(title, profile):
+    tm = match_title_to_profile(title, profile)
+    track: Track | None = tm["matched_track"]
+    track_sim: float = tm["similarity"]
+
+    if tm["avoid_match"]:
         return {
             "available": True,
             "decision": Recommendation.SKIP,
-            "reasoning": "Role type matches your avoid list in candidate profile.",
+            "reasoning": f"Title semantically matches your avoid track ({tm['avoid_label']}).",
             "evidence_ids": [],
+            "track_id": track.id if track else None,
+            "track_label": track.label if track else None,
+            "track_priority": track.priority if track else None,
+            "track_similarity": track_sim,
         }
 
     if not resume_fit.available:
         return {
             "available": False,
             "reason": resume_fit.reason or "resume fit unavailable",
+            "track_id": track.id if track else None,
+            "track_label": track.label if track else None,
+            "track_priority": track.priority if track else None,
+            "track_similarity": track_sim,
         }
 
     strong, partial, weak, pure_gap, ratio = _fit_counts(resume_fit)
@@ -142,44 +97,60 @@ def generate_recommendation(
     if total == 0:
         return {"available": False, "reason": "no requirements to score against resume"}
 
-    track = _best_track(title, profile)
-    track_note = f" Target track: {track.label} (priority {track.priority})." if track else ""
+    track_note = ""
+    if track:
+        track_note = (
+            f" Role matches your «{track.label}» track (priority {track.priority}, "
+            f"similarity {track_sim:.0%})."
+        )
 
-    if strong >= max(2, total * 0.3) and ratio >= 0.5:
+    # Priority 1–2 target roles: default to at least «apply with modifications», not Skip.
+    priority_floor = track is not None and track.priority <= 2 and track_sim >= 0.30
+
+    if strong >= max(2, total * 0.3) and ratio >= 0.48:
         decision = Recommendation.APPLY
         reasoning = (
-            f"{strong} strong, {partial} partial, {weak} weak overlap "
-            f"across {total} requirements.{track_note}"
+            f"{strong} strong, {partial} partial, {weak} weak across {total} JD requirements "
+            f"(vector fit ratio {ratio:.0%}).{track_note}"
         )
-    elif ratio >= 0.38 or (partial + weak) >= max(2, total * 0.35):
+    elif ratio >= 0.35 or (partial + weak) >= max(2, total * 0.3):
         decision = Recommendation.APPLY_WITH_MODIFICATIONS
         reasoning = (
-            f"Good role fit ({partial + weak + strong}/{total} requirements touched); "
-            f"{pure_gap} clear gap(s) — tailor resume.{track_note}"
+            f"Resume touches {strong + partial + weak}/{total} requirements "
+            f"(fit ratio {ratio:.0%}); {pure_gap} clear gap(s).{track_note}"
         )
-    elif ratio >= 0.18:
-        decision = Recommendation.LOW_PRIORITY
+    elif ratio >= 0.15 or priority_floor:
+        decision = Recommendation.LOW_PRIORITY if not priority_floor else Recommendation.APPLY_WITH_MODIFICATIONS
         reasoning = (
-            f"Limited resume overlap ({strong + partial + weak}/{total}). "
-            f"Consider if the track/location match your goals.{track_note}"
+            f"Limited vector overlap ({ratio:.0%}) but role fits your profile.{track_note}"
+            if priority_floor
+            else f"Limited overlap ({ratio:.0%}).{track_note}"
         )
     else:
         decision = Recommendation.SKIP
-        reasoning = f"Resume overlap too low ({strong + partial + weak}/{total}).{track_note}"
+        reasoning = f"Low resume–JD vector overlap ({ratio:.0%}).{track_note}"
 
-    # Priority-1 target role + AI JD → don't Skip when there's any signal.
+    if priority_floor and decision == Recommendation.SKIP:
+        decision = Recommendation.APPLY_WITH_MODIFICATIONS
+        reasoning += " Priority 1–2 track match — not skipping on title fit alone."
+
     if (
         track
         and track.priority <= 2
-        and decision in (Recommendation.SKIP, Recommendation.LOW_PRIORITY)
-        and (ratio >= 0.12 or weak + partial >= 2 or _jd_mentions_ai(jd))
+        and decision == Recommendation.LOW_PRIORITY
+        and (_jd_mentions_ai(jd) or ratio >= 0.12)
     ):
         decision = Recommendation.APPLY_WITH_MODIFICATIONS
-        reasoning += " Bumped: priority target role with relevant AI/agent JD."
+        reasoning += " Bumped: priority target + relevant AI/agent JD."
 
     return {
         "available": True,
         "decision": decision,
         "reasoning": reasoning.strip(),
         "evidence_ids": _collect_evidence_ids(resume_fit, jd),
+        "track_id": track.id if track else None,
+        "track_label": track.label if track else None,
+        "track_priority": track.priority if track else None,
+        "track_similarity": track_sim,
+        "fit_ratio": round(ratio, 3),
     }

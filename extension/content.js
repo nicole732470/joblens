@@ -537,6 +537,13 @@
       <div class="lca-section">
         <div class="lca-label">Recommendation</div>
         <div class="lca-rec ${meta.cls}">${escapeHtml(meta.text)}</div>
+        ${
+          rec.track_priority != null
+            ? `<div class="lca-hint">Track: ${escapeHtml(rec.track_label || rec.track_id || "")} · priority ${rec.track_priority}${
+                rec.track_similarity != null ? ` · ${Math.round(rec.track_similarity * 100)}% title match` : ""
+              }${rec.fit_ratio != null ? ` · ${Math.round(rec.fit_ratio * 100)}% resume fit` : ""}</div>`
+            : ""
+        }
         ${rec.reasoning ? `<div class="lca-hint">${escapeHtml(rec.reasoning)}</div>` : ""}
       </div>`;
   }

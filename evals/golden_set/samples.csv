@@ -1,4 +1,4 @@
-id,company,title,job_url,jd_text,expected_sponsors,expected_recommendation,notes
+id,company,title,job_url,jd_text,expected_sponsors,expected_priority,notes
 ex1,HERE Technologies,Technical Customer Success Manager,https://www.linkedin.com/jobs/view/4429108869/?alternateChannel=search&trackingId=6s1VnhqjRkePgjCgtWdcfw%3D%3D,"About the job
 What's the role? 
 
@@ -158,4 +158,4 @@ What you get
 
 Competitive salary + early-stage equity calibrated to what you bring
 Full benefits (health, dental, vision)
-The most leverage-per-person you will find anywhere: small team, huge market, direct line to founders and customers",not sure,
+The most leverage-per-person you will find anywhere: small team, huge market, direct line to founders and customers",unknown,

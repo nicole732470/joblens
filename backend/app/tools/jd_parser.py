@@ -7,7 +7,7 @@ reference them under the citation contract (see docs/DESIGN.md §7-8).
 
 from __future__ import annotations
 
-from app.tools.llm import complete_json, llm_available
+from app.tools.llm import complete_json_with_retry, llm_available
 
 _VALID_CATEGORIES = {
     "required_skill",
@@ -58,16 +58,10 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
         return {"available": False, "reason": "LLM not configured (set LLM_API_KEY)"}
 
     user = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n{text[:12000]}"
-    last_err: Exception | None = None
-    data = None
-    for _ in range(2):
-        try:
-            data = complete_json(_SYSTEM, user)
-            break
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-    if data is None:
-        return {"available": False, "reason": f"parse failed: {last_err}"}
+    try:
+        data = complete_json_with_retry(_SYSTEM, user, max_attempts=3, base_delay_sec=0.8)
+    except Exception as e:  # noqa: BLE001
+        return {"available": False, "reason": f"parse failed after 3 attempts: {e}"}
 
     requirements = []
     evidence = []

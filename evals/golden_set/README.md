@@ -19,16 +19,21 @@ spreadsheet). One row = one job posting you want to evaluate.
 | `title` | Job title | free text |
 | `job_url` | Link to the posting (optional) | URL or blank |
 | `jd_text` | The full job description text | free text (paste it in) |
-| `expected_sponsors` | In U.S. H-1B data? | `yes` / `no` / `not sure` / blank |
-| `expected_recommendation` | Your apply call (optional) | `apply` / `apply with modifications` / `low priority` / `skip` / `not sure` / blank |
+| `expected_sponsors` | In U.S. H-1B data? | `yes` / `no` / `unknown` / blank |
+| `expected_priority` | How much you want this role | `1`–`5` / `skip` / `unknown` / blank |
 | `notes` | Anything useful | free text |
 
-`expected_sponsors`: **yes** = employer appears in H-1B data; **no** = not found;
-**not sure** = you haven't verified — eval skips scoring that row for sponsors.
+**`expected_sponsors`:** `yes` = in H-1B data; `no` = not found; **`unknown`** = not
+verified yet (eval skips).
 
-`expected_recommendation`: your human Apply/Skip judgment (uses profile + resume +
-JD only — **not** the H-1B database). Leave blank until you've tried the job in
-the extension; use **not sure** when undecided. Values are case-insensitive.
+**`expected_priority`:** **your** priority for this job (same 1–5 scale as
+`candidate_profile.yaml` tracks). Eval compares to the system's semantic
+**track match** (`track_priority` on the report), not Apply/Skip wording.
+Use **`skip`** if you would not pursue; **`unknown`** if undecided.
+
+Sample ids: `ex1`, `ex2`, `ex3`, … — short row keys only.
+
+See **`docs/FIT_THRESHOLDS.md`** for how vector distances map to strong/partial/gap.
 
 Resume-fit, risk, and recommendation labels are intentionally left out until
 those analyses are built; we'll design those columns (including the

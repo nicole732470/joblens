@@ -8,6 +8,7 @@ is just an env change. Returns raw JSON text; callers validate against Pydantic.
 from __future__ import annotations
 
 import json
+import time
 from functools import lru_cache
 from typing import Optional
 
@@ -88,3 +89,27 @@ def complete_json(system: str, user: str, max_tokens: int = 1500) -> dict:
     if not content:
         raise ValueError("empty response from model")
     return _extract_json(content)
+
+
+def complete_json_with_retry(
+    system: str,
+    user: str,
+    *,
+    max_attempts: int = 3,
+    base_delay_sec: float = 0.8,
+    max_tokens: int = 1500,
+) -> dict:
+    """Call complete_json with exponential backoff on transient failures.
+
+    Attempts: 3 by default, delays ~0.8s, ~1.6s between tries (before last).
+    """
+    last_err: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            return complete_json(system, user, max_tokens=max_tokens)
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            if attempt < max_attempts - 1:
+                time.sleep(base_delay_sec * (2**attempt))
+    assert last_err is not None
+    raise last_err

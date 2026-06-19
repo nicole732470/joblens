@@ -140,6 +140,12 @@ class RecommendationResult(BaseModel):
     decision: Optional[Recommendation] = None
     reasoning: str = ""
     evidence_ids: list[str] = []
+    # Semantic track match (title ↔ profile), for eval + UI transparency.
+    track_id: Optional[str] = None
+    track_label: Optional[str] = None
+    track_priority: Optional[int] = None
+    track_similarity: Optional[float] = None
+    fit_ratio: Optional[float] = None
 
 
 class RiskAnalysis(BaseModel):

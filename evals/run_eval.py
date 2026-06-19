@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Evaluate the platform against the golden set.
 
-Reads golden_set/samples.csv, calls the backend /analyze for each row, and
-scores sponsorship + recommendation labels where provided.
+Reads golden_set/samples.csv, calls /analyze, scores sponsorship + priority labels.
 Stdlib only.
 
 Usage:
@@ -25,12 +24,6 @@ SAMPLES = BASE_DIR / "golden_set" / "samples.csv"
 RESUME = BASE_DIR / "golden_set" / "resume.md"
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 
-# API decision strings (from Recommendation enum).
-REC_APPLY = "Apply"
-REC_MODIFY = "Apply with modifications"
-REC_LOW = "Low priority"
-REC_SKIP = "Skip"
-
 
 def load_resume() -> str | None:
     if not RESUME.exists():
@@ -42,7 +35,6 @@ def load_resume() -> str | None:
 
 
 def read_rows() -> list[dict]:
-    """Read samples.csv, tolerating non-UTF-8 exports from Excel/Numbers."""
     raw = SAMPLES.read_bytes()
     text = None
     for enc in ("utf-8-sig", "cp1252", "latin-1"):
@@ -62,25 +54,21 @@ def norm_sponsors(raw: str) -> str:
         return "yes"
     if v in ("no", "n"):
         return "no"
-    if v in ("not sure", "not sure", "unsure", "unknown", "?"):
-        return "not_sure"
+    if v in ("unknown", "unk", "not sure", "not_sure", "unsure", "?"):
+        return "unknown"
     return ""
 
 
-def norm_recommendation(raw: str) -> str:
-    v = (raw or "").strip().lower().replace("-", " ").replace("_", " ")
-    aliases = {
-        "apply": REC_APPLY,
-        "apply with modifications": REC_MODIFY,
-        "modify": REC_MODIFY,
-        "tweak": REC_MODIFY,
-        "low priority": REC_LOW,
-        "low": REC_LOW,
-        "skip": REC_SKIP,
-        "not sure": "not_sure",
-        "unsure": "not_sure",
-    }
-    return aliases.get(v, "")
+def norm_priority(raw: str) -> str:
+    """Golden-set priority label: 1-5, skip, unknown, or blank."""
+    v = (raw or "").strip().lower().replace("_", " ")
+    if v in ("skip", "pass"):
+        return "skip"
+    if v in ("unknown", "unk", "not sure", "not_sure", "unsure", "?"):
+        return "unknown"
+    if v.isdigit() and 1 <= int(v) <= 5:
+        return v
+    return ""
 
 
 def analyze(row: dict, resume_text: str | None) -> dict:
@@ -98,7 +86,7 @@ def analyze(row: dict, resume_text: str | None) -> dict:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=180) as resp:
         return json.load(resp)
 
 
@@ -111,19 +99,11 @@ def main() -> None:
     if not rows:
         raise SystemExit("samples.csv has no rows to evaluate")
 
-    sponsors_total = 0
-    sponsors_correct = 0
-    sponsors_skipped = 0
-    rec_total = 0
-    rec_correct = 0
-    rec_skipped = 0
+    sponsors_total = sponsors_correct = sponsors_unknown = 0
+    priority_total = priority_correct = priority_unknown = 0
     errors = 0
-    fit_ran = 0
-    rec_ran = 0
-    rec_counts: dict[str, int] = {}
 
-    print(f"Evaluating {len(rows)} sample(s) against {BASE_URL}")
-    print(f"resume: {'backend default' if not resume_text else 'resume.md'}\n")
+    print(f"Evaluating {len(rows)} sample(s) against {BASE_URL}\n")
 
     for row in rows:
         rid = row.get("id") or "?"
@@ -131,87 +111,72 @@ def main() -> None:
             report = analyze(row, resume_text)
         except (urllib.error.URLError, TimeoutError) as e:
             errors += 1
-            print(f"[{rid}] ERROR calling backend: {e}")
+            print(f"[{rid}] ERROR: {e}")
             continue
 
         sp = report.get("sponsorship", {})
         matched = bool(sp.get("matched"))
-        conf = sp.get("match_confidence")
-        matched_name = (sp.get("company") or {}).get("name") if matched else None
+        detail = f"sponsors matched={matched}"
 
         expected_sp = norm_sponsors(row.get("expected_sponsors") or "")
-        verdict_parts: list[str] = []
-        if expected_sp == "not_sure":
-            sponsors_skipped += 1
-            verdict_parts.append("sponsors=not_sure (skipped)")
+        verdict: list[str] = []
+        if expected_sp == "unknown":
+            sponsors_unknown += 1
+            verdict.append("sponsors=unknown (skipped)")
         elif expected_sp in ("yes", "no"):
-            expected = expected_sp == "yes"
             sponsors_total += 1
-            ok = matched == expected
+            ok = matched == (expected_sp == "yes")
             sponsors_correct += int(ok)
-            verdict_parts.append("sponsors OK" if ok else "sponsors MISMATCH")
-
-        detail = f"matched={matched}"
-        if matched:
-            detail += f" ({matched_name}, {conf})"
-
-        rf = report.get("resume_fit") or {}
-        if rf.get("available"):
-            fit_ran += 1
-            s = len(rf.get("strong_matches") or [])
-            p = len(rf.get("partial_matches") or [])
-            m = len(rf.get("missing") or [])
-            detail += f" | fit: {s}s/{p}p/{m}g"
+            verdict.append("sponsors OK" if ok else "sponsors MISMATCH")
 
         rec = report.get("recommendation") or {}
-        if rec.get("available"):
-            rec_ran += 1
-            decision = rec.get("decision") or "?"
-            rec_counts[decision] = rec_counts.get(decision, 0) + 1
-            detail += f" | rec: {decision}"
+        if rec.get("track_priority") is not None:
+            detail += f" | track P{rec['track_priority']} ({rec.get('track_label', '?')})"
+        if rec.get("fit_ratio") is not None:
+            detail += f" | fit {rec['fit_ratio']:.0%}"
+        if rec.get("decision"):
+            detail += f" | → {rec['decision']}"
 
-        expected_rec = norm_recommendation(row.get("expected_recommendation") or "")
-        if expected_rec == "not_sure":
-            rec_skipped += 1
-            verdict_parts.append("rec=not_sure (skipped)")
-        elif expected_rec:
-            rec_total += 1
-            actual = rec.get("decision") or ""
-            if actual == expected_rec:
-                rec_correct += 1
-                verdict_parts.append("rec OK")
-            else:
-                verdict_parts.append(f"rec MISMATCH (want {expected_rec})")
+        # expected_priority column (legacy alias: expected_recommendation)
+        raw_pri = row.get("expected_priority") or row.get("expected_recommendation") or ""
+        expected_pri = norm_priority(raw_pri)
+        if expected_pri == "unknown":
+            priority_unknown += 1
+            verdict.append("priority=unknown (skipped)")
+        elif expected_pri == "skip":
+            priority_total += 1
+            ok = rec.get("decision") == "Skip"
+            priority_correct += int(ok)
+            verdict.append("priority OK" if ok else "priority MISMATCH (want skip)")
+        elif expected_pri in ("1", "2", "3", "4", "5"):
+            priority_total += 1
+            actual = rec.get("track_priority")
+            ok = actual is not None and int(actual) == int(expected_pri)
+            priority_correct += int(ok)
+            verdict.append(
+                f"priority OK" if ok else f"priority MISMATCH (want P{expected_pri}, got P{actual})"
+            )
 
         pending = report.get("pending") or []
         if pending:
-            detail += f" | pending: {','.join(pending)}"
+            detail += f" | pending:{','.join(pending)}"
 
-        verdict = f"  {' · '.join(verdict_parts)}" if verdict_parts else ""
-        print(f"[{rid}] {detail}{verdict}")
+        v = f"  {' · '.join(verdict)}" if verdict else ""
+        print(f"[{rid}] {detail}{v}")
 
     print("\n--- Summary ---")
-    print(f"samples:            {len(rows)}")
+    print(f"samples: {len(rows)}")
     if errors:
-        print(f"backend errors:     {errors}")
+        print(f"errors:  {errors}")
     if sponsors_total:
-        acc = sponsors_correct / sponsors_total
-        print(f"sponsors acc:       {sponsors_correct}/{sponsors_total} ({acc:.0%})")
-    if sponsors_skipped:
-        print(f"sponsors not_sure:  {sponsors_skipped} row(s) skipped")
-    if not sponsors_total and not sponsors_skipped:
-        print("sponsors acc:       (no yes/no labels)")
-    if fit_ran:
-        print(f"resume fit ran:     {fit_ran}/{len(rows) - errors}")
-    if rec_ran:
-        print(f"recommendation ran: {rec_ran}/{len(rows) - errors}")
-        for decision, count in sorted(rec_counts.items()):
-            print(f"  {decision}: {count}")
-    if rec_total:
-        acc = rec_correct / rec_total
-        print(f"recommendation acc: {rec_correct}/{rec_total} ({acc:.0%})")
-    if rec_skipped:
-        print(f"recommendation not_sure: {rec_skipped} row(s) skipped")
+        print(f"sponsors acc: {sponsors_correct}/{sponsors_total} ({sponsors_correct/sponsors_total:.0%})")
+    if sponsors_unknown:
+        print(f"sponsors unknown (skipped): {sponsors_unknown}")
+    if priority_total:
+        print(f"priority acc: {priority_correct}/{priority_total} ({priority_correct/priority_total:.0%})")
+    if priority_unknown:
+        print(f"priority unknown (skipped): {priority_unknown}")
+    print("\nThresholds: docs/FIT_THRESHOLDS.md")
 
 
 if __name__ == "__main__":
