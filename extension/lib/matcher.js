@@ -680,9 +680,14 @@ const LcaMatcher = (() => {
     return displayOverlap(pageName, legalName);
   }
 
+  function clearCache() {
+    SESSION_CACHE.clear();
+  }
+
   return {
     load,
     lookup,
+    clearCache,
     lookupByFein,
     normalize,
     nameOverlap,

@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.9.0";
+  const EXTENSION_VERSION = "2.9.1";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -280,15 +280,31 @@
     return cleanDisplayName(raw) || titleFromSlug(slug);
   }
 
-  function extractCompanySlugFromLinks() {
-    const links = document.querySelectorAll('a[href*="/company/"]');
+  function extractCompanySlugFromLinks(root) {
+    const scope = root || document;
+    const preferred = scope.querySelector?.(
+      'a[data-tracking-control-name="public_jobs_topcard-org-name"]'
+    );
+    if (preferred && !isInsideBadge(preferred)) {
+      const slug = slugFromCompanyHref(preferred.href);
+      if (slug && slug !== "linkedin" && slug !== "learning") {
+        return {
+          slug,
+          name: resolveDisplayName(preferred.textContent?.trim(), slug),
+        };
+      }
+    }
+
+    const links = scope.querySelectorAll?.('a[href*="/company/"]') || [];
     for (const link of links) {
+      if (isInsideBadge(link)) continue;
       const slug = slugFromCompanyHref(link.href);
       if (!slug || slug === "linkedin" || slug === "learning") continue;
       const name = resolveDisplayName(link.textContent?.trim(), slug);
       if (name) return { slug, name };
     }
     for (const link of links) {
+      if (isInsideBadge(link)) continue;
       const slug = slugFromCompanyHref(link.href);
       if (!slug || slug === "linkedin" || slug === "learning") continue;
       return { slug, name: titleFromSlug(slug) };
@@ -296,7 +312,41 @@
     return { slug: null, name: null };
   }
 
-  function extractCompanyNameFromDom(isCompanyPage) {
+  /** Right-hand job panel for currentJobId — not the first /company/ link on the page. */
+  function findActiveJobPanel() {
+    const jobId = extractJobId();
+    if (jobId) {
+      for (const sel of [`[data-job-id="${jobId}"]`, `[data-current-job-id="${jobId}"]`]) {
+        for (const el of document.querySelectorAll(sel)) {
+          if (isInsideBadge(el)) continue;
+          const panel =
+            el.closest(".jobs-search__job-details") ||
+            el.closest(".jobs-search__right-rail") ||
+            el.closest(".scaffold-layout__detail") ||
+            el.closest(".job-details-jobs-unified-top-card") ||
+            el.closest("[class*='job-details-jobs-unified-top-card']");
+          if (panel && !isInsideBadge(panel)) return panel;
+        }
+      }
+      const rail = document.querySelector(".jobs-search__job-details, .jobs-search__right-rail");
+      if (rail && !isInsideBadge(rail)) {
+        if (
+          rail.querySelector(
+            ".job-details-jobs-unified-top-card, .jobs-unified-top-card, .job-details-jobs-unified-top-card__job-title"
+          )
+        ) {
+          return rail;
+        }
+      }
+    }
+    const topCard = document.querySelector(".job-details-jobs-unified-top-card, .jobs-unified-top-card");
+    if (topCard && !isInsideBadge(topCard)) {
+      return topCard.closest(".jobs-search__job-details") || topCard;
+    }
+    return findJobDetailsRoot();
+  }
+
+  function extractCompanyNameFromDom(isCompanyPage, root) {
     const companySelectors = [
       "h1.org-top-card-summary__title",
       "h1[data-anonymize='company-name']",
@@ -313,11 +363,14 @@
     const selectors = isCompanyPage
       ? companySelectors
       : [...jobSelectors, ".artdeco-entity-lockup__subtitle"];
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      const text = el?.textContent?.trim();
-      const cleaned = cleanDisplayName(text);
-      if (cleaned) return cleaned;
+    const scopes = root ? [root] : [document];
+    for (const scope of scopes) {
+      for (const sel of selectors) {
+        const el = scope.querySelector?.(sel) || (scope === document ? document.querySelector(sel) : null);
+        const text = el?.textContent?.trim();
+        const cleaned = cleanDisplayName(text);
+        if (cleaned) return cleaned;
+      }
     }
     return null;
   }
@@ -336,14 +389,19 @@
 
     if (window.location.pathname.includes("/jobs")) {
       const jobId = extractJobId();
-      const fromLinks = extractCompanySlugFromLinks();
+      const panel = findActiveJobPanel();
+      const fromLinks = extractCompanySlugFromLinks(panel);
+      const domName = extractCompanyNameFromDom(false, panel);
       const displayName =
-        fromLinks.name || resolveDisplayName(extractCompanyNameFromDom(false), fromLinks.slug);
+        domName ||
+        fromLinks.name ||
+        resolveDisplayName(extractCompanyNameFromDom(false, null), fromLinks.slug);
       const slug = fromLinks.slug;
       const nameKey = (displayName || "unknown").toLowerCase().slice(0, 40);
       return {
         slug,
         displayName,
+        jobId,
         pageKey: jobId
           ? `job:${jobId}:${slug || "unknown"}:${nameKey}`
           : slug || displayName
@@ -469,6 +527,7 @@
       e.preventDefault();
       e.stopPropagation();
       lastFingerprint = null;
+      if (typeof LcaMatcher.clearCache === "function") LcaMatcher.clearCache();
       const out = el.querySelector(".lca-analyze-result");
       if (out) out.dataset.analyzedFor = "";
       run({ force: true });
@@ -477,7 +536,10 @@
 
   async function runAutoAnalyze(el, ctx) {
     const out = el.querySelector(".lca-analyze-result");
-    if (!out || !ctx?.pageKey) return;
+    if (!out) return;
+    const fresh = extractPageContext();
+    if (fresh.pageKey) ctx = fresh;
+    if (!ctx?.pageKey) return;
     const fp = contextFingerprint(ctx);
     if (out.dataset.analyzedFor === fp) return;
     out.dataset.analyzedFor = fp;
@@ -618,9 +680,13 @@
       ".jobs-details-top-card__job-title",
       "h1.t-24",
     ];
-    for (const sel of selectors) {
-      const text = document.querySelector(sel)?.textContent?.trim();
-      if (text) return text.replace(/\s+/g, " ");
+    const panel = findActiveJobPanel();
+    for (const scope of [panel, document]) {
+      if (!scope) continue;
+      for (const sel of selectors) {
+        const text = scope.querySelector?.(sel)?.textContent?.trim();
+        if (text) return text.replace(/\s+/g, " ");
+      }
     }
     const og = document.querySelector('meta[property="og:title"]')?.content;
     if (og) {
@@ -1069,10 +1135,11 @@
 
   /** Read follower / alumni lines from the open LinkedIn page (no backend crawl). */
   function extractLinkedInCompanySignals() {
-    const root =
+    const root = findActiveJobPanel() ||
       document.querySelector(
-        ".jobs-unified-top-card, .job-details-jobs-unified-top-card, .org-top-card, main"
-      ) || document.body;
+        ".jobs-unified-top-card, .job-details-jobs-unified-top-card, .org-top-card"
+      ) ||
+      document.body;
     const text = root.innerText || "";
 
     let followers = null;
@@ -1387,6 +1454,8 @@
     if (!out) return;
     out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Checking fit…</div>`;
     try {
+      const fresh = extractPageContext();
+      if (fresh.pageKey) ctx = fresh;
       const inputs = await gatherJobInputs(ctx);
       const report = await analyzeWithBackend(inputs);
       window.__hopLastReport = report;
