@@ -28,7 +28,7 @@ def _strip_parens(s: str) -> str:
 
 
 def _title_matches_example(job_title: str, example: str) -> bool:
-    """Phrase-level match — avoids 'system engineer' ⊂ 'systems engineer' false positives."""
+    """Phrase-level match — engineer/engineering + intern suffix tolerant."""
     j = _normalize_title(_strip_parens(job_title))
     e = _normalize_title(example)
     if not j or not e:
@@ -39,11 +39,26 @@ def _title_matches_example(job_title: str, example: str) -> bool:
         return True
     if len(j) >= 10 and re.search(rf"\b{re.escape(j)}\b", e):
         return True
+
+    def _fold(s: str) -> str:
+        s = re.sub(r"\bengineering\b", "engineer", s)
+        s = re.sub(r"\s+intern(ship)?\b", "", s).strip()
+        return re.sub(r"\s+", " ", s)
+
+    jf, ef = _fold(j), _fold(e)
+    if jf == ef:
+        return True
+    if re.search(rf"\b{re.escape(ef)}\b", jf):
+        return True
+    if len(jf) >= 8 and re.search(rf"\b{re.escape(jf)}\b", ef):
+        return True
     return False
 
 
 # Title keywords → track id (checked before embedding so JD hardware text cannot override).
 _TITLE_KEYWORD_RULES: list[tuple[str, str]] = [
+    (r"\bsolutions?\s+engineer(?:ing)?\b", "pm_eng"),
+    (r"\bsolution\s+architect\b", "pm_eng"),
     (r"\bcustomer success\b", "customer_success"),
     (r"\bcsm\b", "customer_success"),
     (r"\bapplied research engineer\b", "research_eng"),

@@ -241,16 +241,36 @@ class EntityResolver:
         shared = _intersect(page_tokens, legal_tokens)
         return len(shared) / max(len(page_tokens), len(legal_tokens))
 
-    def _passes_minimum_evidence(self, signals: dict) -> bool:
+    def _passes_minimum_evidence(self, signals: dict, ambiguity: float) -> bool:
         if signals["shared_count"] == 0:
             return False
         if signals["exact_core_match"]:
+            if signals["single_token_match"] and ambiguity > 1:
+                return False
+            if (
+                signals["single_token_match"]
+                and signals["dol_count"] > 1
+                and signals["reverse_overlap_ratio"] < 0.5
+            ):
+                return False
             return True
         if signals["subset_match"]:
+            if signals["single_token_match"] and ambiguity > 1:
+                return False
+            if (
+                signals["single_token_match"]
+                and signals["dol_count"] > 1
+                and signals["reverse_overlap_ratio"] < 0.5
+            ):
+                return False
             return True
         if signals["token_overlap_ratio"] >= 0.5 and signals["shared_count"] >= 2:
             return True
         if signals["single_token_match"] and signals["shared_count"] == 1:
+            if ambiguity > 1:
+                return False
+            if signals["dol_count"] > 1 and signals["reverse_overlap_ratio"] < 0.5:
+                return False
             return True
         return False
 
@@ -262,7 +282,7 @@ class EntityResolver:
     def _assign_confidence(
         self, signals: dict, ambiguity: float, close_alternatives: list, context: dict
     ) -> str | None:
-        if not self._passes_minimum_evidence(signals):
+        if not self._passes_minimum_evidence(signals, ambiguity):
             return None
 
         exact_core_match = signals["exact_core_match"]
@@ -455,7 +475,7 @@ class EntityResolver:
             if not profile:
                 continue
             signals = self._compute_signals(linkedin_tokens, linkedin_core_name, profile)
-            if not self._passes_minimum_evidence(signals):
+            if not self._passes_minimum_evidence(signals, global_ambiguity):
                 continue
             ranked.append(
                 {

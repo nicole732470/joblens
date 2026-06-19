@@ -1,7 +1,7 @@
 /** MV3 background — health check + resource URL helper for content scripts. */
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.info("[LCA Sponsor Checker] extension installed/updated");
+  console.info("[JobLens] extension installed/updated");
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

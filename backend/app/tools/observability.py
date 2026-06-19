@@ -15,7 +15,7 @@ from typing import Any
 
 from app.config import settings
 
-logger = logging.getLogger("hop.analyze")
+logger = logging.getLogger("joblens.analyze")
 
 _run_id: ContextVar[str | None] = ContextVar("_run_id", default=None)
 # Keyed by run_id so LangGraph thread-pool nodes still append steps.
@@ -78,7 +78,7 @@ def trace_step(name: str, **meta: Any):
             entry["error"] = error
         if rid and rid in _RUNS:
             _RUNS[rid]["steps"].append(entry)
-        logger.info("hop step=%s ms=%.1f run_id=%s %s", name, elapsed_ms, rid, meta)
+        logger.info("joblens step=%s ms=%.1f run_id=%s %s", name, elapsed_ms, rid, meta)
 
 
 def trace_snapshot(*, run_id: str | None = None, agent_meta: dict | None = None) -> dict[str, Any]:

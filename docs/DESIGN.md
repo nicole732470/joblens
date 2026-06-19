@@ -1,4 +1,4 @@
-# Project Design: Evidence-Based Visa-Aware Job Intelligence Agent
+# Project Design: JobLens — Evidence-Based Visa-Aware Job Intelligence
 
 > Design + implementation plan for evolving the H-1B Sponsorship Checker into an
 > AI job intelligence agent. Living document — update as decisions change.

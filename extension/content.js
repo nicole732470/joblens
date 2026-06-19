@@ -1,8 +1,8 @@
 (function () {
-  const EXTENSION_VERSION = "2.9.1";
-  const BADGE_ID = "lca-sponsor-checker-badge";
-  const POSITION_KEY = "lca-badge-position";
-  // Backend for the AI Job Intelligence analysis. Override for deployed envs.
+  const EXTENSION_VERSION = "3.0.0";
+  const BADGE_ID = "joblens-panel";
+  const POSITION_KEY = "joblens-panel-position";
+  // Backend for JobLens analyze. Override for deployed envs.
   const BACKEND_URL = "http://localhost:8000";
   let extensionBroken = false;
 
@@ -20,7 +20,7 @@
     const el = document.createElement("div");
     el.id = `${BADGE_ID}-broken`;
     el.textContent =
-      "Job Check extension disconnected — open chrome://extensions, reload it, then refresh this page (F5).";
+      "JobLens extension disconnected — open chrome://extensions, reload it, then refresh this page (F5).";
     el.style.cssText =
       "position:fixed;bottom:16px;right:16px;z-index:2147483647;max-width:320px;padding:12px 14px;" +
       "background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;font:13px/1.4 system-ui,sans-serif;" +
@@ -32,7 +32,7 @@
   if (!runtime?.getURL || !runtime?.id) {
     showExtensionBrokenBanner();
     console.error(
-      "[LCA Sponsor Checker] Extension APIs unavailable (chrome.runtime.getURL missing). " +
+      "[JobLens] Extension APIs unavailable (chrome.runtime.getURL missing). " +
         "Reload the extension at chrome://extensions, then refresh this LinkedIn tab."
     );
     return;
@@ -456,11 +456,10 @@
   }
 
   function renderChrome(showRefresh = true) {
-    const logo = runtime.getURL("icons/rabbit.png");
     const refreshBtn = showRefresh
       ? `<button type="button" class="lca-refresh-btn" title="Reload for this job">Refresh</button>`
       : "";
-    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><img class="lca-logo" src="${logo}" alt="" width="18" height="18" /><span class="lca-brand">Hop</span>${refreshBtn}<button type="button" class="lca-close" aria-label="Close">×</button></div>`;
+    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-mark" aria-hidden="true">JL</span><span class="lca-brand">JobLens</span>${refreshBtn}<button type="button" class="lca-close" aria-label="Close">×</button></div>`;
   }
 
   function initDrag(el) {
@@ -540,6 +539,11 @@
     const fresh = extractPageContext();
     if (fresh.pageKey) ctx = fresh;
     if (!ctx?.pageKey) return;
+    if (!canRunFitAnalysis(ctx)) {
+      out.innerHTML = renderCompanyPageAnalyzeHint();
+      out.dataset.analyzedFor = contextFingerprint(ctx);
+      return;
+    }
     const fp = contextFingerprint(ctx);
     if (out.dataset.analyzedFor === fp) return;
     out.dataset.analyzedFor = fp;
@@ -568,7 +572,64 @@
           `<div class="lca-tip-row"><span class="lca-tip-k">${escapeHtml(r.k)}</span><span class="lca-tip-v">${escapeHtml(r.v)}</span></div>`
       )
       .join("");
-    return `<div class="lca-metric-tip"><div class="lca-tip-title">${escapeHtml(title)}</div>${body}</div>`;
+    return `<div class="lca-metric-tip" role="tooltip"><div class="lca-tip-title">${escapeHtml(title)}</div>${body}</div>`;
+  }
+
+  function resetMetricTipStyle(tip) {
+    tip.style.display = "";
+    tip.style.position = "";
+    tip.style.left = "";
+    tip.style.top = "";
+    tip.style.right = "";
+    tip.style.bottom = "";
+    tip.style.transform = "";
+    tip.style.zIndex = "";
+    tip.style.maxWidth = "";
+  }
+
+  function positionMetricTip(cell, tip) {
+    tip.style.display = "block";
+    tip.style.position = "fixed";
+    tip.style.transform = "none";
+    tip.style.right = "auto";
+    tip.style.bottom = "auto";
+    tip.style.zIndex = "1000001";
+    tip.style.maxWidth = `${Math.min(280, window.innerWidth - 16)}px`;
+
+    const cellRect = cell.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    let left = cellRect.left + cellRect.width / 2 - tipRect.width / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+
+    let top = cellRect.bottom + 8;
+    if (top + tipRect.height > window.innerHeight - 8) {
+      top = cellRect.top - tipRect.height - 8;
+    }
+    top = Math.max(8, Math.min(top, window.innerHeight - tipRect.height - 8));
+
+    tip.style.left = `${Math.round(left)}px`;
+    tip.style.top = `${Math.round(top)}px`;
+  }
+
+  function wireMetricTips(root) {
+    if (!root) return;
+    root.querySelectorAll(".lca-metric.lca-has-tip").forEach((cell) => {
+      if (cell.dataset.tipWired === "1") return;
+      cell.dataset.tipWired = "1";
+      const tip = cell.querySelector(".lca-metric-tip");
+      if (!tip) return;
+
+      const show = () => {
+        resetMetricTipStyle(tip);
+        positionMetricTip(cell, tip);
+      };
+      const hide = () => resetMetricTipStyle(tip);
+
+      cell.addEventListener("mouseenter", show);
+      cell.addEventListener("focus", show);
+      cell.addEventListener("mouseleave", hide);
+      cell.addEventListener("blur", hide);
+    });
   }
 
   function renderMetricGrid(cells) {
@@ -686,7 +747,19 @@
     finishBadge(el, null);
   }
 
-  // ---- AI Job Intelligence (backend) ----
+  function isCompanyProfilePage() {
+    return Boolean(window.location.pathname.match(/^\/company\/[^/?#]+/i)) &&
+      !window.location.pathname.includes("/jobs");
+  }
+
+  function canRunFitAnalysis(ctx) {
+    if (ctx?.source === "company page" || isCompanyProfilePage()) return false;
+    return Boolean(ctx?.pageKey) && (ctx?.jobId || /\/jobs\//i.test(window.location.pathname));
+  }
+
+  function renderCompanyPageAnalyzeHint() {
+    return `<div class="lca-analyze-inner"><p class="lca-err-mini">Open a <strong>job posting</strong> (Jobs tab or search) to see Apply / Skip fit. H-1B lookup above still works on this page.</p></div>`;
+  }
 
   function extractJobTitle() {
     const selectors = [
@@ -869,7 +942,6 @@
       "[class*='jobs-details__main-content']",
       "[class*='job-details-jobs-unified-top-card']",
       ".jobs-details",
-      "main",
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
@@ -1033,6 +1105,8 @@
   }
 
   function extractJobDescriptionFromDom() {
+    if (isCompanyProfilePage()) return "";
+
     const selectors = [
       ".show-more-less-html__markup",
       "[class*='show-more-less-html__markup']",
@@ -1090,8 +1164,10 @@
   }
 
   async function captureJobDescription() {
+    if (isCompanyProfilePage()) return "";
+
     const isDirectJobView = /\/jobs\/view\/\d+/i.test(window.location.pathname);
-    const maxAttempts = isDirectJobView ? 28 : 20;
+    const maxAttempts = isDirectJobView ? 28 : 24;
     let best = "";
     let source = "dom";
 
@@ -1099,27 +1175,25 @@
       await expandJobDescription();
       const text = extractJobDescription();
       if (text.length > best.length) best = text;
-      if (best.length > 120) break;
-      await sleep(isDirectJobView ? 350 : 280);
+      if (best.length > 200) break;
+      await sleep(isDirectJobView ? 350 : 300);
     }
 
-    if (best.length < 40) {
+    if (best.length < 200) {
       const retry = extractFromJobPanelHeuristic();
       if (retry.length > best.length) best = retry;
     }
 
-    if (best.length < 40) {
-      const jobId = extractJobId();
-      if (jobId) {
-        const apiText = await fetchJobDescriptionFromApi(jobId);
-        if (apiText.length > best.length) {
-          best = apiText;
-          source = "api";
-        }
+    const jobId = extractJobId();
+    if (jobId && best.length < 400) {
+      const apiText = await fetchJobDescriptionFromApi(jobId);
+      if (apiText.length > best.length) {
+        best = apiText;
+        source = "api";
       }
     }
 
-    console.info("[Hop] JD capture:", best.length, "chars via", source);
+    console.info("[JobLens] JD capture:", best.length, "chars via", source);
     return best;
   }
 
@@ -1265,20 +1339,14 @@
       const partial = buckets?.partial.length ?? 0;
       const weak = buckets?.weak.length ?? 0;
       const gaps = buckets?.gaps.length ?? 0;
-      const total = strong + partial + weak + gaps;
       const resumeTip = [
-        { k: "Fit ratio", v: `${Math.round(rec.fit_ratio * 100)}%` },
-        { k: "Match", v: rf?.match_method === "llm" ? "LLM + RAG" : rf?.match_method === "vector" ? "Vector only" : "—" },
-        { k: "Strong", v: String(strong) },
-        { k: "Partial", v: String(partial) },
-        { k: "Gaps", v: String(gaps) },
+        { k: "Fit", v: `${Math.round(rec.fit_ratio * 100)}%` },
+        { k: "Method", v: rf?.match_method === "llm" ? "LLM + RAG" : rf?.match_method === "vector" ? "Vector" : "—" },
+        {
+          k: "Counts",
+          v: `S${strong} · P${partial}${weak ? ` · W${weak}` : ""} · G${gaps}`,
+        },
       ];
-      if (total > 0) {
-        resumeTip.push({
-          k: "Formula",
-          v: `(strong + ½×partial + 0.3×weak) / ${total}`,
-        });
-      }
       cells.push({
         val: `${Math.round(rec.fit_ratio * 100)}%`,
         lbl: "Resume",
@@ -1385,13 +1453,11 @@
   };
 
   function renderAnalysisBlock(rec, rf, co, explain) {
-    if (!rec?.available && !rf?.available) return "";
-    if (!rec?.available) return "";
+    if (rec?.available) {
+      const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", tone: "consider" };
+      const note = buildVerdictNote(rec);
 
-    const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", tone: "consider" };
-    const note = buildVerdictNote(rec);
-
-    return `
+      return `
       <div class="lca-analysis">
         <div class="lca-verdict-row">
           ${statusPill(meta.text, meta.tone)}
@@ -1400,6 +1466,22 @@
         ${renderMetricsGrid(rec, co, explain, rf)}
         ${renderCompanySignals(co)}
       </div>`;
+    }
+
+    if (co?.available) {
+      const cells = [];
+      if (co.company_tier != null) {
+        cells.push({
+          lbl: "Company",
+          val: `P${co.company_tier}`,
+          tipTitle: "Company fit",
+          tip: [{ k: "Label", v: co.company_label || `P${co.company_tier}` }],
+        });
+      }
+      return `<div class="lca-analysis">${cells.length ? renderMetricGrid(cells) : ""}${renderCompanySignals(co)}</div>`;
+    }
+
+    return "";
   }
 
   function renderRiskSection(risk) {
@@ -1435,14 +1517,17 @@
 
   function shortJdError(chars, jd) {
     if (typeof chars === "number" && chars < 40) {
-      return `Expand the description on LinkedIn, wait a moment, then Retry.`;
+      return `Expand the job description on LinkedIn (click Show more), wait a moment, then Retry.`;
     }
     const reason = jd?.reason || "";
-    if (!reason) return "";
+    if (!reason) return "Could not parse job requirements — expand the JD and Retry.";
     const r = reason.toLowerCase();
     if (r.includes("no job description")) return "No job text sent to server.";
     if (r.includes("llm not configured")) return "Server LLM not configured.";
     if (r.includes("parse failed")) return "Server parse failed — Retry.";
+    if (r.includes("no requirements extracted")) {
+      return "Could not read job requirements — open the full posting, expand description, Retry.";
+    }
     return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
   }
 
@@ -1472,17 +1557,27 @@
 
   async function runAnalysis(out, ctx) {
     if (!out) return;
+    const fresh = extractPageContext();
+    if (fresh.pageKey) ctx = fresh;
+    if (!canRunFitAnalysis(ctx)) {
+      out.innerHTML = renderCompanyPageAnalyzeHint();
+      return;
+    }
     out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Checking fit…</div>`;
     try {
-      const fresh = extractPageContext();
-      if (fresh.pageKey) ctx = fresh;
       const inputs = await gatherJobInputs(ctx);
+      if ((inputs.jd_text || "").length < 80) {
+        out.innerHTML = `<div class="lca-analyze-inner">${renderCaptureMeta(inputs.jd_text?.length || 0, inputs.captureProbe)}<p class="lca-err-mini">Job description not loaded yet — expand it on LinkedIn, wait 2–3 seconds, then click <strong>Refresh</strong>.</p></div>`;
+        out.dataset.analyzedFor = "";
+        return;
+      }
       const report = await analyzeWithBackend(inputs);
-      window.__hopLastReport = report;
-      console.debug("[Hop] explain:", report.explain);
+      window.__jobLensLastReport = report;
+      console.debug("[JobLens] explain:", report.explain);
       out.innerHTML = renderAnalysisInline(report, inputs.captureProbe);
+      wireMetricTips(out);
     } catch (err) {
-      console.error("[Job Intelligence]", err);
+      console.error("[JobLens]", err);
       out.innerHTML = renderAnalysisErrorInline(err);
       out.dataset.analyzedFor = "";
     }
@@ -1517,7 +1612,7 @@
       if (result) renderBadge(result, ctx);
       else renderMiss(ctx);
     } catch (err) {
-      console.error("[LCA Sponsor Checker]", err);
+      console.error("[JobLens]", err);
       const el = ensureBadge();
       el.className = "lca-badge lca-miss";
       const hint =

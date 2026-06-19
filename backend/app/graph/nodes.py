@@ -67,7 +67,13 @@ def node_parse_jd(state: dict) -> dict:
 def route_after_parse(state: dict) -> str:
     jd = state.get("jd") or {}
     attempts = int(state.get("parse_attempts") or 0)
-    if not jd.get("available") and attempts < 3:
+    missing_reqs = not (jd.get("requirements") or [])
+    if not jd.get("available") and attempts < 2:
+        reason = (jd.get("reason") or "").lower()
+        if "no requirements extracted" in reason or "no job description" in reason:
+            return "continue"
+        return "retry_parse"
+    if jd.get("available") and missing_reqs and attempts < 2:
         return "retry_parse"
     return "continue"
 
@@ -95,7 +101,8 @@ def node_fill_gaps(state: dict) -> dict:
         elif "sponsorship" not in arts:
             set_artifact("sponsorship", {"matched": False, "reason": "no company"})
 
-        if "jd" not in arts or not (arts.get("jd") or {}).get("available"):
+        jd_art = arts.get("jd") or {}
+        if not jd_art.get("available") or not (jd_art.get("requirements") or []):
             parse_jd_structured.invoke({"jd_text": jd_text, "title": title})
 
         if resume and ("resume_fit" not in arts or not arts.get("resume_fit", {}).get("available")):
@@ -136,8 +143,9 @@ def route_after_agent(state: dict) -> str:
 
 
 def route_agent_or_fill(state: dict) -> str:
+    from app.config import settings
     from app.tools.llm import llm_available
 
-    if llm_available():
+    if settings.use_react_agent and llm_available():
         return "react_agent"
     return "fill_gaps"

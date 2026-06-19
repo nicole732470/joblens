@@ -12,9 +12,14 @@ from app.tools.profile_signals import _anchor_tokens, _jd_scan_blob
 _RESEARCH_JD_RE = re.compile(
     r"\b("
     r"research scientist|research scientists|research engineering team|"
-    r"research breakthroughs|alongside research|ph\.?\s*d\.?|doctoral|"
-    r"publications|frontier ai research|embed in our ai team"
+    r"ph\.?\s*d\.?|doctoral|publications required|publish research|"
+    r"frontier ai research"
     r")\b",
+    re.I,
+)
+
+_SOLUTION_ENG_TITLE_RE = re.compile(
+    r"\b(solutions?\s+engineer(?:ing)?|solution\s+architect|forward\s+deployed)\b",
     re.I,
 )
 
@@ -99,17 +104,25 @@ def apply_jd_role_adjustments(
     track = matched_track
     priority = track.priority
 
+    # Solution / forward-deployed eng titles stay in product track even when JD
+    # mentions collaborating with research or "research problems" in passing.
+    if _SOLUTION_ENG_TITLE_RE.search(title_l) and track.id in ("ai_eng", "research_eng", "sde_eng"):
+        alt = _find_track(profile, "pm_eng")
+        if alt:
+            return alt, alt.priority, reasons
+
     # Title says research but landed on builder AI (embedding drift).
     if track.id == "ai_eng" and (
         "research engineer" in title_l
         or "applied research" in title_l
         or _RESEARCH_JD_RE.search(blob)
     ):
-        alt = _find_track(profile, "research_eng")
-        if alt:
-            track = alt
-            priority = alt.priority
-            reasons.append("research-path JD")
+        if not _SOLUTION_ENG_TITLE_RE.search(title_l):
+            alt = _find_track(profile, "research_eng")
+            if alt:
+                track = alt
+                priority = alt.priority
+                reasons.append("research-path JD")
 
     # Title or JD is customer success but matched product / AI.
     elif track.id in ("pm_eng", "ai_eng") and (
@@ -123,8 +136,9 @@ def apply_jd_role_adjustments(
 
     # Builder AI title + research-heavy JD without research in title.
     elif track.id == "ai_eng" and _RESEARCH_JD_RE.search(blob):
-        priority = max(priority, 4)
-        reasons.append("research-heavy JD")
+        if not _SOLUTION_ENG_TITLE_RE.search(title_l):
+            priority = max(priority, 4)
+            reasons.append("research-heavy JD")
 
     # Analyst title family + HPC/GPU core JD → floor at P4 (triggers Skip).
     elif track.id == "business_analyst":

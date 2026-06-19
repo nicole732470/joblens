@@ -131,7 +131,7 @@ const LcaMatcher = (() => {
     const rt = globalThis.chrome?.runtime ?? globalThis.browser?.runtime;
     if (!rt?.sendMessage) {
       throw new Error(
-        "Extension disconnected — open chrome://extensions, click Reload on Job Check, then refresh this LinkedIn tab (F5)."
+        "Extension disconnected — open chrome://extensions, click Reload on JobLens, then refresh this LinkedIn tab (F5)."
       );
     }
     return new Promise((resolve, reject) => {
@@ -385,12 +385,37 @@ const LcaMatcher = (() => {
     return shared.size / Math.max(pageTokens.size, legalTokens.size);
   }
 
-  function passesMinimumEvidence(signals) {
+  function passesMinimumEvidence(signals, ambiguity) {
     if (signals.shared_count === 0) return false;
-    if (signals.exact_core_match) return true;
-    if (signals.subset_match) return true;
+    if (signals.exact_core_match) {
+      // "Salt AI" → core "salt" must not exact-match unrelated multi-token DOL names.
+      if (signals.single_token_match && ambiguity > 1) return false;
+      if (
+        signals.single_token_match &&
+        signals.dol_count > 1 &&
+        signals.reverse_overlap_ratio < 0.5
+      ) {
+        return false;
+      }
+      return true;
+    }
+    if (signals.subset_match) {
+      if (signals.single_token_match && ambiguity > 1) return false;
+      if (
+        signals.single_token_match &&
+        signals.dol_count > 1 &&
+        signals.reverse_overlap_ratio < 0.5
+      ) {
+        return false;
+      }
+      return true;
+    }
     if (signals.token_overlap_ratio >= 0.5 && signals.shared_count >= 2) return true;
-    if (signals.single_token_match && signals.shared_count === 1) return true;
+    if (signals.single_token_match && signals.shared_count === 1) {
+      if (ambiguity > 1) return false;
+      if (signals.dol_count > 1 && signals.reverse_overlap_ratio < 0.5) return false;
+      return true;
+    }
     return false;
   }
 
@@ -402,7 +427,7 @@ const LcaMatcher = (() => {
   }
 
   function assignConfidence(signals, ambiguity, closeAlternatives, context) {
-    if (!passesMinimumEvidence(signals)) return null;
+    if (!passesMinimumEvidence(signals, ambiguity)) return null;
 
     const {
       exact_core_match,
@@ -635,7 +660,7 @@ const LcaMatcher = (() => {
       const profile = employerProfiles.get(fein);
       if (!profile) continue;
       const signals = computeSignals(linkedInTokens, linkedInCoreName, profile);
-      if (!passesMinimumEvidence(signals)) continue;
+      if (!passesMinimumEvidence(signals, globalAmbiguity)) continue;
       ranked.push({
         profile,
         signals,

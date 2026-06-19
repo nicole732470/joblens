@@ -13,7 +13,7 @@ from app.tools.analyze_tools import ANALYZE_TOOLS
 from app.tools.llm_chat import get_chat_model
 from app.tools.observability import trace_step
 
-_AGENT_SYSTEM = """You are Hop's job-analysis agent. You MUST complete a full analysis by calling tools.
+_AGENT_SYSTEM = """You are JobLens's job-analysis agent. You MUST complete a full analysis by calling tools.
 
 Workflow (call each required tool once, in order):
 1. lookup_h1b_sponsorship — if company name is provided

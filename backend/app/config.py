@@ -32,13 +32,16 @@ class Settings(BaseSettings):
     # Resume fit: auto tries LLM after RAG retrieval, falls back to vector thresholds.
     resume_fit_method: str = "auto"  # auto | llm | vector
 
+    # ReAct tool-calling agent adds latency and can loop on free models; fill_gaps is reliable.
+    use_react_agent: bool = False
+
     # Observability
     trace_dir: str = "logs/traces"
     langsmith_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("LANGCHAIN_API_KEY", "LANGSMITH_API_KEY"),
     )
-    langsmith_project: str = "hop-analyze"
+    langsmith_project: str = "joblens-analyze"
 
 
 settings = Settings()

@@ -8,10 +8,11 @@ from app.schemas.candidate_profile import Track
 from app.schemas.report import JDParse, ResumeFitAnalysis, Claim
 from app.tools.role_priority import (
     _strict_phrase_hit,
+    apply_jd_role_adjustments,
     apply_resume_priority_adjustment,
     apply_technical_penalties,
 )
-from app.tools.track_match import _keyword_track_from_title
+from app.tools.track_match import _exact_track_match, _keyword_track_from_title, _title_matches_example
 
 
 def _minimal_profile(tracks: list[Track], penalties: list[str] | None = None):
@@ -58,6 +59,50 @@ class TitleKeywordTests(unittest.TestCase):
         self.assertIsNotNone(tr)
         assert tr is not None
         self.assertEqual(tr.id, "research_eng")
+
+
+class SolutionEngineerTitleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.profile = _minimal_profile(
+            [
+                Track(
+                    id="pm_eng",
+                    label="product roles",
+                    priority=1,
+                    example_titles=["Solution Engineer", "Product Engineer"],
+                ),
+                Track(id="research_eng", label="Research", priority=4, example_titles=["Research Engineer"]),
+                Track(id="ai_eng", label="AI Engineer", priority=1, example_titles=["AI Engineer"]),
+            ]
+        )
+
+    def test_intern_title_matches_solution_engineer_example(self) -> None:
+        self.assertTrue(_title_matches_example("Solution Engineering Intern", "Solution Engineer"))
+        tr, sim = _exact_track_match("Solution Engineering Intern", self.profile)
+        self.assertIsNotNone(tr)
+        assert tr is not None
+        self.assertEqual(tr.id, "pm_eng")
+        self.assertEqual(sim, 1.0)
+
+    def test_keyword_solution_engineering_intern(self) -> None:
+        tr = _keyword_track_from_title("Solution Engineering Intern", self.profile)
+        self.assertIsNotNone(tr)
+        assert tr is not None
+        self.assertEqual(tr.id, "pm_eng")
+
+    def test_research_jd_does_not_flip_solution_intern_to_research(self) -> None:
+        pm = self.profile.tracks[0]
+        jd = JDParse(available=True, requirements=[])
+        blob = (
+            "Build prototypes with customers. Collaborate with research on ML models. "
+            "Exposure to research papers."
+        )
+        track, priority, reasons = apply_jd_role_adjustments(
+            pm, "Solution Engineering Intern", jd, blob, self.profile
+        )
+        self.assertEqual(track.id, "pm_eng")
+        self.assertEqual(priority, 1)
+        self.assertEqual(reasons, [])
 
 
 class TechnicalPenaltyTests(unittest.TestCase):

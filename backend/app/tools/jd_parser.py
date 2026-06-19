@@ -54,7 +54,13 @@ def _clean_str(v) -> str:
 _VISA_RE = re.compile(r"sponsorship|visa|h-1b|h1b|work authorization|authorized to work", re.I)
 _SKILL_HINT = re.compile(
     r"\b(python|java|javascript|typescript|react|aws|sql|kubernetes|docker|"
-    r"machine learning|llm|pytorch|tensorflow|c\+\+|go\b|rust\b|scala)\b",
+    r"machine learning|llm|pytorch|tensorflow|c\+\+|go\b|rust\b|scala|"
+    r"orchestrat|workflow|prototype|api\b|backend|frontend|data)\b",
+    re.I,
+)
+_REQISH_HINT = re.compile(
+    r"\b(required|must|minimum|qualification|proficiency|experience|years?|"
+    r"responsible for|you will|you'll|ability to|preferred|bachelor|master|degree)\b",
     re.I,
 )
 
@@ -97,6 +103,29 @@ def _build_parse_result(requirements: list[dict], visa_language: list[str], risk
     }
 
 
+def _add_requirement(
+    requirements: list[dict],
+    seen: set[str],
+    text: str,
+    *,
+    quote: str | None = None,
+) -> None:
+    clean = re.sub(r"^[\s•\-\*●▪\d.)]+", "", text).strip()
+    key = clean.lower()
+    if len(clean) < 8 or key in seen:
+        return
+    seen.add(key)
+    idx = len(requirements) + 1
+    requirements.append(
+        {
+            "id": f"jd_req_{idx:02d}",
+            "category": _categorize_fallback(clean),
+            "text": clean[:180],
+            "evidence_quote": (quote or clean)[:120],
+        }
+    )
+
+
 def _fallback_parse(jd_text: str) -> dict | None:
     """Rule-based parse when LLM is down or returns garbage. Needs real JD text."""
     text = (jd_text or "").strip()
@@ -108,54 +137,30 @@ def _fallback_parse(jd_text: str) -> dict | None:
     visa_language: list[str] = []
     risk_keywords: list[str] = []
 
-    for raw_line in text.splitlines():
+    # Normalize LinkedIn prose: split on bullets / numbered lists embedded in one line.
+    normalized = re.sub(r"\s*([•●▪])\s*", r"\n\1 ", text)
+    normalized = re.sub(r"\s+(\d+[.)]\s+)", r"\n\1", normalized)
+
+    for raw_line in normalized.splitlines():
         line = raw_line.strip()
-        if len(line) < 10 or len(line) > 280:
+        if len(line) < 8 or len(line) > 320:
             continue
         is_bullet = bool(re.match(r"^[\s•\-\*●▪]+", line)) or bool(re.match(r"^\d+[.)]\s+", line))
-        is_reqish = is_bullet or any(
-            k in line.lower()
-            for k in ("required", "must ", "years of", "experience with", "proficiency", "qualification")
-        )
+        is_reqish = is_bullet or _REQISH_HINT.search(line) or _SKILL_HINT.search(line)
         if not is_reqish:
             if _VISA_RE.search(line) and line not in visa_language:
                 visa_language.append(line[:200])
             continue
-        clean = re.sub(r"^[\s•\-\*●▪\d.)]+", "", line).strip()
-        key = clean.lower()
-        if not clean or key in seen:
-            continue
-        seen.add(key)
-        idx = len(requirements) + 1
-        requirements.append(
-            {
-                "id": f"jd_req_{idx:02d}",
-                "category": _categorize_fallback(clean),
-                "text": clean[:180],
-                "evidence_quote": clean[:120],
-            }
-        )
+        _add_requirement(requirements, seen, line, quote=line)
 
-    if len(requirements) < 2 and len(text) > 120:
-        for sent in re.split(r"[.;\n]+", text):
+    if len(requirements) < 3 and len(text) > 80:
+        for sent in re.split(r"(?<=[.!?])\s+|[;\n]+", text):
             sent = sent.strip()
-            if len(sent) < 20 or len(sent) > 200:
+            if len(sent) < 16 or len(sent) > 240:
                 continue
-            if not (_SKILL_HINT.search(sent) or re.search(r"\d+\+?\s*years", sent, re.I)):
+            if not (_REQISH_HINT.search(sent) or _SKILL_HINT.search(sent)):
                 continue
-            key = sent.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            idx = len(requirements) + 1
-            requirements.append(
-                {
-                    "id": f"jd_req_{idx:02d}",
-                    "category": _categorize_fallback(sent),
-                    "text": sent[:180],
-                    "evidence_quote": sent[:120],
-                }
-            )
+            _add_requirement(requirements, seen, sent, quote=sent)
             if len(requirements) >= 12:
                 break
 
@@ -243,5 +248,14 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
             ),
         }
 
-    return _format_llm_result(data)
+    result = _format_llm_result(data)
+    if not result.get("requirements"):
+        fb = _fallback_parse(text)
+        if fb:
+            return fb
+        return {
+            "available": False,
+            "reason": "no requirements extracted from JD — click Analyze again",
+        }
+    return result
 

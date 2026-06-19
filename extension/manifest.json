@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Hop",
-  "version": "2.10.0",
-  "description": "Hop — H-1B + apply/skip signals on LinkedIn jobs.",
+  "name": "JobLens",
+  "version": "3.0.0",
+  "description": "JobLens — See a company before you apply. H-1B lookup + fit on LinkedIn.",
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://linkedin.com/*",
@@ -22,7 +22,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["data/employers.json.gz", "icons/rabbit.png"],
+      "resources": ["data/employers.json.gz"],
       "matches": ["https://www.linkedin.com/*", "https://linkedin.com/*"]
     }
   ],

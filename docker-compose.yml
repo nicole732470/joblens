@@ -34,7 +34,7 @@ services:
       RESUME_FIT_METHOD: ${RESUME_FIT_METHOD:-auto}
       TRACE_DIR: /app/logs/traces
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
-      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-hop-analyze}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-joblens-analyze}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

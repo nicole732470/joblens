@@ -1,14 +1,14 @@
-# Hop — LinkedIn Job Intelligence
+# JobLens — See a company before you apply.
 
 Chrome extension + FastAPI backend for **evidence-based job decisions** on LinkedIn: DOL H-1B employer lookup (offline) and **Apply / Near apply / Consider / Skip** from your profile, JD, and resume.
 
-> Repo name is still [`lca-linkedin-checker`](https://github.com/nicole732470/lca-linkedin-checker); the product UI is **Hop** (extension v2.10+).
+> Product: **JobLens** · Repo: [`joblens`](https://github.com/nicole732470/joblens) · Extension v3.0+
 
 ---
 
 ## What this project is for
 
-Hop is a **real product** (LinkedIn panel) and an **AI-engineering portfolio**:
+JobLens is a **real product** (LinkedIn panel) and an **AI-engineering portfolio**:
 
 | Goal | What you demonstrate |
 |------|----------------------|
@@ -33,31 +33,31 @@ flowchart TB
     RES[Resume text]
   end
 
-  subgraph llm_chat["LLM chat (OpenRouter)"]
+  subgraph llm_chat["LLM chat via OpenRouter"]
     PARSE[parse_job_description]
     CLASSIFY[classify_requirements_llm]
   end
 
-  subgraph embed["Embeddings API (same OpenRouter key)"]
+  subgraph embed["Embeddings API same key"]
     EJD[Embed JD requirement queries]
     ERES[Embed resume chunks]
-    ETITLE[Embed job title ↔ profile tracks]
+    ETITLE[Embed job title vs profile tracks]
   end
 
-  subgraph pg["Postgres + pgvector"]
+  subgraph pg["Postgres plus pgvector"]
     STORE[(resume_chunks)]
   end
 
   subgraph rules["Deterministic rules"]
-    REC[Apply / Near apply / Consider / Skip]
+    REC[Apply Near apply Consider Skip]
   end
 
   JD --> PARSE
-  PARSE -->|requirements[]| EJD
+  PARSE -->|"requirements list"| EJD
   RES --> ERES --> STORE
   EJD --> STORE
-  STORE -->|top-k chunks| CLASSIFY
-  CLASSIFY -->|strong / partial / missing| REC
+  STORE -->|"top-k chunks"| CLASSIFY
+  CLASSIFY -->|"strong partial missing"| REC
   ETITLE --> REC
   PARSE --> REC
 ```
@@ -97,8 +97,8 @@ Profile rules: [`evals/golden_set/candidate_profile.yaml`](evals/golden_set/cand
 ### 1. Extension (H-1B offline)
 
 ```bash
-git clone https://github.com/nicole732470/lca-linkedin-checker.git
-cd lca-linkedin-checker
+git clone https://github.com/nicole732470/joblens.git
+cd joblens
 ```
 
 Chrome → `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`
@@ -140,49 +140,49 @@ cd evals && python3 run_eval.py
 
 ```mermaid
 flowchart LR
-  subgraph browser["Chrome · Hop"]
+  subgraph browser["Chrome JobLens extension"]
     EXT[content.js]
-    MAT[matcher.js + employers.json.gz]
+    MAT[matcher.js and employers.json.gz]
     EXT --> MAT
   end
 
-  subgraph server["Docker · FastAPI"]
-    LG[LangGraph]
+  subgraph server["Docker FastAPI"]
+    LG[LangGraph workflow]
     AGENT[ReAct agent]
     LG --> AGENT
-    AGENT -->|tool calls| TOOLS[6 analyze tools]
-    PG[(Postgres + pgvector)]
+    AGENT -->|"tool calls"| TOOLS[6 analyze tools]
+    PG[(Postgres pgvector)]
     TOOLS --> PG
     TR[logs/traces]
     LG --> TR
   end
 
-  EXT -->|JD + resume + signals| LG
-  LG -->|Report + explain| EXT
-  OR[OpenRouter] -->|chat + embeddings| LG
+  EXT -->|"JD resume signals"| LG
+  LG -->|"Report and explain"| EXT
+  OR[OpenRouter] -->|"chat and embeddings"| LG
 ```
 
 ### `/analyze` pipeline (LangGraph)
 
 ```mermaid
 flowchart TD
-  PREP[prepare: resolve resume + profile]
-  PREP --> FAN{parallel}
-  FAN --> H1B[sponsorship_lookup]
-  FAN --> JD[parse_jd]
+  PREP["prepare resume and profile"]
+  PREP --> FAN{{"parallel prefetch"}}
+  FAN --> H1B[sponsorship lookup]
+  FAN --> JD[parse jd]
   H1B --> JOIN[join]
   JD --> JOIN
-  JOIN -->|parse failed, attempts < 3| JD
-  JOIN -->|ok| ROUTE{LLM key?}
-  ROUTE -->|yes| REACT[ReAct agent: LLM picks tools]
-  ROUTE -->|no| FILL[fill_gaps: deterministic tools]
-  REACT -->|missing steps| FILL
+  JOIN -->|"parse failed retry up to 3x"| JD
+  JOIN -->|"ok"| ROUTE{{"LLM key?"}}
+  ROUTE -->|yes| REACT["ReAct agent picks tools"]
+  ROUTE -->|no| FILL["fill_gaps deterministic"]
+  REACT -->|"missing steps"| FILL
   REACT -->|complete| ASM[assemble Report]
   FILL --> ASM
   ASM --> TRACE[persist trace JSON]
 ```
 
-**ReAct agent** (`langgraph.prebuilt.create_react_agent`) binds 6 tools. The LLM decides call order and passes JSON between tools. If the agent skips a step or no API key, **`fill_gaps`** runs the same tools deterministically.
+**ReAct agent** (`create_react_agent`) binds 6 tools. The LLM chooses call order; each tool writes results to an **artifacts cache** (keyed by `run_id`). If the agent skips a step or there is no API key, **`fill_gaps`** runs the same tools in fixed order.
 
 **Tools:** `lookup_h1b_sponsorship`, `parse_jd_structured`, `score_resume_against_jd`, `score_company_fit`, `assess_job_risks`, `recommend_apply_skip`.
 
@@ -198,7 +198,56 @@ curl http://localhost:8000/observability/traces/{run_id}
 
 Optional **LangSmith**: set `LANGCHAIN_API_KEY` in `.env` — tracing auto-enables at startup.
 
-*(MCP wrapper not implemented — not required for Hop.)*
+*(MCP wrapper not implemented — not required for JobLens.)*
+
+---
+
+## API routes
+
+| Route | Purpose |
+|-------|---------|
+| `GET /health` | DB, profile, LLM, orchestration status |
+| `POST /analyze` | Full job report (extension calls this) |
+| `GET /candidate-profile` | Loaded YAML profile (debug) |
+| `POST /resume/index` | Chunk + embed resume into pgvector |
+| `GET /tools` | List ReAct / analyze tools |
+| `POST /tools/{name}` | Invoke one tool directly (debug) |
+| `GET /observability/traces` | List recent analyze traces |
+| `GET /observability/traces/{run_id}` | Full trace JSON for one run |
+
+---
+
+## H-1B (extension, offline)
+
+LinkedIn company name ≠ DOL legal name. The extension matches against `employers.json.gz` **before** calling the backend.
+
+| Pill | Meaning |
+|------|---------|
+| **H-1B sponsor** | Strong entity match or high filing volume |
+| **Likely / Possible sponsor** | Weaker name evidence — verify manually |
+| **No H-1B record** | No reliable DOL match |
+
+Implementation: [`extension/lib/matcher.js`](extension/lib/matcher.js). Rebuild index: [`data-pipeline/`](data-pipeline/).
+
+**Important:** H-1B only answers “does this company file?” — **never** drives Apply/Skip.
+
+---
+
+## Glossary (terms in this repo)
+
+| Term | Meaning |
+|------|---------|
+| **RAG** | Retrieve resume chunks by vector similarity, then judge fit |
+| **Embedding / vector** | Numeric representation of text meaning; used for search |
+| **LLM** | Chat model — parses JD, classifies resume fit, drives ReAct agent |
+| **LangGraph** | Orchestrates `/analyze` as nodes with branching and retries |
+| **ReAct** | LLM loop that **reasons** then **calls tools** |
+| **Tool** | One function the agent can invoke (parse JD, score resume, …) |
+| **Artifacts** | Cached intermediate results per analyze run (`run_id`) |
+| **fill_gaps** | Deterministic fallback if ReAct skips steps |
+| **Trace** | Per-run log (`logs/traces/*.json`) with step timings |
+| **Golden set** | Labeled JDs in `evals/golden_set/` for regression eval |
+| **Profile** | Your rules in `candidate_profile.yaml` (tracks, dealbreakers, …) |
 
 ---
 
@@ -217,7 +266,7 @@ Optional **LangSmith**: set `LANGCHAIN_API_KEY` in `.env` — tracing auto-enabl
 
 ```
 .
-├── extension/              # Hop Chrome MV3
+├── extension/              # JobLens Chrome MV3
 ├── backend/
 │   ├── app/
 │   │   ├── graph/          # LangGraph workflow
@@ -227,6 +276,7 @@ Optional **LangSmith**: set `LANGCHAIN_API_KEY` in `.env` — tracing auto-enabl
 ├── evals/                  # Golden set + run_eval.py
 ├── data-pipeline/          # DOL Excel → employers.json.gz
 ├── docs/                   # Design, thresholds, report schema
+├── logs/traces/            # Per-run analyze JSON (gitignored except .gitkeep)
 └── docker-compose.yml
 ```
 
@@ -253,18 +303,32 @@ Optional **LangSmith**: set `LANGCHAIN_API_KEY` in `.env` — tracing auto-enabl
 | **Apply** | ≥2 strong matches AND fit ratio ≥ 50% |
 | **Near apply** | P1–P2 track, title sim ≥ 0.30, fit ≥ 22%, below Apply bar |
 | **Consider** | fit ≥ 28% or enough partial/weak touches |
-| **Skip** | P4+ track, dealbreakers, avoid track, or low fit |
+| **Skip** | P4+ track, dealbreakers, avoid track, HPC penalty, or low fit |
 
 Details: [`docs/FIT_THRESHOLDS.md`](docs/FIT_THRESHOLDS.md)
 
 ---
 
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [`docs/DESIGN.md`](docs/DESIGN.md) | Product goals, original architecture plan |
+| [`docs/FIT_AND_RECOMMENDATION.md`](docs/FIT_AND_RECOMMENDATION.md) | Profile model, recommendation logic |
+| [`docs/FIT_THRESHOLDS.md`](docs/FIT_THRESHOLDS.md) | Numbers → labels (fit ratio, Role P, …) |
+| [`docs/REPORT_SCHEMA.md`](docs/REPORT_SCHEMA.md) | `/analyze` JSON shape |
+| [`evals/golden_set/README.md`](evals/golden_set/README.md) | How to label golden set CSV |
+| [`backend/README.md`](backend/README.md) | Backend layout (API-focused) |
+
+---
+
 ## Debug
 
-1. Hover metric cells in the Hop panel  
-2. Console: `__hopLastReport.explain`  
-3. Network → `POST /analyze` → check `explain.resume_fit.match_method`, `explain.observability.steps`  
-4. `curl localhost:8000/health`
+1. Hover metric cells in the JobLens panel (Resume shows **LLM + RAG** vs **Vector only**)
+2. Console: `__jobLensLastReport.explain`
+3. Network → `POST /analyze` → check `explain.resume_fit.match_method`, `explain.observability.steps`
+4. Traces: `curl http://localhost:8000/observability/traces` (only after a successful analyze)
+5. `curl http://localhost:8000/health`
 
 ---
 
@@ -299,7 +363,7 @@ Golden-set eval (needs running backend + LLM): `cd evals && python3 run_eval.py`
 | Tool registry + `/tools` API | ✅ |
 | Trace persistence + `/observability/traces` | ✅ |
 | LangSmith (optional) | ✅ when `LANGCHAIN_API_KEY` set |
-| Extension: Resume match method in UI | ✅ v2.10 |
+| Extension: Resume match method in UI | ✅ v3.0 |
 | Golden set expansion | 🔄 ongoing |
 | MCP server | ⏸ skipped |
 | AWS EC2 deploy | ⏸ needs cloud account |
