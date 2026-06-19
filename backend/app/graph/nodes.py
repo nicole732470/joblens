@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from app.graph.state_helpers import bind_node, request_fields
 from app.tools.analysis_context import get_artifacts, get_input, patch_input, record_tool_call, set_artifact
 from app.tools.analyze_tools import (
     assess_job_risks,
@@ -21,8 +22,10 @@ from app.tools.sponsorship import search_h1b_company
 
 
 def node_prepare(state: dict) -> dict:
+    bind_node(state)
+    req = request_fields(state)
     with trace_step("prepare"):
-        resolved, source = resolve_resume_text(state.get("resume_text"))
+        resolved, source = resolve_resume_text(req.get("resume_text"))
         profile = None
         try:
             profile = get_candidate_profile()
@@ -38,7 +41,8 @@ def node_prepare(state: dict) -> dict:
 
 
 def node_sponsorship(state: dict) -> dict:
-    company = state.get("company")
+    bind_node(state)
+    company = request_fields(state).get("company")
     with trace_step("sponsorship_lookup", company=company):
         if company:
             result = search_h1b_company(company)
@@ -50,9 +54,11 @@ def node_sponsorship(state: dict) -> dict:
 
 
 def node_parse_jd(state: dict) -> dict:
+    bind_node(state)
+    req = request_fields(state)
     attempts = int(state.get("parse_attempts") or 0) + 1
-    with trace_step("parse_jd", attempt=attempts, title=state.get("title")):
-        result = parse_job_description(state["jd_text"], state.get("title"))
+    with trace_step("parse_jd", attempt=attempts, title=req.get("title")):
+        result = parse_job_description(req.get("jd_text") or "", req.get("title"))
     set_artifact("jd", result)
     record_tool_call("parse_jd_structured", ok=bool(result.get("available")))
     return {"jd": result, "parse_attempts": attempts}
@@ -67,12 +73,14 @@ def route_after_parse(state: dict) -> str:
 
 
 def node_join(state: dict) -> dict:
+    bind_node(state)
     with trace_step("join_prefetch"):
         pass
     return {}
 
 
 def node_fill_gaps(state: dict) -> dict:
+    bind_node(state)
     """Deterministic completion when ReAct agent skipped or missed tools."""
     inp = get_input()
     arts = get_artifacts()
@@ -90,48 +98,32 @@ def node_fill_gaps(state: dict) -> dict:
         if "jd" not in arts or not (arts.get("jd") or {}).get("available"):
             parse_jd_structured.invoke({"jd_text": jd_text, "title": title})
 
-        arts = get_artifacts()
-        jd_json = json.dumps(arts["jd"], default=str)
-
         if resume and ("resume_fit" not in arts or not arts.get("resume_fit", {}).get("available")):
-            score_resume_against_jd.invoke({"jd_parse_json": jd_json, "resume_text": resume})
+            score_resume_against_jd.invoke({"resume_text": resume})
 
         arts = get_artifacts()
-        sp_json = json.dumps(arts.get("sponsorship") or {"matched": False}, default=str)
-        rf_json = json.dumps(arts.get("resume_fit") or {}, default=str)
 
         if "company_analysis" not in arts or not arts.get("company_analysis", {}).get("available"):
             score_company_fit.invoke(
                 {
                     "company_name": company,
-                    "jd_parse_json": jd_json,
                     "jd_text": jd_text,
-                    "sponsorship_json": sp_json,
                     "linkedin_followers": int(inp.get("linkedin_followers") or 0),
                     "alumni_hints_json": json.dumps(inp.get("alumni_hints") or []),
                 }
             )
 
         arts = get_artifacts()
-        rf_json = json.dumps(arts.get("resume_fit") or {}, default=str)
 
         if "risk" not in arts or not arts.get("risk", {}).get("available"):
             if arts.get("resume_fit", {}).get("available"):
-                assess_job_risks.invoke({"jd_parse_json": jd_json, "resume_fit_json": rf_json})
+                assess_job_risks.invoke({})
 
         arts = get_artifacts()
-        rf_json = json.dumps(arts.get("resume_fit") or {}, default=str)
 
         if "recommendation" not in arts or not arts.get("recommendation", {}).get("available"):
             if arts.get("resume_fit", {}).get("available") and arts.get("jd", {}).get("available"):
-                recommend_apply_skip.invoke(
-                    {
-                        "jd_parse_json": jd_json,
-                        "resume_fit_json": rf_json,
-                        "job_title": title,
-                        "jd_text": jd_text,
-                    }
-                )
+                recommend_apply_skip.invoke({"job_title": title, "jd_text": jd_text})
 
     return {"gap_fill": True}
 

@@ -2,6 +2,7 @@
 
 from app.schemas.report import Recommendation
 from app.tools.analysis_context import begin_analysis, set_artifact
+from app.tools.observability import start_trace
 from app.graph.assemble import assemble_report
 
 
@@ -10,6 +11,7 @@ def _explain(rec, co):
 
 
 def test_assemble_from_artifacts():
+    start_trace()
     begin_analysis(
         {
             "jd_text": "Need Python",

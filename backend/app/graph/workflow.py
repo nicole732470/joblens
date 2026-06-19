@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
@@ -19,14 +19,34 @@ from app.graph.nodes import (
     route_after_parse,
     route_agent_or_fill,
 )
+from app.graph.state_helpers import bind_node
 from app.schemas.report import Report
 from app.tools.analysis_context import begin_analysis, get_agent_meta
 from app.tools.analyze_tools import ANALYZE_TOOLS
-from app.tools.observability import persist_trace, trace_snapshot, trace_step
+from app.tools.observability import get_run_id, persist_trace, trace_snapshot, trace_step
 
 
-class AnalyzeState(dict):
-    """Graph state — plain dict for LangGraph compatibility."""
+class AnalyzeState(TypedDict, total=False):
+    run_id: str | None
+    jd_text: str
+    company: str | None
+    title: str | None
+    resume_text: str | None
+    job_url: str | None
+    linkedin_followers: int | None
+    alumni_hints: list[str]
+    resolved_resume: str | None
+    resume_source: str | None
+    profile_loaded: bool
+    parse_attempts: int
+    sponsorship: dict
+    jd: dict
+    gap_fill: bool
+    agent_mode: str
+    agent_reason: str
+    agent_messages: list
+    report: Any
+    observability: dict
 
 
 def _fan_out_prefetch(state: dict) -> list[Send]:
@@ -37,23 +57,26 @@ def _fan_out_prefetch(state: dict) -> list[Send]:
 
 
 def _node_react(state: dict) -> dict:
+    bind_node(state)
     return run_react_agent(state)
 
 
 def _node_assemble(state: dict, *, build_explain) -> dict:
+    bind_node(state)
+    run_id = state.get("run_id")
     agent_meta = {
         **get_agent_meta(),
         "mode": state.get("agent_mode", "deterministic"),
         "messages": state.get("agent_messages", []),
     }
-    obs = trace_snapshot(agent_meta=agent_meta)
+    obs = trace_snapshot(run_id=run_id, agent_meta=agent_meta)
     report = assemble_report(
         build_explain=build_explain,
         agent_meta=agent_meta,
         observability=obs,
     )
     payload = report.model_dump()
-    payload["run_id"] = obs.get("run_id")
+    payload["run_id"] = run_id or obs.get("run_id")
     payload["observability"] = obs
     path = persist_trace(payload)
     if path:
@@ -62,7 +85,7 @@ def _node_assemble(state: dict, *, build_explain) -> dict:
 
 
 def _build_graph(build_explain):
-    graph = StateGraph(dict)
+    graph = StateGraph(AnalyzeState)
 
     def assemble_node(state: dict) -> dict:
         return _node_assemble(state, build_explain=build_explain)
@@ -87,6 +110,7 @@ def _build_graph(build_explain):
     )
 
     def agent_router(state: dict) -> dict:
+        bind_node(state)
         return {}
 
     graph.add_node("agent_router", agent_router)
@@ -142,7 +166,9 @@ def run_analyze_workflow(
         }
     )
 
+    run_id = get_run_id()
     initial: dict[str, Any] = {
+        "run_id": run_id,
         "jd_text": jd_text,
         "company": company_name,
         "title": title,

@@ -15,19 +15,18 @@ from app.tools.observability import trace_step
 
 _AGENT_SYSTEM = """You are Hop's job-analysis agent. You MUST complete a full analysis by calling tools.
 
-Workflow (call each required tool once, in order, passing JSON outputs forward):
-1. lookup_h1b_sponsorship — if company name is provided (skip if empty)
-2. parse_jd_structured — unless JD parse JSON is already supplied below
-3. score_resume_against_jd — requires jd_parse_json + resume_text
-4. score_company_fit — company + jd + sponsorship JSON + followers + alumni JSON
-5. assess_job_risks — jd_parse_json + resume_fit_json
-6. recommend_apply_skip — jd_parse_json + resume_fit_json + title + jd_text
+Workflow (call each required tool once, in order):
+1. lookup_h1b_sponsorship — if company name is provided
+2. parse_jd_structured — unless JD parse is already in prefetched artifacts
+3. score_resume_against_jd — pass resume_text only (JD is read from cache)
+4. score_company_fit — pass company_name, jd_text, followers; leave JSON args empty
+5. assess_job_risks — no arguments needed (reads cache)
+6. recommend_apply_skip — pass job_title and jd_text only
 
 Rules:
-- Pass full JSON strings between tools exactly as returned.
+- Do NOT paste large JSON between tools — leave jd_parse_json / sponsorship_json / resume_fit_json empty.
 - Use resume_text from the user context for score_resume_against_jd.
-- For empty company use company_name="" and sponsorship_json='{"matched":false}'.
-- Do not invent data. After all tools succeed, reply with a one-line summary only.
+- After all tools succeed, reply with a one-line summary only.
 """
 
 
@@ -86,16 +85,26 @@ def _build_agent_prompt(state: dict) -> str:
 
 def run_react_agent(state: dict) -> dict:
     """Invoke ReAct loop; tools write into analysis_context artifacts."""
+    from app.graph.state_helpers import bind_node
+
+    bind_node(state)
     agent = get_react_agent()
     if agent is None:
         return {"agent_mode": "skipped", "agent_reason": "no_llm_key", "agent_messages": []}
 
     with trace_step("react_agent"):
         record_llm_turn()
-        result = agent.invoke(
-            {"messages": [HumanMessage(content=_build_agent_prompt(state))]},
-            config={"recursion_limit": 25},
-        )
+        try:
+            result = agent.invoke(
+                {"messages": [HumanMessage(content=_build_agent_prompt(state))]},
+                config={"recursion_limit": 20},
+            )
+        except Exception as e:  # noqa: BLE001
+            return {
+                "agent_mode": "failed",
+                "agent_reason": str(e)[:240],
+                "agent_messages": [],
+            }
 
     messages = result.get("messages") or []
     return {

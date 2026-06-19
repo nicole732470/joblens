@@ -24,13 +24,27 @@ def _store(name: str, result: dict, *, args: dict | None = None) -> dict:
     return result
 
 
+def _json_out(result: dict) -> str:
+    return json.dumps(result, default=str)
+
+
+def _parse_json_or_artifact(raw: str | None, artifact_key: str) -> dict:
+    if raw and raw.strip():
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            pass
+    cached = get_artifact(artifact_key)
+    return cached if isinstance(cached, dict) else {}
+
+
 @tool
 def lookup_h1b_sponsorship(
     company: Annotated[str, "LinkedIn company name to match against DOL H-1B records"],
 ) -> str:
-    """Look up H-1B/LCA filing history for an employer. Returns JSON."""
+    """Look up H-1B/LCA filing history for an employer."""
     result = search_h1b_company(company)
-    return json.dumps(_store("sponsorship", result, args={"company": company}), default=str)
+    return _json_out(_store("sponsorship", result, args={"company": company}))
 
 
 @tool
@@ -38,36 +52,48 @@ def parse_jd_structured(
     jd_text: Annotated[str, "Full job description text"],
     title: Annotated[str, "Job title"] = "",
 ) -> str:
-    """Extract structured requirements, location, visa language from a JD. Returns JSON."""
+    """Extract structured requirements, location, visa language from a JD."""
     result = parse_job_description(jd_text, title or None)
-    return json.dumps(_store("jd", result, args={"title": title}), default=str)
+    return _json_out(_store("jd", result, args={"title": title}))
 
 
 @tool
 def score_resume_against_jd(
-    jd_parse_json: Annotated[str, "JSON from parse_jd_structured"],
     resume_text: Annotated[str, "Full resume text"],
+    jd_parse_json: Annotated[str, "Optional — leave empty to use cached JD parse"] = "",
 ) -> str:
-    """RAG retrieval + LLM classification of resume vs each JD requirement. Returns JSON."""
-    jd = JDParse(**json.loads(jd_parse_json))
+    """RAG retrieval + LLM classification of resume vs each JD requirement."""
+    jd_data = _parse_json_or_artifact(jd_parse_json, "jd")
+    if not jd_data.get("available"):
+        return _json_out({"available": False, "reason": "JD not parsed yet — call parse_jd_structured first"})
+    jd = JDParse(**jd_data)
     result = analyze_resume_fit(jd, resume_text)
-    return json.dumps(_store("resume_fit", result), default=str)
+    return _json_out(_store("resume_fit", result))
 
 
 @tool
 def score_company_fit(
-    company_name: Annotated[str, "Company name (empty string if unknown)"],
-    jd_parse_json: Annotated[str, "JSON from parse_jd_structured"],
-    jd_text: Annotated[str, "Original JD text"],
-    sponsorship_json: Annotated[str, "JSON from lookup_h1b_sponsorship or {}"],
-    linkedin_followers: Annotated[int, "LinkedIn follower count, 0 if unknown"] = 0,
-    alumni_hints_json: Annotated[str, 'JSON array of alumni hint strings, e.g. []'] = "[]",
+    company_name: Annotated[str, "Company name (empty if unknown)"] = "",
+    jd_text: Annotated[str, "Original JD text"] = "",
+    linkedin_followers: Annotated[int, "LinkedIn followers, 0 if unknown"] = 0,
+    alumni_hints_json: Annotated[str, 'JSON array of alumni strings, or ""'] = "",
+    jd_parse_json: Annotated[str, "Optional — leave empty to use cached JD parse"] = "",
+    sponsorship_json: Annotated[str, "Optional — leave empty to use cached H-1B lookup"] = "",
 ) -> str:
-    """Score company vs profile preferences (not H-1B odds). Returns JSON."""
+    """Score company vs profile preferences (not H-1B odds)."""
     profile = get_candidate_profile()
-    jd = JDParse(**json.loads(jd_parse_json))
-    sponsorship = SponsorshipAnalysis(**json.loads(sponsorship_json or "{}"))
-    alumni = json.loads(alumni_hints_json or "[]")
+    jd_data = _parse_json_or_artifact(jd_parse_json, "jd")
+    if not jd_data:
+        return _json_out({"available": False, "reason": "JD not parsed"})
+    jd = JDParse(**jd_data)
+    sp_data = _parse_json_or_artifact(sponsorship_json, "sponsorship") or {"matched": False}
+    sponsorship = SponsorshipAnalysis(**sp_data)
+    alumni: list[str] = []
+    if alumni_hints_json.strip():
+        try:
+            alumni = json.loads(alumni_hints_json)
+        except json.JSONDecodeError:
+            alumni = []
     followers = linkedin_followers if linkedin_followers > 0 else None
     result = score_company(
         company_name or None,
@@ -78,37 +104,43 @@ def score_company_fit(
         linkedin_followers=followers,
         alumni_hints=alumni or None,
     )
-    return json.dumps(_store("company_analysis", result), default=str)
+    return _json_out(_store("company_analysis", result))
 
 
 @tool
 def assess_job_risks(
-    jd_parse_json: Annotated[str, "JSON from parse_jd_structured"],
-    resume_fit_json: Annotated[str, "JSON from score_resume_against_jd"],
+    jd_parse_json: Annotated[str, "Optional — leave empty to use cached JD parse"] = "",
+    resume_fit_json: Annotated[str, "Optional — leave empty to use cached resume fit"] = "",
 ) -> str:
-    """Run deterministic risk rules on JD + resume fit. Returns JSON."""
+    """Run deterministic risk rules on JD + resume fit."""
     profile = get_candidate_profile()
-    jd = JDParse(**json.loads(jd_parse_json))
-    resume_fit = ResumeFitAnalysis(**json.loads(resume_fit_json))
+    jd_data = _parse_json_or_artifact(jd_parse_json, "jd")
+    rf_data = _parse_json_or_artifact(resume_fit_json, "resume_fit")
+    if not jd_data or not rf_data.get("available"):
+        return _json_out({"available": False, "reason": "need JD parse and resume fit first"})
+    jd = JDParse(**jd_data)
+    resume_fit = ResumeFitAnalysis(**rf_data)
     result = run_risk_rules(jd, resume_fit, profile)
-    return json.dumps(_store("risk", result), default=str)
+    return _json_out(_store("risk", result))
 
 
 @tool
 def recommend_apply_skip(
-    jd_parse_json: Annotated[str, "JSON from parse_jd_structured"],
-    resume_fit_json: Annotated[str, "JSON from score_resume_against_jd"],
     job_title: Annotated[str, "Job title"] = "",
     jd_text: Annotated[str, "Original JD text"] = "",
+    jd_parse_json: Annotated[str, "Optional — leave empty to use cached JD parse"] = "",
+    resume_fit_json: Annotated[str, "Optional — leave empty to use cached resume fit"] = "",
 ) -> str:
-    """Rule-based Apply / Near apply / Consider / Skip verdict. Returns JSON."""
+    """Rule-based Apply / Near apply / Consider / Skip verdict."""
     profile = get_candidate_profile()
-    jd = JDParse(**json.loads(jd_parse_json))
-    resume_fit = ResumeFitAnalysis(**json.loads(resume_fit_json))
-    result = generate_recommendation(
-        jd, resume_fit, profile, job_title or None, jd_text or None
-    )
-    return json.dumps(_store("recommendation", result), default=str)
+    jd_data = _parse_json_or_artifact(jd_parse_json, "jd")
+    rf_data = _parse_json_or_artifact(resume_fit_json, "resume_fit")
+    if not jd_data or not rf_data.get("available"):
+        return _json_out({"available": False, "reason": "need JD parse and resume fit first"})
+    jd = JDParse(**jd_data)
+    resume_fit = ResumeFitAnalysis(**rf_data)
+    result = generate_recommendation(jd, resume_fit, profile, job_title or None, jd_text or None)
+    return _json_out(_store("recommendation", result))
 
 
 ANALYZE_TOOLS = [
