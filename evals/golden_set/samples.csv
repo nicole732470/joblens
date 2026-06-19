@@ -1,0 +1,3 @@
+id,company,title,job_url,jd_text,expected_company_match,expected_sponsorship_likelihood,expected_recommendation,expected_strong_matches,expected_missing_quals,notes
+ex1,Microsoft,Software Engineer,,"Build cloud services in Python. Requires 3+ years backend experience, distributed systems, and SQL.",yes,High,Apply,Python;SQL,distributed systems,Example row — replace with real data or delete
+ex2,Totally Fake Company XYZ,Engineer,,Generic role with vague responsibilities and no clear requirements.,no,Unknown,Skip,,,Example row — no DOL match expected
