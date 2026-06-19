@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "3.0.1";
+  const EXTENSION_VERSION = "3.0.2";
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
@@ -1252,17 +1252,34 @@
   }
 
   async function analyzeWithBackend(inputs) {
+    const body = {
+      jd_text: inputs.jd_text || "",
+      company: inputs.company,
+      title: inputs.title,
+      job_url: inputs.job_url,
+      linkedin_followers: inputs.linkedin_followers ?? null,
+      alumni_hints: inputs.alumni_hints || [],
+    };
+    const viaBackground = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "JOBLENS_ANALYZE", body }, (resp) => {
+        if (chrome.runtime.lastError) {
+          resolve({ ok: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        resolve(resp || { ok: false, error: "no response" });
+      });
+    });
+    if (viaBackground.ok && viaBackground.data) return viaBackground.data;
+    if (viaBackground.status) {
+      throw new Error(`Backend responded ${viaBackground.status}${viaBackground.error ? ` — ${viaBackground.error}` : ""}`);
+    }
+    if (viaBackground.error) throw new TypeError(viaBackground.error);
+
+    // Fallback: direct fetch (local dev)
     const resp = await fetch(`${BACKEND_URL}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jd_text: inputs.jd_text || "",
-        company: inputs.company,
-        title: inputs.title,
-        job_url: inputs.job_url,
-        linkedin_followers: inputs.linkedin_followers ?? null,
-        alumni_hints: inputs.alumni_hints || [],
-      }),
+      body: JSON.stringify(body),
     });
     if (!resp.ok) {
       let detail = "";
@@ -1550,7 +1567,7 @@
     const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(err.message);
     return `<div class="lca-analyze-inner lca-analyze-err">${
       isNetwork
-        ? `Can't reach the analysis server. Start it with <code>docker compose up -d</code>, then retry.`
+        ? `Can't reach the analysis server at <code>${escapeHtml(BACKEND_URL)}</code>. Reload the extension at chrome://extensions, then Retry.`
         : escapeHtml(err.message)
     }</div>`;
   }
