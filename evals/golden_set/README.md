@@ -19,12 +19,16 @@ spreadsheet). One row = one job posting you want to evaluate.
 | `title` | Job title | free text |
 | `job_url` | Link to the posting (optional) | URL or blank |
 | `jd_text` | The full job description text | free text (paste it in) |
-| `expected_sponsors` | Does this employer sponsor H-1B (i.e. it appears in U.S. H-1B data)? | `yes` / `no` / blank |
+| `expected_sponsors` | In U.S. H-1B data? | `yes` / `no` / `not sure` / blank |
+| `expected_recommendation` | Your apply call (optional) | `apply` / `apply with modifications` / `low priority` / `skip` / `not sure` / blank |
 | `notes` | Anything useful | free text |
 
-`expected_sponsors` is the single ground-truth label for now. "In the H-1B
-data = they sponsor" — it's a yes/no call, no middle ground (if you're unsure,
-search around and decide, or leave it blank).
+`expected_sponsors`: **yes** = employer appears in H-1B data; **no** = not found;
+**not sure** = you haven't verified — eval skips scoring that row for sponsors.
+
+`expected_recommendation`: your human Apply/Skip judgment (uses profile + resume +
+JD only — **not** the H-1B database). Leave blank until you've tried the job in
+the extension; use **not sure** when undecided. Values are case-insensitive.
 
 Resume-fit, risk, and recommendation labels are intentionally left out until
 those analyses are built; we'll design those columns (including the

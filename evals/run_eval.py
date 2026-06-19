@@ -2,7 +2,7 @@
 """Evaluate the platform against the golden set.
 
 Reads golden_set/samples.csv, calls the backend /analyze for each row, and
-scores sponsorship labels plus reports resume-fit / recommendation summaries.
+scores sponsorship + recommendation labels where provided.
 Stdlib only.
 
 Usage:
@@ -24,6 +24,12 @@ BASE_DIR = Path(__file__).resolve().parent
 SAMPLES = BASE_DIR / "golden_set" / "samples.csv"
 RESUME = BASE_DIR / "golden_set" / "resume.md"
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
+
+# API decision strings (from Recommendation enum).
+REC_APPLY = "Apply"
+REC_MODIFY = "Apply with modifications"
+REC_LOW = "Low priority"
+REC_SKIP = "Skip"
 
 
 def load_resume() -> str | None:
@@ -48,6 +54,33 @@ def read_rows() -> list[dict]:
     if text is None:
         text = raw.decode("utf-8", errors="replace")
     return list(csv.DictReader(io.StringIO(text)))
+
+
+def norm_sponsors(raw: str) -> str:
+    v = (raw or "").strip().lower().replace("_", " ")
+    if v in ("yes", "y"):
+        return "yes"
+    if v in ("no", "n"):
+        return "no"
+    if v in ("not sure", "not sure", "unsure", "unknown", "?"):
+        return "not_sure"
+    return ""
+
+
+def norm_recommendation(raw: str) -> str:
+    v = (raw or "").strip().lower().replace("-", " ").replace("_", " ")
+    aliases = {
+        "apply": REC_APPLY,
+        "apply with modifications": REC_MODIFY,
+        "modify": REC_MODIFY,
+        "tweak": REC_MODIFY,
+        "low priority": REC_LOW,
+        "low": REC_LOW,
+        "skip": REC_SKIP,
+        "not sure": "not_sure",
+        "unsure": "not_sure",
+    }
+    return aliases.get(v, "")
 
 
 def analyze(row: dict, resume_text: str | None) -> dict:
@@ -80,13 +113,17 @@ def main() -> None:
 
     sponsors_total = 0
     sponsors_correct = 0
+    sponsors_skipped = 0
+    rec_total = 0
+    rec_correct = 0
+    rec_skipped = 0
     errors = 0
     fit_ran = 0
     rec_ran = 0
     rec_counts: dict[str, int] = {}
 
     print(f"Evaluating {len(rows)} sample(s) against {BASE_URL}")
-    print(f"resume: {'file omitted (backend default)' if not resume_text else 'from resume.md'}\n")
+    print(f"resume: {'backend default' if not resume_text else 'resume.md'}\n")
 
     for row in rows:
         rid = row.get("id") or "?"
@@ -102,14 +139,17 @@ def main() -> None:
         conf = sp.get("match_confidence")
         matched_name = (sp.get("company") or {}).get("name") if matched else None
 
-        expected_raw = (row.get("expected_sponsors") or "").strip().lower()
-        verdict = ""
-        if expected_raw in ("yes", "no"):
-            expected = expected_raw == "yes"
+        expected_sp = norm_sponsors(row.get("expected_sponsors") or "")
+        verdict_parts: list[str] = []
+        if expected_sp == "not_sure":
+            sponsors_skipped += 1
+            verdict_parts.append("sponsors=not_sure (skipped)")
+        elif expected_sp in ("yes", "no"):
+            expected = expected_sp == "yes"
             sponsors_total += 1
             ok = matched == expected
             sponsors_correct += int(ok)
-            verdict = "  OK" if ok else "  MISMATCH"
+            verdict_parts.append("sponsors OK" if ok else "sponsors MISMATCH")
 
         detail = f"matched={matched}"
         if matched:
@@ -121,7 +161,7 @@ def main() -> None:
             s = len(rf.get("strong_matches") or [])
             p = len(rf.get("partial_matches") or [])
             m = len(rf.get("missing") or [])
-            detail += f" | fit: {s}strong/{p}partial/{m}gap"
+            detail += f" | fit: {s}s/{p}p/{m}g"
 
         rec = report.get("recommendation") or {}
         if rec.get("available"):
@@ -130,10 +170,24 @@ def main() -> None:
             rec_counts[decision] = rec_counts.get(decision, 0) + 1
             detail += f" | rec: {decision}"
 
+        expected_rec = norm_recommendation(row.get("expected_recommendation") or "")
+        if expected_rec == "not_sure":
+            rec_skipped += 1
+            verdict_parts.append("rec=not_sure (skipped)")
+        elif expected_rec:
+            rec_total += 1
+            actual = rec.get("decision") or ""
+            if actual == expected_rec:
+                rec_correct += 1
+                verdict_parts.append("rec OK")
+            else:
+                verdict_parts.append(f"rec MISMATCH (want {expected_rec})")
+
         pending = report.get("pending") or []
         if pending:
             detail += f" | pending: {','.join(pending)}"
 
+        verdict = f"  {' · '.join(verdict_parts)}" if verdict_parts else ""
         print(f"[{rid}] {detail}{verdict}")
 
     print("\n--- Summary ---")
@@ -142,19 +196,22 @@ def main() -> None:
         print(f"backend errors:     {errors}")
     if sponsors_total:
         acc = sponsors_correct / sponsors_total
-        print(f"sponsors (in H-1B data) acc:  {sponsors_correct}/{sponsors_total} ({acc:.0%})")
-    else:
-        print("sponsors acc:  (no rows labeled with expected_sponsors)")
+        print(f"sponsors acc:       {sponsors_correct}/{sponsors_total} ({acc:.0%})")
+    if sponsors_skipped:
+        print(f"sponsors not_sure:  {sponsors_skipped} row(s) skipped")
+    if not sponsors_total and not sponsors_skipped:
+        print("sponsors acc:       (no yes/no labels)")
     if fit_ran:
         print(f"resume fit ran:     {fit_ran}/{len(rows) - errors}")
     if rec_ran:
         print(f"recommendation ran: {rec_ran}/{len(rows) - errors}")
         for decision, count in sorted(rec_counts.items()):
             print(f"  {decision}: {count}")
-    print(
-        "\nNote: recommendation uses profile + JD + resume only (not H-1B DB). "
-        "Tune fit distance thresholds in backend/app/tools/resume_fit.py."
-    )
+    if rec_total:
+        acc = rec_correct / rec_total
+        print(f"recommendation acc: {rec_correct}/{rec_total} ({acc:.0%})")
+    if rec_skipped:
+        print(f"recommendation not_sure: {rec_skipped} row(s) skipped")
 
 
 if __name__ == "__main__":

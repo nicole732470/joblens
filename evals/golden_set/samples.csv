@@ -1,4 +1,4 @@
-id,company,title,job_url,jd_text,expected_sponsors,notes
+id,company,title,job_url,jd_text,expected_sponsors,expected_recommendation,notes
 ex1,HERE Technologies,Technical Customer Success Manager,https://www.linkedin.com/jobs/view/4429108869/?alternateChannel=search&trackingId=6s1VnhqjRkePgjCgtWdcfw%3D%3D,"About the job
 What's the role? 
 
@@ -71,9 +71,9 @@ Job Details
 
 About Salesforce
 
-Salesforce is the #1 AI CRM, where humans with agents drive customer success together. Here, ambition meets action. Tech meets trust. And innovation isn’t a buzzword — it’s a way of life. The world of work as we know it is changing and we're looking for Trailblazers who are passionate about bettering business and the world through AI, driving innovation, and keeping Salesforce's core values at the heart of it all.
+Salesforce is the #1 AI CRM, where humans with agents drive customer success together. Here, ambition meets action. Tech meets trust. And innovation isnùt a buzzword ù itùs a way of life. The world of work as we know it is changing and we're looking for Trailblazers who are passionate about bettering business and the world through AI, driving innovation, and keeping Salesforce's core values at the heart of it all.
 
-Ready to level-up your career at the company leading workforce transformation in the agentic era? You’re in the right place! Agentforce is the future of AI, and you are the future of Salesforce.
+Ready to level-up your career at the company leading workforce transformation in the agentic era? Youùre in the right place! Agentforce is the future of AI, and you are the future of Salesforce.
 
 About The Team
 
@@ -101,21 +101,21 @@ Experience with production cloud deployments like AWS or GCP. Kubernetes is a pl
 Experience field-debugging full-stack deployments.
 Solid understanding of security principles and best practices.
 UI and graphic design sensibilities are a plus.
-Author high-quality, low-cognitive-load, fully-tested code – with- and without- AI assistance.
+Author high-quality, low-cognitive-load, fully-tested code ù with- and without- AI assistance.
 
 Unleash Your Potential
 
-When you join Salesforce, you’ll be limitless in all areas of your life. Our benefits and resources support you to find balance and be your best, and our AI agents accelerate your impact so you can do your best. Together, we’ll bring the power of Agentforce to organizations of all sizes and deliver amazing experiences that customers love. Apply today to not only shape the future — but to redefine what’s possible — for yourself, for AI, and the world.
+When you join Salesforce, youùll be limitless in all areas of your life. Our benefits and resources support you to find balance and be your best, and our AI agents accelerate your impact so you can do your best. Together, weùll bring the power of Agentforce to organizations of all sizes and deliver amazing experiences that customers love. Apply today to not only shape the future ù but to redefine whatùs possible ù for yourself, for AI, and the world.
 
 Accommodations
 
 If you need a reasonable accommodation during the application or the recruiting process, please submit a request via this Accommodations Request Form.
 
-Please note that Salesforce uses artificial intelligence (AI) tools to help our recruiters assess and evaluate candidates’ resumes and qualifications throughout the recruiting process. Humans will always make any candidate selection and hiring decisions. Please see our Candidate Privacy Statement for more information about how we use your personal data and your rights, including with regard to use of AI tools and opt out options.
+Please note that Salesforce uses artificial intelligence (AI) tools to help our recruiters assess and evaluate candidatesù resumes and qualifications throughout the recruiting process. Humans will always make any candidate selection and hiring decisions. Please see our Candidate Privacy Statement for more information about how we use your personal data and your rights, including with regard to use of AI tools and opt out options.
 
 Posting Statement
 
-Salesforce is an equal opportunity employer and maintains a policy of non-discrimination with all employees and applicants for employment. What does that mean exactly? It means that at Salesforce, we believe in equality for all. And we believe we can lead the path to equality in part by creating a workplace that’s inclusive, and free from discrimination. Know your rights: workplace discrimination is illegal. Any employee or potential employee will be assessed on the basis of merit, competence and qualifications – without regard to race, religion, color, national origin, sex, sexual orientation, gender expression or identity, transgender status, age, disability, veteran or marital status, political viewpoint, or other classifications protected by law. This policy applies to current and prospective employees, no matter where they are in their Salesforce employment journey. It also applies to recruiting, hiring, job assignment, compensation, promotion, benefits, training, assessment of job performance, discipline, termination, and everything in between. Recruiting, hiring, and promotion decisions at Salesforce are fair and based on merit. The same goes for compensation, benefits, promotions, transfers, reduction in workforce, recall, training, and education.
+Salesforce is an equal opportunity employer and maintains a policy of non-discrimination with all employees and applicants for employment. What does that mean exactly? It means that at Salesforce, we believe in equality for all. And we believe we can lead the path to equality in part by creating a workplace thatùs inclusive, and free from discrimination. Know your rights: workplace discrimination is illegal. Any employee or potential employee will be assessed on the basis of merit, competence and qualifications ù without regard to race, religion, color, national origin, sex, sexual orientation, gender expression or identity, transgender status, age, disability, veteran or marital status, political viewpoint, or other classifications protected by law. This policy applies to current and prospective employees, no matter where they are in their Salesforce employment journey. It also applies to recruiting, hiring, job assignment, compensation, promotion, benefits, training, assessment of job performance, discipline, termination, and everything in between. Recruiting, hiring, and promotion decisions at Salesforce are fair and based on merit. The same goes for compensation, benefits, promotions, transfers, reduction in workforce, recall, training, and education.
 
 In the United States, compensation offered will be determined by factors such as location, job level, job-related knowledge, skills, and experience. Certain roles may be eligible for incentive compensation, equity, and benefits. Salesforce offers a variety of benefits to help you live well including: time off programs, medical, dental, vision, mental health support, paid parental leave, life and disability insurance, 401(k), and an employee stock purchasing program. More details about company benefits can be found at the following link: https://www.salesforcebenefits.com.Pursuant to the San Francisco Fair Chance Ordinance and the Los Angeles Fair Chance Initiative for Hiring, Salesforce will consider for employment qualified applicants with arrest and conviction records.
 
@@ -124,3 +124,38 @@ At Salesforce, we believe in equitable compensation practices that reflect the d
 Benefits found in job post
 
 401(k), Disability insurance",yes,
+ex3,Sourcerer,Member of Technical Staff (a16z),https://www.linkedin.com/jobs/view/4424602559/?alternateChannel=search&eBP=CwEAAAGe3iHjJFFie0mq1MayljC53DZGnXXoHWpVmLdHl0vCIJXhs3XhQoT3DgK5WdwpPMlzw6IkslfUH7TLNbL2QEJ9SUekhg2HnSzL7K1RtApGCeizcu0kgCYuDjK08NFSubtQ_QaBHQZ0o9ErPexBRoaIpuVibQpjtXEPfVeZzJFfHgtUJJp4vCFo2Z6dUbSTAAUlwYNe02r5ur9rahuDa8exc9jqTMGfzpgVVILd8xE6reoGmvssumRSCONnNpbc0jw1MReR_Dy5yCv7OkMJYQDtC2aeNBe6Td-hZzO2W7Wzohso_exJ-ZdYZ9_RhWXzLZiPcnyY5y4RkxLscMWI359UfrsspfWEKOUJv4esAH3C_6yR4ayABK69_LgU9u7yr_vIQTS_rEA1U_Hmkcmz_y-QG785jIma_o-CsQCoBr7IPfr4VxGWmpyjYLyUVEInegOEXZpzF4o9-1PmawkLRO2dJK1mbQ&refId=H9iEAXSEYgMJnPFn4ScVWw%3D%3D&trackingId=S6OGL8z4ugKOckAck%2F85pw%3D%3D,"About the job
+Sourcerer is the autonomous procurement platform. Our AI agents discover suppliers across the globe underwrite them with proprietary data, negotiate terms, and execute transactions end-to-end ù the work of an entire global procurement organization, done by software. Some of the largest distributors and retailers in America already trust us to move real goods and real money through our platform, and demand is compounding every month.
+
+
+
+We're backed by a16z Speedrun, Madrona, Jason Calacanis, and an angels from top labs like OpenAI. We're a small, in-person team in San Francisco, and we're hiring people who want to build the company-defining systems ù not maintain someone else's.
+
+
+
+Member of Technical Staff
+
+San Francisco, CA ù Full-time ù In-person
+
+For exceptional builders who don't fit in a box
+
+Former founder? Research engineer? Generalist who's been the secret weapon on every team you've joined? This is the role. Member of Technical Staff means one thing at Sourcerer: you can take an impossibly ambiguous problem ù ""underwrite any supplier in China,"" ""make an agent negotiate a purchase order"" ù and come back with a working system.
+
+You'll work across everything: agents, data infrastructure, product, and whatever the mission demands this month. The ceiling on this role is wherever you take it.
+
+What you'll own
+
+Whatever matters most right now ù agent workflows, search and scraping infrastructure across a dozen-plus countries, underwriting models, customer-facing product
+The full loop ù prototype fast, prove it with real customers, then harden it into production
+Your own trajectory ù MTS here has grown into engineering leadership, AI leadership, and staff-level IC paths. The role becomes what your work earns.
+Who we're looking for
+
+Exceptional technical ability ù we care about what you've built, not how many years you've existed
+Serious chops with modern AI tooling (LLMs, agents, evals) and/or hard systems engineering
+Maximum agency: you find the problem, you solve the problem, you tell us about it after
+You want the earliest seat possible at a company that already has real revenue and real enterprise customers
+What you get
+
+Competitive salary + early-stage equity calibrated to what you bring
+Full benefits (health, dental, vision)
+The most leverage-per-person you will find anywhere: small team, huge market, direct line to founders and customers",not sure,

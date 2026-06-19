@@ -35,7 +35,9 @@ tracks:
       - Forward Deoloyed Engineer
       - AI Builder
       - Agentic AI Engineer
-      
+      - Member of Technical Staff
+      - Research Engineer
+      - Applied Research Engineer
 
   - id: sde_eng
     label: "SDE roles"
@@ -85,7 +87,7 @@ avoid_tracks:
 # Fill summary alone, tiers alone, or both. Rough wording OK — not a rigid whitelist.
 # ---------------------------------------------------------------------------
 locations:
-  summary: "US major metros OK; prefer public transport; prefer hybrid; open to remote"              # one loose sentence, e.g. "US major metros OK; prefer hybrid; open to remote"
+  summary: "US major metros OK; prefer public transport; open to remote"              # one loose sentence, e.g. "US major metros OK; prefer hybrid; open to remote"
   tier_1: [Chicago]        # optional — most want
   tier_2:                  # optional — acceptable
     - Texas
@@ -122,8 +124,9 @@ dealbreakers: []
 preferences: []
 # preferences example:
 # preferences:
-#   - Y combinator startup 
-#   - VC funded startup
+#   - Y combinator backed startup 
+#   - a16z backed startup
+#   - VC backed startup
 #   - pre-IPO company
 #   - tech industry
 #   - Python stack

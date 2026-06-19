@@ -58,10 +58,16 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
         return {"available": False, "reason": "LLM not configured (set LLM_API_KEY)"}
 
     user = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n{text[:12000]}"
-    try:
-        data = complete_json(_SYSTEM, user)
-    except Exception as e:  # noqa: BLE001 - surface as a non-fatal reason
-        return {"available": False, "reason": f"parse failed: {e}"}
+    last_err: Exception | None = None
+    data = None
+    for _ in range(2):
+        try:
+            data = complete_json(_SYSTEM, user)
+            break
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+    if data is None:
+        return {"available": False, "reason": f"parse failed: {last_err}"}
 
     requirements = []
     evidence = []

@@ -6,6 +6,19 @@ from app.schemas.candidate_profile import CandidateProfile, Track
 from app.schemas.report import JDParse, Recommendation, ResumeFitAnalysis
 from app.tools.risk_rules import _jd_sponsorship_veto
 
+# Title hints when profile example_titles don't list a variant (e.g. "Member of Technical Staff").
+_AI_TITLE_HINTS = (
+    "technical staff",
+    "member of technical staff",
+    "research engineer",
+    "applied research",
+    "ml engineer",
+    "ai engineer",
+    "software engineer",
+    "staff engineer",
+    "founding engineer",
+)
+
 
 def _title_tokens(title: str) -> set[str]:
     return {w.lower() for w in title.replace("/", " ").replace("-", " ").split() if len(w) > 2}
@@ -27,21 +40,42 @@ def _title_hits_track(title: str, track: Track) -> bool:
     return False
 
 
+def _title_looks_ai_engineering(title: str) -> bool:
+    t = (title or "").lower()
+    return any(h in t for h in _AI_TITLE_HINTS)
+
+
 def _best_track(title: str, profile: CandidateProfile) -> Track | None:
     hits = [tr for tr in profile.tracks if _title_hits_track(title, tr)]
-    if not hits:
-        return None
-    return min(hits, key=lambda tr: tr.priority)
+    if hits:
+        return min(hits, key=lambda tr: tr.priority)
+    if _title_looks_ai_engineering(title):
+        ai_tracks = [tr for tr in profile.tracks if tr.id == "ai_eng" or "ai" in tr.label.lower()]
+        if ai_tracks:
+            return min(ai_tracks, key=lambda tr: tr.priority)
+    return None
 
 
 def _avoid_track_hit(title: str, profile: CandidateProfile) -> bool:
-    t = (title or "").lower()
     for avoid in profile.avoid_tracks:
         if _title_hits_track(title, avoid):
             return True
-        if avoid.label.lower() in t:
+        if avoid.label.lower() in (title or "").lower():
             return True
     return False
+
+
+def _fit_counts(resume_fit: ResumeFitAnalysis) -> tuple[int, int, int, int, float]:
+    """Return strong, partial, weak, pure_gap, effective_ratio."""
+    strong = len(resume_fit.strong_matches)
+    partial = len(resume_fit.partial_matches)
+    weak = sum(1 for c in resume_fit.missing if c.resume_evidence_ids)
+    pure_gap = len(resume_fit.missing) - weak
+    total = strong + partial + len(resume_fit.missing)
+    if total == 0:
+        return 0, 0, 0, 0, 0.0
+    effective = strong + partial + weak * 0.65
+    return strong, partial, weak, pure_gap, effective / total
 
 
 def _collect_evidence_ids(resume_fit: ResumeFitAnalysis, jd: JDParse) -> list[str]:
@@ -51,7 +85,6 @@ def _collect_evidence_ids(resume_fit: ResumeFitAnalysis, jd: JDParse) -> list[st
             ids.extend(claim.jd_evidence_ids)
             ids.extend(claim.resume_evidence_ids)
     ids.extend(jd.evidence_ids or [])
-    # De-dupe, preserve order.
     seen: set[str] = set()
     out: list[str] = []
     for eid in ids:
@@ -59,6 +92,13 @@ def _collect_evidence_ids(resume_fit: ResumeFitAnalysis, jd: JDParse) -> list[st
             seen.add(eid)
             out.append(eid)
     return out
+
+
+def _jd_mentions_ai(jd: JDParse) -> bool:
+    blob = " ".join(
+        [*(r.text for r in jd.requirements), *(jd.visa_language or []), *(jd.risk_keywords or [])]
+    ).lower()
+    return any(k in blob for k in ("llm", "agent", "rag", "generative ai", "machine learning", "ai "))
 
 
 def generate_recommendation(
@@ -97,41 +137,45 @@ def generate_recommendation(
             "reason": resume_fit.reason or "resume fit unavailable",
         }
 
-    strong = len(resume_fit.strong_matches)
-    partial = len(resume_fit.partial_matches)
-    missing = len(resume_fit.missing)
-    total = strong + partial + missing
+    strong, partial, weak, pure_gap, ratio = _fit_counts(resume_fit)
+    total = strong + partial + weak + pure_gap
     if total == 0:
         return {"available": False, "reason": "no requirements to score against resume"}
 
-    supported = strong + partial
-    ratio = supported / total
     track = _best_track(title, profile)
-    track_note = f" Best-fit track: {track.label} (priority {track.priority})." if track else ""
+    track_note = f" Target track: {track.label} (priority {track.priority})." if track else ""
 
-    if strong >= max(2, total * 0.35) and ratio >= 0.55:
+    if strong >= max(2, total * 0.3) and ratio >= 0.5:
         decision = Recommendation.APPLY
-        reasoning = f"{strong} strong and {partial} partial matches out of {total} requirements.{track_note}"
-    elif ratio >= 0.45:
+        reasoning = (
+            f"{strong} strong, {partial} partial, {weak} weak overlap "
+            f"across {total} requirements.{track_note}"
+        )
+    elif ratio >= 0.38 or (partial + weak) >= max(2, total * 0.35):
         decision = Recommendation.APPLY_WITH_MODIFICATIONS
         reasoning = (
-            f"Decent overlap ({supported}/{total} requirements supported) but "
-            f"{missing} gap(s) remain — consider tailoring resume.{track_note}"
+            f"Good role fit ({partial + weak + strong}/{total} requirements touched); "
+            f"{pure_gap} clear gap(s) — tailor resume.{track_note}"
         )
-    elif ratio >= 0.2:
+    elif ratio >= 0.18:
         decision = Recommendation.LOW_PRIORITY
         reasoning = (
-            f"Limited overlap ({supported}/{total}). Worth a look only if the role "
-            f"fits your target tracks.{track_note}"
+            f"Limited resume overlap ({strong + partial + weak}/{total}). "
+            f"Consider if the track/location match your goals.{track_note}"
         )
     else:
         decision = Recommendation.SKIP
-        reasoning = f"Resume supports few requirements ({supported}/{total}).{track_note}"
+        reasoning = f"Resume overlap too low ({strong + partial + weak}/{total}).{track_note}"
 
-    # Priority-1 track gets a small bump from Low priority to Apply with modifications.
-    if track and track.priority == 1 and decision == Recommendation.LOW_PRIORITY and ratio >= 0.3:
+    # Priority-1 target role + AI JD → don't Skip when there's any signal.
+    if (
+        track
+        and track.priority <= 2
+        and decision in (Recommendation.SKIP, Recommendation.LOW_PRIORITY)
+        and (ratio >= 0.12 or weak + partial >= 2 or _jd_mentions_ai(jd))
+    ):
         decision = Recommendation.APPLY_WITH_MODIFICATIONS
-        reasoning += " Bumped: priority-1 target role with partial overlap."
+        reasoning += " Bumped: priority target role with relevant AI/agent JD."
 
     return {
         "available": True,

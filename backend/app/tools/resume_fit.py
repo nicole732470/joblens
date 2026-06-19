@@ -5,9 +5,9 @@ from __future__ import annotations
 from app.schemas.report import JDParse
 from app.tools.resume_store import index_resume, retrieve_resume_evidence
 
-# Cosine distance thresholds (tune against golden set later).
-_STRONG_MAX = 0.28
-_PARTIAL_MAX = 0.42
+# Cosine distance thresholds (lower = stricter). Tune via golden set / run_eval.
+_STRONG_MAX = 0.34
+_PARTIAL_MAX = 0.52
 
 
 def analyze_resume_fit(jd: JDParse, resume_text: str) -> dict:
@@ -30,7 +30,10 @@ def analyze_resume_fit(jd: JDParse, resume_text: str) -> dict:
     missing: list[dict] = []
 
     for req in jd.requirements:
-        hits = retrieve_resume_evidence(req.text, resume_key, limit=1)
+        query = req.text
+        if req.evidence_quote:
+            query = f"{req.text}. {req.evidence_quote}"
+        hits = retrieve_resume_evidence(query, resume_key, limit=1)
         if not hits:
             missing.append(_claim(req, [], "No resume evidence retrieved.", "missing"))
             continue
