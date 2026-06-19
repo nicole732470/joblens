@@ -112,26 +112,41 @@ trajectory:
 # PREFERENCES — nice-to-haves (only nudge, not veto). Optional.
 # Write plain phrases; quotes only if you want.
 # ---------------------------------------------------------------------------
-dealbreakers: []
-# dealbreakers example (pick one style):
-# dealbreakers:
-#   - rural areas
-#   - small local companies in tranditional industries
-#   - no one in the company studied in a prestigious university
-#   - unpaid internship
-#   - no visa sponsorship stated in JD
+dealbreakers:
+  - rural areas
+  - small local companies in tranditional industries
+  - no one in the company studied in a prestigious university
+  - unpaid internship
+  - no visa sponsorship stated in JD
 
-preferences: []
-# preferences example:
-# preferences:
-#   - Y combinator backed startup 
-#   - a16z backed startup
-#   - VC backed startup
-#   - pre-IPO company
-#   - tech industry
-#   - Python stack
-#   - non Chinese background company
-#   - Northwestern alumni
+preferences:
+  - Y combinator backed startup
+  - a16z backed startup
+  - VC backed startup
+  - pre-IPO company
+  - tech industry
+  - Python stack
+  - non Chinese background company
+  - Northwestern alumni
+
+# Domains you cannot do — JD mentions bump Role P-tier by +1 (editable list).
+technical_penalties:
+  - mechanical engineering
+  - civil engineering
+  - road engineering
+  - architectural engineering
+  - construction engineering
+  - chip design
+  - GPU hardware
+  - HPC hardware
+  - silicon
+  - ASIC
+  - semiconductor fabrication
+
+# Match LinkedIn «X alumni work here» lines (from page you have open — not scraped).
+alumni_schools:
+  - Northwestern
+  - Northwestern University
 
 # ---------------------------------------------------------------------------
 # CONSTRAINTS

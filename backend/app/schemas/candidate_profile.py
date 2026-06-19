@@ -36,4 +36,8 @@ class CandidateProfile(BaseModel):
     trajectory: list[str] = []
     dealbreakers: list[str] = []
     preferences: list[str] = []
+    # JD domains you cannot do — bump Role P-tier when responsibilities mention these.
+    technical_penalties: list[str] = []
+    # Schools to match against LinkedIn «X alumni work here» (page text from extension).
+    alumni_schools: list[str] = []
     constraints: Constraints = Field(default_factory=Constraints)
