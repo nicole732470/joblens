@@ -26,7 +26,7 @@ services:
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
       LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-joblens-analyze}
     ports:
-      # Bind localhost only when Caddy runs on the host; use "8000:8000" for direct debug.
+      # Host side only (default localhost). Use 0.0.0.0:8000 for temporary public debug.
       - "${BACKEND_BIND:-127.0.0.1:8000}:8000"
     volumes:
       - ./evals/golden_set:/app/evals/golden_set:ro

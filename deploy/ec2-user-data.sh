@@ -9,6 +9,9 @@ APP_DIR="/opt/joblens"
 dnf update -y
 dnf install -y docker git jq postgresql15
 systemctl enable --now docker
+curl -SL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 \
+  -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
 
 RDS_JSON=$(aws secretsmanager get-secret-value --secret-id joblens/rds --region "$REGION" --query SecretString --output text)
 APP_JSON=$(aws secretsmanager get-secret-value --secret-id joblens/app --region "$REGION" --query SecretString --output text)
@@ -38,9 +41,9 @@ LLM_BASE_URL=$(echo "$APP_JSON" | jq -r .LLM_BASE_URL)
 LLM_MODEL=$(echo "$APP_JSON" | jq -r .LLM_MODEL)
 USE_REACT_AGENT=$(echo "$APP_JSON" | jq -r .USE_REACT_AGENT)
 LANGSMITH_PROJECT=$(echo "$APP_JSON" | jq -r .LANGSMITH_PROJECT)
-BACKEND_BIND=127.0.0.1:8000
+BACKEND_BIND=0.0.0.0:8000
 EOF
 
-docker compose -f docker-compose.prod.yml up -d --build
+docker-compose -f docker-compose.prod.yml up -d --build
 sleep 20
 curl -sf http://127.0.0.1:8000/health

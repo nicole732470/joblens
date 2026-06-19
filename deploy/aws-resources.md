@@ -7,9 +7,14 @@ Created during initial deploy. **Do not commit secrets.**
 | VPC (default) | `vpc-0d1904c59a051b228` |
 | EC2 security group | `sg-0930a7bda9f30016e` (`joblens-ec2`) — 22, 443, 8000 |
 | RDS security group | `sg-0fea22f4c3f07b889` (`joblens-rds`) — 5432 from EC2 SG |
-| RDS instance | `joblens-db` (PostgreSQL 16.14, `db.t4g.micro`) |
+| RDS instance | `joblens-db` — **available** |
+| RDS endpoint | `joblens-db.chu86icsovrl.us-east-2.rds.amazonaws.com` |
 | RDS secret | `joblens/rds` in Secrets Manager |
-| App secret | `joblens/app` — **create manually** with `LLM_API_KEY` |
+| App secret | `joblens/app` |
+| EC2 instance | `i-0bdee6f611283586f` (`joblens-api`, t3.small) |
+| Elastic IP | `3.128.164.130` |
+| IAM role | `joblens-ec2` |
+| API (HTTP debug) | `http://3.128.164.130:8000/health` |
 
 ## Before launching EC2
 
