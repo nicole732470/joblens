@@ -266,8 +266,8 @@ flowchart TD
 |----------|-----------|------------|-----|
 | `microsoft` / Microsoft | Microsoft Corporation | **high** | Exact core, unique token |
 | `ornua-foods-north-america-inc` / Ornua | Ornua Foods North America, Inc. | **high** | Multi-token subset, no competitors |
-| `eversana` / Eversana | EVERSANA LIFE SCIENCE SERVICES, LLC | **low** | Single-token subset; DOL legal name has extra words |
-| `meta` / Meta | Meta Platforms, Inc. (among 12) | **low** | Single ambiguous token |
+| `eversana` / Eversana | EVERSANA LIFE SCIENCE SERVICES, LLC | **high** | Exact core on a distinctive token, no competitors; warns DOL legal name has extra words |
+| `meta` / Meta | META IT CORP (top of 12) | **low** | Single ambiguous token shared by many employers |
 | `tencentglobal` / Tencent | Tencent America LLC | **low** | Single token, multiple employers |
 | `a-hiring-company` / A Hiring Company | — | **no match** | `hiring` is generic |
 
