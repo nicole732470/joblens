@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LCA Sponsor Checker",
-  "version": "1.6.1",
-  "description": "Check if a LinkedIn company appears in DOL H-1B LCA disclosure data.",
+  "version": "1.7.0",
+  "description": "Check H-1B sponsorship + run AI Job Intelligence analysis on a LinkedIn job.",
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://linkedin.com/*",
