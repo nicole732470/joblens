@@ -145,6 +145,7 @@ class RecommendationResult(BaseModel):
     track_priority: Optional[int] = None
     track_similarity: Optional[float] = None
     fit_ratio: Optional[float] = None
+    technical_penalty_hits: list[str] = []
     location_score: Optional[float] = None
     location_label: Optional[str] = None
     location_tier: Optional[int] = None
@@ -173,6 +174,8 @@ class CompanyAnalysis(BaseModel):
     preference_hits: list[str] = []
     industry_label: Optional[str] = None
     dealbreakers_matched: int = 0
+    linkedin_followers: Optional[int] = None
+    alumni_hits: list[str] = []
 
 
 class Report(BaseModel):
