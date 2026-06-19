@@ -37,14 +37,28 @@ def ensure_resume_schema() -> None:
         conn.commit()
 
 
-def index_resume(text: str, resume_key: str | None = None) -> dict:
-    """Chunk, embed, and store resume text. Returns summary stats."""
+def index_resume(text: str, resume_key: str | None = None, *, force: bool = False) -> dict:
+    """Chunk, embed, and store resume text. Skips re-embed if already indexed (same key)."""
     ensure_resume_schema()
     chunks = chunk_resume(text)
     if not chunks:
         return {"indexed": False, "reason": "no chunks produced from resume text"}
 
     key = resume_key or resume_key_for(text)
+
+    if not force:
+        rows = fetch_all(
+            "SELECT count(*)::int AS n FROM resume_chunks WHERE resume_key = %s",
+            (key,),
+        )
+        if rows and rows[0]["n"] > 0:
+            return {
+                "indexed": True,
+                "resume_key": key,
+                "chunk_count": rows[0]["n"],
+                "cached": True,
+            }
+
     vectors = embed_texts([c["content"] for c in chunks])
 
     with psycopg.connect(settings.database_url) as conn:

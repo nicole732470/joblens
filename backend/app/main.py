@@ -151,7 +151,7 @@ def traces_get(run_id: str) -> dict:
 @app.post("/resume/index")
 def resume_index(req: IndexResumeRequest) -> dict:
     try:
-        return index_resume(req.resume_text, req.resume_key)
+        return index_resume(req.resume_text, req.resume_key, force=True)
     except Exception as e:  # noqa: BLE001
         return {"indexed": False, "reason": str(e)}
 
