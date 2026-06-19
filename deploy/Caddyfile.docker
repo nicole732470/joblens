@@ -1,0 +1,11 @@
+# Used when the caddy service is enabled in docker-compose.prod.yml.
+# Set API_DOMAIN and ACME_EMAIL in .env.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$API_DOMAIN} {
+	encode gzip
+	reverse_proxy backend:8000
+}

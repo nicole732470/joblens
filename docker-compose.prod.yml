@@ -1,0 +1,62 @@
+# Production: backend only — Postgres runs on RDS (not in this compose file).
+# Usage on EC2:
+#   cp .env.example .env   # fill DATABASE_URL, LLM_API_KEY, etc.
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# HTTPS: either run Caddy on the host (see deploy/Caddyfile) or uncomment the
+# caddy service below.
+
+services:
+  backend:
+    build: ./backend
+    container_name: joblens-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-20b:free}
+      CANDIDATE_PROFILE_PATH: ${CANDIDATE_PROFILE_PATH:-evals/golden_set/candidate_profile.yaml}
+      DEFAULT_RESUME_PATH: ${DEFAULT_RESUME_PATH:-evals/golden_set/resume.md}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
+      RESUME_FIT_METHOD: ${RESUME_FIT_METHOD:-auto}
+      USE_REACT_AGENT: ${USE_REACT_AGENT:-false}
+      TRACE_DIR: /app/logs/traces
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-joblens-analyze}
+    ports:
+      # Bind localhost only when Caddy runs on the host; use "8000:8000" for direct debug.
+      - "${BACKEND_BIND:-127.0.0.1:8000}:8000"
+    volumes:
+      - ./evals/golden_set:/app/evals/golden_set:ro
+      - ./logs/traces:/app/logs/traces
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Uncomment to terminate TLS in Docker (set API_DOMAIN in .env).
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: joblens-caddy
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   environment:
+  #     API_DOMAIN: ${API_DOMAIN:-api.joblens.app}
+  #     ACME_EMAIL: ${ACME_EMAIL:-}
+  #   volumes:
+  #     - ./deploy/Caddyfile.docker:/etc/caddy/Caddyfile:ro
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+
+# volumes:
+#   caddy_data:
+#   caddy_config:

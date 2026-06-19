@@ -1,0 +1,10 @@
+# Host Caddy (recommended on EC2): install Caddy, then:
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Replace api.joblens.app with your domain. Point an A record at the EC2 elastic IP.
+
+api.joblens.app {
+	encode gzip
+	reverse_proxy 127.0.0.1:8000
+}

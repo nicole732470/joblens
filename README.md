@@ -18,7 +18,7 @@ JobLens is a **real product** (LinkedIn panel) and an **AI-engineering portfolio
 | **Agents** | **LangGraph** (parallel prefetch, retry, conditional routing) + **ReAct tool-calling agent** |
 | **Eval** | Golden set + `run_eval.py` for regression |
 
-**Deferred (by design):** MCP server, AWS deploy (needs your cloud account).
+**Deferred (by design):** MCP server.
 
 ---
 
@@ -350,6 +350,40 @@ Golden-set eval (needs running backend + LLM): `cd evals && python3 run_eval.py`
 
 ---
 
+## Production (AWS)
+
+Shortest path after a clean AWS account:
+
+1. **Push** latest `main` to [github.com/nicole732470/joblens](https://github.com/nicole732470/joblens)
+2. **RDS** — PostgreSQL 16 (`db.t4g.micro`), database `joblens`, SG allows 5432 from EC2 only  
+   `psql "$DATABASE_URL" -f deploy/rds-init.sql` (pgvector + `resume_chunks`)
+3. **EC2** — `t3.small`, elastic IP, SG open 443 (and 8000 temporarily for debug)  
+   `./deploy/ec2-bootstrap.sh` → clone repo → copy `.env.example` → `.env`
+4. **Backend** — `docker compose -f docker-compose.prod.yml up -d --build`  
+   `curl http://127.0.0.1:8000/health`
+5. **HTTPS** — A record `api.joblens.app` → elastic IP; host Caddy with [`deploy/Caddyfile`](deploy/Caddyfile)  
+   `curl https://api.joblens.app/health`
+6. **Extension** — set `BACKEND_URL = "https://api.joblens.app"` in `extension/content.js`, add host permission, bump version, reload unpacked
+7. **Resume index** (once):
+   ```bash
+   curl -X POST https://api.joblens.app/resume/index \
+     -H "Content-Type: application/json" \
+     -d "$(jq -n --rawfile t evals/golden_set/resume.md '{resume_text: $t}')"
+   ```
+8. **Lovable** — web UI at `app.joblens.app` calling `POST /analyze` (CORS defaults to `*`)
+
+| Secret | Purpose |
+|--------|---------|
+| `DATABASE_URL` | RDS Postgres connection string |
+| `LLM_API_KEY` | OpenRouter (chat + embeddings) |
+| `USE_REACT_AGENT=false` | Stable `fill_gaps` orchestration in prod |
+| `LANGCHAIN_API_KEY` | Optional LangSmith |
+
+Estimated cost: RDS + EC2 ≈ **$30–50/mo** (micro/small). Eval regression:  
+`cd evals && BACKEND_URL=https://api.joblens.app python3 run_eval.py`
+
+---
+
 ## Roadmap status
 
 | Item | Status |
@@ -366,7 +400,7 @@ Golden-set eval (needs running backend + LLM): `cd evals && python3 run_eval.py`
 | Extension: Resume match method in UI | ✅ v3.0 |
 | Golden set expansion | 🔄 ongoing |
 | MCP server | ⏸ skipped |
-| AWS EC2 deploy | ⏸ needs cloud account |
+| AWS EC2 deploy | 🔄 `docker-compose.prod.yml` + `deploy/` ready |
 
 ---
 
