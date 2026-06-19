@@ -290,6 +290,13 @@
   margin: 0 0 6px;
 }
 
+.lca-err-mini {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #b24020;
+  margin: 0 0 6px;
+}
+
 .lca-parse-err {
   font-size: 11px;
   color: #b24020;
