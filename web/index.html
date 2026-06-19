@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JobLens — See a company before you apply</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="header">
+    <span class="mark" aria-hidden="true">JL</span>
+    <div>
+      <h1>JobLens</h1>
+      <p class="tagline">See a company before you apply</p>
+    </div>
+  </header>
+
+  <main class="panel">
+    <label>API base URL
+      <input id="apiUrl" type="url" value="http://3.128.164.130:8000" />
+    </label>
+    <label>Company
+      <input id="company" type="text" placeholder="e.g. Amazon" />
+    </label>
+    <label>Job title
+      <input id="title" type="text" placeholder="e.g. Senior Software Engineer" />
+    </label>
+    <label>Job description
+      <textarea id="jd" rows="10" placeholder="Paste the full JD…"></textarea>
+    </label>
+    <label>Resume <span class="hint">(optional — uses server default if empty)</span>
+      <textarea id="resume" rows="6" placeholder="Paste resume text to override default…"></textarea>
+    </label>
+    <button id="analyze" type="button">Analyze</button>
+    <p id="status" class="status" aria-live="polite"></p>
+    <pre id="result" class="result"></pre>
+  </main>
+
+  <footer class="footer">
+    H-1B lookup in Chrome extension · Web calls <code>POST /analyze</code>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>
