@@ -12,7 +12,7 @@ from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import Report
 from app.tools.entity_resolver import get_resolver
 from app.tools.llm import llm_available
-from app.tools.observability import start_trace
+from app.tools.observability import configure_langsmith, list_recent_traces, load_trace, start_trace
 from app.tools.profile_loader import get_candidate_profile
 from app.tools.resume_store import index_resume
 
@@ -58,10 +58,11 @@ async def lifespan(app: FastAPI):
         get_resolver()
     except Exception:
         pass
+    configure_langsmith()
     yield
 
 
-app = FastAPI(title="Job Intelligence API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Job Intelligence API", version="0.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -106,7 +107,9 @@ def health() -> dict:
         "candidate_profile": "loaded" if profile_ok else "unavailable",
         "llm": "configured" if llm_available() else "missing_key",
         "resume_fit_method": settings.resume_fit_method,
-        "orchestration": "langgraph",
+        "orchestration": "langgraph-react",
+        "langsmith": bool(settings.langsmith_api_key),
+        "trace_dir": settings.trace_dir,
     }
 
 
@@ -117,13 +120,11 @@ def candidate_profile() -> CandidateProfile:
 
 @app.get("/tools")
 def tools_list() -> dict:
-    """Registered analyze tools (same functions LangGraph nodes and tool-calling use)."""
     return {"tools": list_analyze_tools()}
 
 
 @app.post("/tools/{tool_name}")
 def tools_invoke(tool_name: str, req: ToolInvokeRequest) -> dict:
-    """Direct tool invocation for debugging / agent tool-calling integrations."""
     try:
         result = run_tool_by_name(tool_name, **req.arguments)
     except KeyError:
@@ -131,6 +132,19 @@ def tools_invoke(tool_name: str, req: ToolInvokeRequest) -> dict:
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"tool": tool_name, "result": result}
+
+
+@app.get("/observability/traces")
+def traces_list(limit: int = 20) -> dict:
+    return {"traces": list_recent_traces(limit=limit)}
+
+
+@app.get("/observability/traces/{run_id}")
+def traces_get(run_id: str) -> dict:
+    data = load_trace(run_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="trace not found")
+    return data
 
 
 @app.post("/resume/index")

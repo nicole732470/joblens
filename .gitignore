@@ -24,4 +24,6 @@ extension/data/employers.json
 backend/.venv/
 data-pipeline/.venv/
 *.egg-info/
-.pytest_cache/
+# Trace files (keep logs/traces/.gitkeep)
+logs/traces/*.json
+

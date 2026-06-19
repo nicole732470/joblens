@@ -2,7 +2,7 @@
 
 Chrome extension + FastAPI backend for **evidence-based job decisions** on LinkedIn: DOL H-1B employer lookup (offline) and **Apply / Near apply / Consider / Skip** from your profile, JD, and resume.
 
-> Repo name is still [`lca-linkedin-checker`](https://github.com/nicole732470/lca-linkedin-checker); the product UI is **Hop** (extension v2.9+).
+> Repo name is still [`lca-linkedin-checker`](https://github.com/nicole732470/lca-linkedin-checker); the product UI is **Hop** (extension v2.10+).
 
 ---
 
@@ -15,7 +15,7 @@ Hop is a **real product** (LinkedIn panel) and an **AI-engineering portfolio**:
 | **Product** | H-1B entity resolution + job-fit verdict on every posting |
 | **RAG** | Resume chunked → pgvector → retrieve evidence per JD requirement |
 | **LLM** | Structured JD parse + **LLM judgment** of resume fit (not distance-only) |
-| **Agents** | **LangGraph** orchestration, **tool registry**, pipeline observability |
+| **Agents** | **LangGraph** (parallel prefetch, retry, conditional routing) + **ReAct tool-calling agent** |
 | **Eval** | Golden set + `run_eval.py` for regression |
 
 **Deferred (by design):** MCP server, AWS deploy (needs your cloud account).
@@ -120,7 +120,9 @@ Expected health:
   "database": "connected",
   "llm": "configured",
   "resume_fit_method": "auto",
-  "orchestration": "langgraph"
+  "orchestration": "langgraph-react",
+  "langsmith": false,
+  "trace_dir": "logs/traces"
 }
 ```
 
@@ -145,11 +147,14 @@ flowchart LR
   end
 
   subgraph server["Docker · FastAPI"]
-    LG[LangGraph workflow]
-    TOOLS[Tool registry]
-    LG --> TOOLS
+    LG[LangGraph]
+    AGENT[ReAct agent]
+    LG --> AGENT
+    AGENT -->|tool calls| TOOLS[6 analyze tools]
     PG[(Postgres + pgvector)]
-    LG --> PG
+    TOOLS --> PG
+    TR[logs/traces]
+    LG --> TR
   end
 
   EXT -->|JD + resume + signals| LG
@@ -157,31 +162,43 @@ flowchart LR
   OR[OpenRouter] -->|chat + embeddings| LG
 ```
 
-### `/analyze` pipeline (LangGraph nodes)
+### `/analyze` pipeline (LangGraph)
 
-1. `sponsorship_lookup` — H-1B SQL (Postgres employer index)
-2. `parse_jd` — LLM structured extract
-3. `resume_fit` — RAG + **LLM classify** (or vector fallback)
-4. `load_profile` — YAML intent
-5. `score_company` + `risk_rules`
-6. `recommend` — rule-based verdict
+```mermaid
+flowchart TD
+  PREP[prepare: resolve resume + profile]
+  PREP --> FAN{parallel}
+  FAN --> H1B[sponsorship_lookup]
+  FAN --> JD[parse_jd]
+  H1B --> JOIN[join]
+  JD --> JOIN
+  JOIN -->|parse failed, attempts < 3| JD
+  JOIN -->|ok| ROUTE{LLM key?}
+  ROUTE -->|yes| REACT[ReAct agent: LLM picks tools]
+  ROUTE -->|no| FILL[fill_gaps: deterministic tools]
+  REACT -->|missing steps| FILL
+  REACT -->|complete| ASM[assemble Report]
+  FILL --> ASM
+  ASM --> TRACE[persist trace JSON]
+```
 
-Each step is traced in `explain.observability` (duration_ms per step).
+**ReAct agent** (`langgraph.prebuilt.create_react_agent`) binds 6 tools. The LLM decides call order and passes JSON between tools. If the agent skips a step or no API key, **`fill_gaps`** runs the same tools deterministically.
 
-### Tool-calling API
+**Tools:** `lookup_h1b_sponsorship`, `parse_jd_structured`, `score_resume_against_jd`, `score_company_fit`, `assess_job_risks`, `recommend_apply_skip`.
 
-Same functions the graph uses, exposed for agents / debugging:
+Each step records `duration_ms` in `explain.observability.steps`. Full run JSON: `logs/traces/{run_id}.json`.
+
+### Tool API + observability
 
 ```bash
 curl http://localhost:8000/tools
-curl -X POST http://localhost:8000/tools/parse_jd_structured \
-  -H 'Content-Type: application/json' \
-  -d '{"arguments":{"jd_text":"...","title":"AI Engineer"}}'
+curl http://localhost:8000/observability/traces
+curl http://localhost:8000/observability/traces/{run_id}
 ```
 
-Tools: `lookup_h1b_sponsorship`, `parse_jd_structured`, `score_resume_against_jd`, `recommend_apply_skip`.
+Optional **LangSmith**: set `LANGCHAIN_API_KEY` in `.env` — tracing auto-enables at startup.
 
-*(MCP wrapper — future; not required for Hop itself.)*
+*(MCP wrapper not implemented — not required for Hop.)*
 
 ---
 
@@ -223,6 +240,8 @@ Tools: `lookup_h1b_sponsorship`, `parse_jd_structured`, `score_resume_against_jd
 | `LLM_MODEL` | JD parse model (default free tier) |
 | `EMBEDDING_MODEL` | `openai/text-embedding-3-small` |
 | `RESUME_FIT_METHOD` | `auto` \| `llm` \| `vector` |
+| `TRACE_DIR` | Where `/analyze` trace JSON is written |
+| `LANGCHAIN_API_KEY` | Optional LangSmith tracing |
 | `DATABASE_URL` | Postgres for pgvector + H-1B index |
 
 ---
@@ -273,10 +292,14 @@ Golden-set eval (needs running backend + LLM): `cd evals && python3 run_eval.py`
 |------|--------|
 | RAG + pgvector | ✅ |
 | LLM JD parse | ✅ |
-| LLM resume classify | ✅ |
-| LangGraph orchestration | ✅ |
+| LLM resume classify (after RAG) | ✅ |
+| LangGraph parallel + conditional retry | ✅ |
+| ReAct LLM tool-calling agent | ✅ |
+| Deterministic fill_gaps fallback | ✅ |
 | Tool registry + `/tools` API | ✅ |
-| Pipeline observability | ✅ |
+| Trace persistence + `/observability/traces` | ✅ |
+| LangSmith (optional) | ✅ when `LANGCHAIN_API_KEY` set |
+| Extension: Resume match method in UI | ✅ v2.10 |
 | Golden set expansion | 🔄 ongoing |
 | MCP server | ⏸ skipped |
 | AWS EC2 deploy | ⏸ needs cloud account |

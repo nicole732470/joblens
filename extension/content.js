@@ -1268,6 +1268,7 @@
       const total = strong + partial + weak + gaps;
       const resumeTip = [
         { k: "Fit ratio", v: `${Math.round(rec.fit_ratio * 100)}%` },
+        { k: "Match", v: rf?.match_method === "llm" ? "LLM + RAG" : rf?.match_method === "vector" ? "Vector only" : "—" },
         { k: "Strong", v: String(strong) },
         { k: "Partial", v: String(partial) },
         { k: "Gaps", v: String(gaps) },

@@ -31,6 +31,10 @@ services:
       CANDIDATE_PROFILE_PATH: ${CANDIDATE_PROFILE_PATH:-evals/golden_set/candidate_profile.yaml}
       DEFAULT_RESUME_PATH: ${DEFAULT_RESUME_PATH:-evals/golden_set/resume.md}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
+      RESUME_FIT_METHOD: ${RESUME_FIT_METHOD:-auto}
+      TRACE_DIR: /app/logs/traces
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-hop-analyze}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -39,6 +43,7 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./evals/golden_set:/app/evals/golden_set:ro
+      - ./logs/traces:/app/logs/traces
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
