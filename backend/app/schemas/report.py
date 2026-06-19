@@ -154,6 +154,8 @@ class RecommendationResult(BaseModel):
     preferences_total: int = 0
     dealbreakers_matched: int = 0
     dealbreakers_total: int = 0
+    dealbreaker_hits: list[str] = []
+    preference_hits: list[str] = []
 
 
 class RiskAnalysis(BaseModel):
@@ -174,6 +176,8 @@ class CompanyAnalysis(BaseModel):
     preference_hits: list[str] = []
     industry_label: Optional[str] = None
     dealbreakers_matched: int = 0
+    dealbreaker_hits: list[str] = []
+    score_breakdown: dict = {}
     linkedin_followers: Optional[int] = None
     alumni_hits: list[str] = []
 
@@ -188,3 +192,5 @@ class Report(BaseModel):
     risk: RiskAnalysis = RiskAnalysis()
     recommendation: RecommendationResult = RecommendationResult()
     received: dict = {}
+    # Why each metric landed where it did — for UI tooltips and curl debugging.
+    explain: dict = {}

@@ -294,13 +294,14 @@ def evaluate_profile_signals(
 ) -> dict:
     job_blob = _full_job_blob(jd, jd_text, job_title)
     loc = score_location(jd, jd_text, profile)
-    pref_n, _ = _semantic_phrase_hits(profile.preferences, job_blob)
+    pref_n, pref_hits = _semantic_phrase_hits(profile.preferences, job_blob)
     deal_n, deal_hits = _semantic_phrase_hits(profile.dealbreakers, job_blob)
     return {
         **loc,
         "preferences_matched": pref_n,
         "preferences_total": len(profile.preferences),
+        "preference_hits": pref_hits[:5],
         "dealbreakers_matched": deal_n,
         "dealbreakers_total": len(profile.dealbreakers),
-        "dealbreaker_hits": deal_hits,
+        "dealbreaker_hits": deal_hits[:5],
     }

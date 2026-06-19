@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.8.1";
+  const EXTENSION_VERSION = "2.8.2";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -1125,7 +1125,7 @@
     return true;
   }
 
-  function renderMetricsGrid(rec, co) {
+  function renderMetricsGrid(rec, co, explain) {
     const cells = [];
 
     cells.push({
@@ -1151,34 +1151,72 @@
     });
 
     if (co?.company_tier != null) {
+      const coHits = co.dealbreaker_hits?.length
+        ? co.dealbreaker_hits
+        : explain?.company?.dealbreaker_hits || [];
+      let coHint = co.company_label || co.summary || "Employer vs your preferences";
+      if (coHits.length) {
+        coHint = `Dealbreaker → P3: ${coHits[0]}`;
+      } else if (explain?.company?.breakdown?.combined != null && !explain.company.breakdown.reason) {
+        const pct = Math.round(explain.company.breakdown.combined * 100);
+        coHint = `Score ${pct}% (≥52 P1, ≥38 P2) · ${coHint}`;
+      }
       cells.push({
         val: `P${co.company_tier}`,
         lbl: "Company",
-        hint: co.company_label || co.summary || "Employer vs your preferences",
+        hint: coHint,
       });
     }
 
     const pref = rec.preferences_matched ?? 0;
+    const prefHits = rec.preference_hits?.length
+      ? rec.preference_hits
+      : explain?.company?.preference_hits || [];
     cells.push({
       val: String(pref),
       lbl: "Prefs",
       hint:
-        (rec.preferences_total ?? 0) > 0
-          ? `${pref} of ${rec.preferences_total} JD preference hit(s)`
-          : "No preferences configured",
+        prefHits.length > 0
+          ? `Hit: ${prefHits.slice(0, 2).join(", ")}`
+          : (rec.preferences_total ?? 0) > 0
+            ? `${pref} of ${rec.preferences_total} preference(s) in JD`
+            : "No preferences configured",
     });
 
     const deal = rec.dealbreakers_matched ?? 0;
+    const flagHits = rec.dealbreaker_hits?.length
+      ? rec.dealbreaker_hits
+      : explain?.flags?.hits || [];
     cells.push({
       val: String(deal),
       lbl: "Flags",
       hint:
-        (rec.dealbreakers_total ?? 0) > 0
-          ? `${deal} dealbreaker(s) matched in JD`
-          : "No dealbreakers configured",
+        deal > 0 && flagHits.length
+          ? `Dealbreaker: ${flagHits[0]}`
+          : (rec.dealbreakers_total ?? 0) > 0
+            ? `${deal} dealbreaker(s) matched in JD`
+            : "No dealbreakers configured",
     });
 
     return renderMetricGrid(cells);
+  }
+
+  function renderExplainLine(explain) {
+    if (!explain) return "";
+    const bits = [];
+    if (explain.flags?.hits?.length) {
+      bits.push(`Flag «${explain.flags.hits[0]}»`);
+    }
+    if (explain.company?.dealbreaker_hits?.length) {
+      bits.push(`Company P3: «${explain.company.dealbreaker_hits[0]}»`);
+    } else if (explain.company?.breakdown?.combined != null && !explain.company.breakdown.reason) {
+      bits.push(`Company score ${Math.round(explain.company.breakdown.combined * 100)}% → P${explain.company.tier}`);
+    }
+    if (explain.role?.adjustments?.length) {
+      bits.push(`Role: ${explain.role.adjustments.join("; ")}`);
+    }
+    if (!bits.length) return "";
+    return `<div class="lca-evidence"><span class="lca-ev lca-ev-neutral lca-why" title="Full breakdown: DevTools → Network → /analyze → explain">${escapeHtml(bits.join(" · "))}</span></div>`;
   }
 
   function renderCompanyLine(co) {
@@ -1230,7 +1268,7 @@
     "Low priority": { text: "Consider", tone: "consider" },
   };
 
-  function renderAnalysisBlock(rec, rf, co) {
+  function renderAnalysisBlock(rec, rf, co, explain) {
     if (!rec?.available && !rf?.available) return "";
     if (!rec?.available) return "";
 
@@ -1243,7 +1281,8 @@
           ${statusPill(meta.text, meta.tone)}
           ${note ? `<span class="lca-verdict-note">${escapeHtml(note)}</span>` : ""}
         </div>
-        ${renderMetricsGrid(rec, co)}
+        ${renderMetricsGrid(rec, co, explain)}
+        ${renderExplainLine(explain)}
         ${renderCompanyLine(co)}
         ${renderEvidenceLine(rf)}
       </div>`;
@@ -1305,7 +1344,7 @@
     }
 
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    return `<div class="lca-analyze-inner">${errLine}${renderAnalysisBlock(rec, rf, co)}${renderRiskSection(report.risk)}</div>`;
+    return `<div class="lca-analyze-inner">${errLine}${renderAnalysisBlock(rec, rf, co, report.explain)}${renderRiskSection(report.risk)}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -1323,6 +1362,8 @@
     try {
       const inputs = await gatherJobInputs(ctx);
       const report = await analyzeWithBackend(inputs);
+      window.__hopLastReport = report;
+      console.debug("[Hop] explain:", report.explain);
       out.innerHTML = renderAnalysisInline(report, inputs.captureProbe);
     } catch (err) {
       console.error("[Job Intelligence]", err);

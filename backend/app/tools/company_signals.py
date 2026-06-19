@@ -131,6 +131,8 @@ def score_company(
             "preference_hits": [],
             "industry_label": None,
             "dealbreakers_matched": deal_n,
+            "dealbreaker_hits": deal_hits[:5],
+            "score_breakdown": {"reason": "dealbreaker", "hit": hit},
             "linkedin_followers": linkedin_followers,
             "alumni_hits": [],
         }
@@ -177,6 +179,15 @@ def score_company(
         "preference_hits": pref_hits[:5],
         "industry_label": ind_label if ind_label != "industry unknown" else None,
         "dealbreakers_matched": 0,
+        "dealbreaker_hits": [],
+        "score_breakdown": {
+            "preference": round(pref_score, 3),
+            "industry": round(ind_score, 3),
+            "followers": round(fol_score, 3),
+            "alumni": round(alum_score, 3),
+            "combined": round(combined, 3),
+            "weights": "50% pref · 28% industry · 12% followers · 10% alumni",
+        },
         "linkedin_followers": linkedin_followers,
         "alumni_hits": alum_hits[:5],
     }

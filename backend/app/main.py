@@ -28,6 +28,41 @@ from app.tools.risk_rules import run_risk_rules
 from app.tools.sponsorship import search_h1b_company
 
 
+def _build_explain(
+    recommendation: RecommendationResult,
+    company: CompanyAnalysis,
+) -> dict:
+    rec = recommendation
+    co = company
+    return {
+        "flags": {
+            "count": rec.dealbreakers_matched,
+            "hits": rec.dealbreaker_hits,
+            "note": "JD text matched your dealbreakers (hard veto list in profile YAML).",
+        },
+        "company": {
+            "tier": co.company_tier,
+            "label": co.company_label,
+            "score": co.company_score,
+            "dealbreaker_hits": co.dealbreaker_hits,
+            "preference_hits": co.preference_hits,
+            "breakdown": co.score_breakdown,
+            "note": (
+                "P3 from dealbreaker if listed; otherwise combined score "
+                "(≥0.52 P1, ≥0.38 P2, else P3). Not H-1B sponsor odds."
+            ),
+        },
+        "role": {
+            "track": rec.track_label,
+            "priority": rec.track_priority,
+            "similarity": rec.track_similarity,
+            "fit_ratio": rec.fit_ratio,
+            "adjustments": rec.technical_penalty_hits,
+        },
+        "debug": "DevTools → Network → POST /analyze → Response JSON → explain",
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Warm the in-memory entity-resolution index so the first /analyze is fast.
@@ -166,6 +201,8 @@ def analyze(req: AnalyzeRequest) -> Report:
 
     status = "complete" if not pending else "partial"
 
+    explain = _build_explain(recommendation, company) if profile is not None else {}
+
     return Report(
         status=status,
         pending=pending,
@@ -185,4 +222,5 @@ def analyze(req: AnalyzeRequest) -> Report:
             "linkedin_followers": req.linkedin_followers,
             "alumni_hints": req.alumni_hints,
         },
+        explain=explain,
     )
