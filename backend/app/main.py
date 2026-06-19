@@ -6,9 +6,11 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db import check_db_connection
+from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import JDParse, Report, SponsorshipAnalysis
 from app.tools.entity_resolver import get_resolver
 from app.tools.jd_parser import parse_job_description
+from app.tools.profile_loader import get_candidate_profile
 from app.tools.sponsorship import search_h1b_company
 
 
@@ -46,10 +48,23 @@ class AnalyzeRequest(BaseModel):
 @app.get("/health")
 def health() -> dict:
     db_ok = check_db_connection()
+    profile_ok = False
+    try:
+        get_candidate_profile()
+        profile_ok = True
+    except Exception:
+        pass
     return {
         "status": "ok",
         "database": "connected" if db_ok else "unavailable",
+        "candidate_profile": "loaded" if profile_ok else "unavailable",
     }
+
+
+@app.get("/candidate-profile", response_model=CandidateProfile)
+def candidate_profile() -> CandidateProfile:
+    """Return the loaded candidate intent profile (for debugging / extension)."""
+    return get_candidate_profile()
 
 
 @app.post("/analyze", response_model=Report)

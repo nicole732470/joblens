@@ -19,5 +19,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"),
     )
 
+    # Candidate intent (tracks, locations, …) — separate from resume text.
+    candidate_profile_path: str = "evals/golden_set/candidate_profile.yaml"
+
+    # Embeddings for resume RAG (OpenAI-compatible API).
+    embedding_model: str = "openai/text-embedding-3-small"
+    embedding_dimensions: int = 1536
+
 
 settings = Settings()

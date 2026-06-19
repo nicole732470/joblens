@@ -4,3 +4,5 @@ pydantic>=2.8
 pydantic-settings>=2.4
 psycopg[binary]>=3.2
 openai>=1.40
+pyyaml>=6.0
+pgvector>=0.3
