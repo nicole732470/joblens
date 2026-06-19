@@ -22,6 +22,7 @@ _NEAR_APPLY_TRACK_SIM_MIN = 0.30
 _NEAR_APPLY_RATIO_MIN = 0.22
 _CONSIDER_RATIO_MIN = 0.28
 _CONSIDER_RATIO_FLOOR = 0.12
+_SKIP_PRIORITY_MIN = 4  # P4–P5 tracks (research, penalized analyst, etc.) → Skip
 
 # Resume–requirement match weights (tune via golden set / run_eval).
 _PARTIAL_WEIGHT = 0.5
@@ -307,6 +308,31 @@ def generate_recommendation(
     signal_fields = _signal_fields(signals)
 
     has_role_penalty = bool(track_fields.get("technical_penalty_hits"))
+
+    if penalized_priority is not None and penalized_priority >= _SKIP_PRIORITY_MIN:
+        decision = Recommendation.SKIP
+        reasoning = (
+            f"Role track is P{penalized_priority} — outside your P1–P3 target tiers.{track_note}"
+        )
+        return {
+            "available": True,
+            "decision": decision,
+            "reasoning": reasoning.strip(),
+            "summary": _build_summary(
+                decision,
+                display_track,
+                ratio,
+                strong,
+                partial,
+                pure_gap,
+                signals,
+                technical_penalty_hits=track_fields.get("technical_penalty_hits"),
+            ),
+            "evidence_ids": _collect_evidence_ids(resume_fit, jd),
+            "fit_ratio": round(ratio, 3),
+            **signal_fields,
+            **track_fields,
+        }
 
     # P1–P2 title match: floor at Consider, not Skip (title fit alone is not Apply/Near apply).
     priority_floor = (

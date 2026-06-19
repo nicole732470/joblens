@@ -68,7 +68,7 @@ tracks:
 
   - id: business_analyst
     label: "Analyst role"
-    priority: 4
+    priority: 3
     example_titles: 
       - Data Analyst
       - Business Analyst
@@ -153,6 +153,11 @@ technical_penalties:
   - chip design
   - GPU hardware
   - HPC hardware
+  - high-performance computing
+  - HPC scheduler
+  - Slurm
+  - InfiniBand
+  - parallel storage
   - silicon
   - ASIC
   - semiconductor fabrication

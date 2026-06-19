@@ -57,16 +57,22 @@ def apply_technical_penalties(
 ) -> tuple[int | None, list[str]]:
     """Bump Role P-tier when JD mentions hard-skill gaps the user listed.
 
-    Only applies when the title pulled a strong track (P1–P2) — analyst/HPC-style
-    roles already sit at P3+ and should not get an extra +1.
+    P1–P2: +1 tier. P3 (e.g. analyst family): +1 → P4 when JD is hardware/HPC-heavy.
+    P4+ already: no further bump (Skip rule applies separately).
     """
-    if track_priority is None or track_priority > 2 or not profile.technical_penalties:
+    if track_priority is None or not profile.technical_penalties:
+        return track_priority, []
+    if track_priority >= 4:
         return track_priority, []
     blob = _jd_scan_blob(jd, jd_text)
     n, hits = _strict_phrase_hits(profile.technical_penalties, blob)
     if n == 0:
         return track_priority, []
-    return min(5, track_priority + 1), hits
+    if track_priority <= 2:
+        return min(5, track_priority + 1), hits
+    if track_priority == 3:
+        return 4, hits
+    return track_priority, hits
 
 
 def _find_track(profile: CandidateProfile, track_id: str) -> Track | None:
@@ -120,8 +126,8 @@ def apply_jd_role_adjustments(
         priority = max(priority, 4)
         reasons.append("research-heavy JD")
 
-    # Analyst title family + HPC/GPU core JD — floor at P4 without extra penalty stack.
-    elif track.id == "business_analyst" and priority >= 4:
+    # Analyst title family + HPC/GPU core JD → floor at P4 (triggers Skip).
+    elif track.id == "business_analyst":
         n, hits = _strict_phrase_hits(profile.technical_penalties or [], blob)
         if n > 0:
             priority = max(priority, 4)

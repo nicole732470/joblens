@@ -43,7 +43,7 @@ class TitleKeywordTests(unittest.TestCase):
             [
                 Track(id="customer_success", label="CSM", priority=3, example_titles=["CSM"]),
                 Track(id="research_eng", label="Research", priority=4, example_titles=[]),
-                Track(id="business_analyst", label="Analyst", priority=4, example_titles=[]),
+                Track(id="business_analyst", label="Analyst", priority=3, example_titles=[]),
             ]
         )
 
@@ -61,12 +61,19 @@ class TitleKeywordTests(unittest.TestCase):
 
 
 class TechnicalPenaltyTests(unittest.TestCase):
-    def test_penalty_skipped_for_p3_plus(self) -> None:
+    def test_penalty_skipped_for_p4_plus(self) -> None:
         profile = _minimal_profile([], penalties=["GPU hardware"])
         jd = JDParse(available=False)
         pri, hits = apply_technical_penalties(4, jd, "GPU hardware cluster admin", profile)
         self.assertEqual(pri, 4)
         self.assertEqual(hits, [])
+
+    def test_penalty_p3_analyst_bumps_to_p4(self) -> None:
+        profile = _minimal_profile([], penalties=["HPC hardware", "Slurm"])
+        jd = JDParse(available=False)
+        pri, hits = apply_technical_penalties(3, jd, "HPC hardware and Slurm scheduler", profile)
+        self.assertEqual(pri, 4)
+        self.assertTrue(hits)
 
     def test_penalty_applies_for_p1_with_hpc(self) -> None:
         profile = _minimal_profile([], penalties=["HPC hardware"])
