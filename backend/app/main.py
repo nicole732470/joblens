@@ -7,7 +7,8 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db import check_db_connection
-from app.graph.workflow import list_analyze_tools, run_analyze_workflow, run_tool_by_name
+from app.graph.workflow import list_analyze_tools, run_analyze_workflow
+from app.tools.analyze_tools import run_tool_by_name
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import Report
 from app.tools.entity_resolver import get_resolver
