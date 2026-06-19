@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.3.0";
+  const EXTENSION_VERSION = "2.3.1";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -52,6 +52,10 @@
     const bits = (parts || []).filter(Boolean);
     bits.push(`v${EXTENSION_VERSION}`);
     return `<div class="lca-foot">${bits.map((p) => escapeHtml(p)).join(" · ")}</div>`;
+  }
+
+  function renderDisclaimer(text) {
+    return renderFoot(null, [`Disclaimer: ${text}`]);
   }
 
   function footLinkedInHint(ctx, legalName) {
@@ -411,9 +415,11 @@
                </details>`
             : `${renderNotes(notes)}${renderWarnings(warnings)}`
         }
-        <button type="button" class="lca-analyze-btn">Analyze</button>
+        <div class="lca-action-row">
+          <button type="button" class="lca-analyze-btn">Analyze fit</button>
+        </div>
         <div class="lca-analyze-result" hidden></div>
-        ${renderFoot(ctx, [footLinkedInHint(ctx, employer.name), "U.S. DOL H-1B"])}
+        ${renderFoot(ctx, [footLinkedInHint(ctx, employer.name), "Source: U.S. DOL H-1B"])}
       </div>`;
     finishBadge(el, ctx);
   }
@@ -434,9 +440,11 @@
             ${companyLine}
           </div>
         </div>
-        <button type="button" class="lca-analyze-btn">Analyze</button>
+        <div class="lca-action-row">
+          <button type="button" class="lca-analyze-btn">Analyze fit</button>
+        </div>
         <div class="lca-analyze-result" hidden></div>
-        ${renderFoot(ctx, ["may use a different legal name"])}
+        ${renderDisclaimer("employer may file under a different legal name")}
       </div>`;
     finishBadge(el, ctx);
   }
@@ -725,101 +733,72 @@
     return String(claim || "").replace(/^\[(strong|partial|weak|missing)\]\s*/i, "");
   }
 
-  function renderFitList(items, cssClass, emptyLabel) {
-    if (!items?.length) {
-      return emptyLabel ? `<div class="lca-hint">${escapeHtml(emptyLabel)}</div>` : "";
-    }
-    return `<ul class="lca-fit-list">${items
-      .slice(0, 8)
-      .map(
-        (c) =>
-          `<li class="${cssClass}"><span class="lca-fit-dot"></span>${escapeHtml(stripClaimPrefix(c.claim))}</li>`
-      )
-      .join("")}${items.length > 8 ? `<li class="lca-hint">+${items.length - 8} more</li>` : ""}</ul>`;
+  function renderBulletedList(items, extraClass, limit = 8) {
+    if (!items?.length) return "";
+    const slice = items.slice(0, limit);
+    const more = items.length > limit ? `<li class="lca-list-more">+${items.length - limit} more</li>` : "";
+    return `<ul class="lca-list ${extraClass || ""}">${slice
+      .map((c) => `<li>${escapeHtml(stripClaimPrefix(c.claim))}</li>`)
+      .join("")}${more}</ul>`;
   }
 
-  function renderFitChips(items, kind) {
-    if (!items?.length) return "";
-    return items
-      .slice(0, 6)
-      .map((c) => `<span class="lca-chip lca-chip-${kind}">${escapeHtml(stripClaimPrefix(c.claim))}</span>`)
-      .join("");
+  function renderPanel(label, body) {
+    if (!body) return "";
+    return `<div class="lca-panel"><div class="lca-panel-label">${escapeHtml(label)}</div>${body}</div>`;
   }
 
   function renderResumeFitSection(rf) {
     if (!rf?.available) {
       const reason = rf?.reason || "";
-      return reason ? `<div class="lca-block lca-block-muted">${escapeHtml(reason)}</div>` : "";
+      return reason ? renderPanel("Resume", `<div class="lca-panel-empty">${escapeHtml(reason)}</div>`) : "";
     }
     const fit = partitionResumeFit(rf);
-    const skillHits = fit.strong.length + fit.partial.length;
-    const gapCount = fit.gaps.length;
-    const chips = [
-      renderFitChips(fit.strong, "strong"),
-      renderFitChips(fit.partial, "partial"),
-    ].join("");
-    const gapLine =
-      gapCount > 0
-        ? `<details class="lca-details lca-details-compact"><summary>${gapCount} skill gap${gapCount === 1 ? "" : "s"}</summary>${renderFitList(fit.gaps, "lca-fit-missing", "")}</details>`
-        : "";
-    const softLine =
-      fit.soft > 0
-        ? `<div class="lca-micro">${fit.soft} soft requirement${fit.soft === 1 ? "" : "s"} (leadership, teamwork…) not scored as skill gaps</div>`
-        : "";
-    const summary =
-      skillHits > 0
-        ? `${skillHits} skill${skillHits === 1 ? "" : "s"} match your resume`
-        : "No strong skill overlap found";
-    return `
-      <div class="lca-block">
-        <div class="lca-block-title">Resume</div>
-        <div class="lca-micro">${escapeHtml(summary)}</div>
-        ${chips ? `<div class="lca-chips">${chips}</div>` : ""}
-        ${gapLine}
-        ${softLine}
-      </div>`;
+    const matches = [...fit.strong, ...fit.partial];
+    const parts = [];
+    if (matches.length) {
+      parts.push(renderPanel("Matches", renderBulletedList(matches)));
+    }
+    if (fit.gaps.length) {
+      parts.push(renderPanel("Gaps", renderBulletedList(fit.gaps, "lca-list-gap")));
+    }
+    if (!matches.length && !fit.gaps.length) {
+      parts.push(renderPanel("Resume", `<div class="lca-panel-empty">No hard skill requirements to score.</div>`));
+    }
+    return parts.join("");
   }
 
   const VERDICT_LABELS = {
-    Apply: { text: "Apply", cls: "lca-verdict-apply" },
-    "Apply with modifications": { text: "Consider", cls: "lca-verdict-consider" },
-    "Low priority": { text: "Later", cls: "lca-verdict-later" },
-    Skip: { text: "Skip", cls: "lca-verdict-skip" },
+    Apply: { text: "Apply", dot: "found" },
+    "Apply with modifications": { text: "Consider", dot: "caution" },
+    "Low priority": { text: "Later", dot: "caution" },
+    Skip: { text: "Skip", dot: "miss" },
   };
 
   function renderVerdictSection(rec) {
     if (!rec?.available) {
       const reason = rec?.reason || "";
-      return reason ? `<div class="lca-block lca-block-muted">${escapeHtml(reason)}</div>` : "";
+      return reason ? renderPanel("Fit", `<div class="lca-panel-empty">${escapeHtml(reason)}</div>`) : "";
     }
-    const meta = VERDICT_LABELS[rec.decision] || {
-      text: rec.decision || "?",
-      cls: "lca-verdict-later",
-    };
+    const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", dot: "caution" };
     const track =
       rec.track_label && rec.track_priority != null
         ? `${rec.track_label} · P${rec.track_priority}`
         : rec.track_label || "";
-    const note = simplifyReasoning(rec.reasoning || "");
     return `
-      <div class="lca-verdict ${meta.cls}">
-        <span class="lca-verdict-pill">${escapeHtml(meta.text)}</span>
-        ${track ? `<span class="lca-verdict-track">${escapeHtml(track)}</span>` : ""}
-        ${note ? `<div class="lca-verdict-note">${escapeHtml(note)}</div>` : ""}
+      <div class="lca-panel lca-panel-top">
+        <div class="lca-hero">
+          <span class="lca-status-dot lca-status-${meta.dot}"></span>
+          <div class="lca-hero-text">
+            <div class="lca-title">${escapeHtml(meta.text)}</div>
+            ${track ? `<div class="lca-company">${escapeHtml(track)}</div>` : ""}
+          </div>
+        </div>
       </div>`;
   }
 
   function renderRiskSection(risk) {
     if (!risk?.available || !risk.risks?.length) return "";
-    const items = risk.risks
-      .slice(0, 3)
-      .map((r) => `<li>${escapeHtml(r.claim)}</li>`)
-      .join("");
-    return `
-      <div class="lca-block lca-block-risk">
-        <div class="lca-block-title">Risk</div>
-        <ul class="lca-risk-list">${items}</ul>
-      </div>`;
+    return renderPanel("Risk", renderBulletedList(risk.risks.map((r) => ({ claim: r.claim })), "lca-list-warn", 4));
   }
 
   function renderJdErrorOnly(jd, received) {
@@ -835,13 +814,7 @@
   }
 
   function renderAnalysisInline(report) {
-    return `
-      <div class="lca-analyze-inner">
-        ${renderVerdictSection(report.recommendation)}
-        ${renderResumeFitSection(report.resume_fit)}
-        ${renderRiskSection(report.risk)}
-        ${renderJdErrorOnly(report.jd, report.received)}
-      </div>`;
+    return `<div class="lca-analyze-inner">${renderVerdictSection(report.recommendation)}${renderResumeFitSection(report.resume_fit)}${renderRiskSection(report.risk)}${renderJdErrorOnly(report.jd, report.received)}</div>`;
   }
 
   function friendlyParseReason(reason) {
@@ -880,10 +853,10 @@
     if (out.dataset.loaded === "1") {
       if (out.hasAttribute("hidden")) {
         out.removeAttribute("hidden");
-        btn.textContent = "Hide";
+        btn.textContent = "Hide fit";
       } else {
         out.setAttribute("hidden", "");
-        btn.textContent = "Analyze";
+        btn.textContent = "Analyze fit";
       }
       return;
     }
@@ -899,7 +872,7 @@
       const jdChars = report.received?.jd_chars ?? inputs.jd_text?.length ?? 0;
       if (jdChars >= 40 && report.jd?.available) {
         out.dataset.loaded = "1";
-        btn.textContent = "Hide";
+        btn.textContent = "Hide fit";
       } else {
         btn.textContent = "Retry";
       }
