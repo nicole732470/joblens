@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.5.0";
+  const EXTENSION_VERSION = "2.5.1";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -617,58 +617,111 @@
       .trim();
   }
 
+  function elementPlainText(el) {
+    if (!el) return "";
+    return normalizeJdText(el.textContent || el.innerText || "");
+  }
+
+  function extractFromJobPanelHeuristic() {
+    const titleEl = document.querySelector(
+      ".job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1.t-24, .top-card-layout__title, .job-details-jobs-unified-top-card__job-title h1"
+    );
+    const panel =
+      titleEl?.closest(
+        ".scaffold-layout__detail, .jobs-search__job-details, .jobs-search__right-rail, [class*='job-details']"
+      ) || findJobDetailsRoot();
+    if (!panel || panel.closest(`#${BADGE_ID}`)) return "";
+
+    const markup =
+      panel.querySelector(".show-more-less-html__markup") ||
+      panel.querySelector(".show-more-less-html");
+    if (markup) {
+      const t = elementPlainText(markup);
+      if (t.length > 40) return t;
+    }
+
+    const jdHost =
+      panel.querySelector("#job-details") ||
+      panel.querySelector(".jobs-description") ||
+      panel.querySelector("[class*='jobs-description']");
+    if (jdHost) {
+      const t = elementPlainText(jdHost);
+      if (t.length > 40) return t;
+    }
+
+    const lines = [];
+    panel.querySelectorAll("p, li").forEach((el) => {
+      if (el.closest(`#${BADGE_ID}`)) return;
+      const t = (el.textContent || "").trim();
+      if (t.length >= 24 && t.length < 600) lines.push(t);
+    });
+    if (lines.length) return normalizeJdText(lines.join("\n"));
+    return "";
+  }
+
   function extractJobDescriptionFromDom() {
     const selectors = [
       ".show-more-less-html__markup",
+      ".show-more-less-html",
       "#job-details",
       ".jobs-description__content",
       ".jobs-description-content__text",
+      ".jobs-description-content__text--stretch",
       ".jobs-box__html-content",
       "article.jobs-description__container",
       ".core-section-container__content",
       ".description__text",
       ".jobs-description",
+      "[class*='jobs-description-content']",
       "[class*='jobs-description']",
       "[id*='job-details']",
     ];
     let best = "";
     for (const sel of selectors) {
       document.querySelectorAll(sel).forEach((el) => {
-        const text = normalizeJdText(el.innerText);
+        if (el.closest(`#${BADGE_ID}`)) return;
+        const text = elementPlainText(el);
         if (text.length > best.length) best = text;
       });
     }
     if (best.length > 40) return best;
+
+    const heuristic = extractFromJobPanelHeuristic();
+    if (heuristic.length > best.length) return heuristic;
 
     const root = findJobDetailsRoot();
     if (root) {
       let largest = "";
       root.querySelectorAll("div, section, article").forEach((el) => {
         if (el.closest(`#${BADGE_ID}`)) return;
-        const text = normalizeJdText(el.innerText);
+        const text = elementPlainText(el);
         if (text.length > largest.length && text.length < 50000) largest = text;
       });
-      return largest.length > best.length ? largest : best;
+      if (largest.length > best.length) return largest;
     }
     return best;
   }
 
   function extractJobDescription() {
-    const dom = extractJobDescriptionFromDom();
-    if (dom.length > 40) return dom;
     const jsonLd = extractJobDescriptionFromJsonLd();
-    return jsonLd.length > dom.length ? jsonLd : dom;
+    const dom = extractJobDescriptionFromDom();
+    return dom.length >= jsonLd.length ? dom : jsonLd;
   }
 
   async function captureJobDescription() {
     let best = "";
-    for (let attempt = 0; attempt < 16; attempt++) {
+    for (let attempt = 0; attempt < 20; attempt++) {
       await expandJobDescription();
       const text = extractJobDescription();
       if (text.length > best.length) best = text;
       if (best.length > 120) break;
-      await sleep(220);
+      await sleep(280);
     }
+    if (best.length < 40) {
+      const retry = extractFromJobPanelHeuristic();
+      if (retry.length > best.length) best = retry;
+    }
+    console.info("[Hop] JD capture:", best.length, "chars");
     return best;
   }
 
@@ -825,10 +878,7 @@
   };
 
   function renderVerdictSection(rec) {
-    if (!rec?.available) {
-      const reason = rec?.reason || "";
-      return reason ? `<div class="lca-verdict-card lca-verdict-later"><div class="lca-verdict-empty">${escapeHtml(reason)}</div></div>` : "";
-    }
+    if (!rec?.available) return "";
     const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", tone: "later" };
     const track =
       rec.track_label && rec.track_priority != null
@@ -848,37 +898,30 @@
     return `<div class="lca-risk-line"><span class="lca-risk-tag">Risk</span>${escapeHtml(top.claim)}${more ? `<span class="lca-risk-more">${escapeHtml(more)}</span>` : ""}</div>`;
   }
 
+  function shortJdError(chars, jd) {
+    if (typeof chars === "number" && chars < 40) {
+      return `Couldn't read job description (${chars} chars). Expand it on the page, wait a moment, Retry.`;
+    }
+    const reason = jd?.reason || "";
+    if (!reason) return "";
+    const r = reason.toLowerCase();
+    if (r.includes("no job description")) return "No job text sent to server.";
+    if (r.includes("llm not configured")) return "Server LLM not configured.";
+    if (r.includes("parse failed")) return "Server parse failed — Retry.";
+    return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
+  }
+
   function renderAnalysisInline(report) {
+    const chars = report.received?.jd_chars ?? 0;
+    const jd = report.jd;
+    if (!jd?.available && chars < 40) {
+      return `<div class="lca-analyze-inner"><p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p></div>`;
+    }
+
     const rec = report.recommendation;
     const rf = report.resume_fit;
-    return `<div class="lca-analyze-inner">${renderVerdictSection(rec)}${renderFitInsights(rec, rf)}${renderRiskSection(report.risk)}${renderJdErrorOnly(report.jd, report.received)}</div>`;
-  }
-
-  function friendlyParseReason(reason) {
-    const r = String(reason || "").toLowerCase();
-    if (!reason) return "Could not parse this job posting.";
-    if (r.includes("no job description")) {
-      return "Couldn't read the job description from this page. Wait for it to load, then retry.";
-    }
-    if (r.includes("llm not configured")) {
-      return "Backend LLM not configured — set LLM_API_KEY in .env and restart docker.";
-    }
-    if (r.includes("no json") || r.includes("parse failed")) {
-      return "AI parser failed — click Run analysis again.";
-    }
-    return reason;
-  }
-
-  function renderJdErrorOnly(jd, received) {
-    if (jd?.available) return "";
-    const reason = jd?.reason || "";
-    const chars = received?.jd_chars;
-    const captureHint =
-      typeof chars === "number" && chars < 40
-        ? `Captured ${chars} chars — wait for JD to load, then retry.`
-        : "";
-    if (!reason && !captureHint) return "";
-    return `<div class="lca-parse-err">${captureHint ? `<div>${escapeHtml(captureHint)}</div>` : ""}${reason ? `<div>${escapeHtml(friendlyParseReason(reason))}</div>` : ""}</div>`;
+    const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
+    return `<div class="lca-analyze-inner">${errLine}${renderVerdictSection(rec)}${renderFitInsights(rec, rf)}${renderRiskSection(report.risk)}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -902,6 +945,9 @@
   }
 
   async function onAnalyzeClick(btn, out, ctx) {
+    if (btn.textContent === "Retry") {
+      out.dataset.loaded = "0";
+    }
     // Already loaded once → just toggle visibility.
     if (out.dataset.loaded === "1") {
       if (out.hasAttribute("hidden")) {

@@ -271,14 +271,18 @@
   color: rgba(0, 0, 0, 0.4);
 }
 
-.lca-parse-err {
-  font-size: 13px;
+.lca-err-mini {
+  font-size: 11px;
+  line-height: 1.35;
   color: #b24020;
-  line-height: 1.4;
-  padding: 8px 10px;
-  background: #fff8f8;
-  border-radius: 8px;
-  border: 1px solid rgba(204, 16, 22, 0.12);
+  margin: 0 0 6px;
+}
+
+.lca-parse-err {
+  font-size: 11px;
+  color: #b24020;
+  line-height: 1.35;
+  margin: 0;
 }
 
 .lca-details summary {
