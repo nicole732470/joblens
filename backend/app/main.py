@@ -6,8 +6,9 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db import check_db_connection
-from app.schemas.report import Report, SponsorshipAnalysis
+from app.schemas.report import JDParse, Report, SponsorshipAnalysis
 from app.tools.entity_resolver import get_resolver
+from app.tools.jd_parser import parse_job_description
 from app.tools.sponsorship import search_h1b_company
 
 
@@ -53,10 +54,10 @@ def health() -> dict:
 
 @app.post("/analyze", response_model=Report)
 def analyze(req: AnalyzeRequest) -> Report:
-    """Partial analysis: real H-1B sponsorship lookup; the rest is pending.
+    """Partial analysis: H-1B sponsorship lookup + JD parsing.
 
-    Returns the structured Report (see docs/REPORT_SCHEMA.md). JD parsing,
-    resume fit, risk, and recommendation are added in later phases.
+    Returns the structured Report (see docs/REPORT_SCHEMA.md). Resume fit, risk,
+    and recommendation are added in later phases.
     """
     if req.company:
         sponsorship = SponsorshipAnalysis(**search_h1b_company(req.company))
@@ -64,10 +65,18 @@ def analyze(req: AnalyzeRequest) -> Report:
         sponsorship = SponsorshipAnalysis(
             matched=False, reason="no company provided"
         )
+
+    jd = JDParse(**parse_job_description(req.jd_text, req.title))
+
+    pending = ["resume_fit", "risk", "recommendation"]
+    if not jd.available:
+        pending.insert(0, "jd_parsing")
+
     return Report(
         status="partial",
-        pending=["jd_parsing", "resume_fit", "risk", "recommendation"],
+        pending=pending,
         sponsorship=sponsorship,
+        jd=jd,
         received={
             "company": req.company,
             "title": req.title,

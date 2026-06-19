@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +9,15 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://jobintel:jobintel@localhost:5432/jobintel"
     cors_origins: list[str] = ["*"]
+
+    # LLM (OpenAI-compatible). Defaults target OpenRouter's free tier; swap the
+    # base_url/model/key for OpenAI, AWS Bedrock proxy, etc. without code changes.
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "arcee-ai/trinity-large-preview:free"
+    llm_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("LLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"),
+    )
 
 
 settings = Settings()

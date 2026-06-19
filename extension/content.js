@@ -390,6 +390,45 @@
     return "lca-odds-unknown";
   }
 
+  const REQ_CATEGORY_LABELS = {
+    required_skill: "Required",
+    preferred_skill: "Preferred",
+    experience: "Experience",
+    education: "Education",
+    responsibility: "Responsibility",
+    location: "Location",
+    visa: "Visa",
+    risk_keyword: "Risk",
+    other: "Other",
+  };
+
+  function renderJdSection(jd) {
+    if (!jd || !jd.available) {
+      const reason = jd?.reason || "";
+      return reason
+        ? `<div class="lca-coming"><div class="lca-label">Job parsing</div><div class="lca-hint">${escapeHtml(reason)}</div></div>`
+        : "";
+    }
+    const meta = [jd.seniority, jd.location].filter(Boolean).join(" · ");
+    const reqs = (jd.requirements || [])
+      .slice(0, 12)
+      .map((r) => {
+        const tag = REQ_CATEGORY_LABELS[r.category] || "Other";
+        return `<li><span class="lca-req-tag">${escapeHtml(tag)}</span> ${escapeHtml(r.text)}</li>`;
+      })
+      .join("");
+    const visa = (jd.visa_language || [])
+      .map((v) => `<li>${escapeHtml(v)}</li>`)
+      .join("");
+    return `
+      <div class="lca-coming">
+        <div class="lca-label">Job requirements</div>
+        ${meta ? `<div class="lca-hint">${escapeHtml(meta)}</div>` : ""}
+        ${reqs ? `<ul class="lca-reqs">${reqs}</ul>` : `<div class="lca-hint">No explicit requirements extracted.</div>`}
+        ${visa ? `<div class="lca-label" style="margin-top:6px">Visa language</div><ul class="lca-notes">${visa}</ul>` : ""}
+      </div>`;
+  }
+
   function renderAnalysisInline(report) {
     const sp = report.sponsorship || {};
     const likelihood = sp.sponsorship_likelihood || "Unknown";
@@ -418,6 +457,7 @@
             ? `<div class="lca-hint">A transparent likelihood score is still being built.</div>`
             : ""
         }
+        ${renderJdSection(report.jd)}
         ${pendingHtml}
       </div>`;
   }

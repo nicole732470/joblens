@@ -89,6 +89,43 @@ class SponsorshipAnalysis(BaseModel):
     evidence_ids: list[str] = []
 
 
+class JDRequirement(BaseModel):
+    """One extracted requirement/attribute from the job description.
+
+    `id` (jd_req_01, …) is the citable evidence handle later analyses
+    (resume fit, risk) must reference per the citation contract.
+    """
+
+    id: str
+    category: Literal[
+        "required_skill",
+        "preferred_skill",
+        "experience",
+        "education",
+        "responsibility",
+        "location",
+        "visa",
+        "risk_keyword",
+        "other",
+    ] = "other"
+    text: str
+    evidence_quote: str = ""
+
+
+class JDParse(BaseModel):
+    """Structured view of the job description (LLM-extracted)."""
+
+    available: bool = False
+    reason: Optional[str] = None
+    location: Optional[str] = None
+    seniority: Optional[str] = None
+    requirements: list[JDRequirement] = []
+    visa_language: list[str] = []
+    risk_keywords: list[str] = []
+    evidence: list[Evidence] = []
+    evidence_ids: list[str] = []
+
+
 class ResumeFitAnalysis(BaseModel):
     available: bool = False
     strong_matches: list[Claim] = []
@@ -112,6 +149,7 @@ class Report(BaseModel):
     status: Literal["partial", "complete"] = "partial"
     pending: list[str] = []
     sponsorship: SponsorshipAnalysis
+    jd: JDParse = JDParse()
     resume_fit: ResumeFitAnalysis = ResumeFitAnalysis()
     risk: RiskAnalysis = RiskAnalysis()
     recommendation: RecommendationResult = RecommendationResult()

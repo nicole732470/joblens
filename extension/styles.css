@@ -288,6 +288,30 @@
   color: #4b5563;
 }
 
+.lca-reqs {
+  margin: 6px 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+.lca-reqs li {
+  margin-bottom: 5px;
+  color: #374151;
+  font-size: 12px;
+}
+.lca-req-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #4338ca;
+  background: rgba(79, 70, 229, 0.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
 .lca-foot {
   margin-top: 10px;
   border-top: 1px solid #f1f1f4;
