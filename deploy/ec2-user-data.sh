@@ -45,5 +45,12 @@ BACKEND_BIND=0.0.0.0:8000
 EOF
 
 docker-compose -f docker-compose.prod.yml up -d --build
-sleep 20
+
+export DATABASE_URL="postgresql://${RDS_USER}:${RDS_PASS}@${RDS_HOST}:5432/${RDS_DB}"
+docker run --rm --network host --entrypoint python3 \
+  -e DATABASE_URL \
+  -v "$APP_DIR:/repo:ro" -w /repo joblens-backend \
+  data-pipeline/load_to_postgres.py
+
+sleep 10
 curl -sf http://127.0.0.1:8000/health
