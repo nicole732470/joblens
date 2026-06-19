@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db import check_db_connection
+from app.schemas.report import Report, SponsorshipAnalysis
 from app.tools.entity_resolver import get_resolver
 from app.tools.sponsorship import search_h1b_company
 
@@ -50,27 +51,28 @@ def health() -> dict:
     }
 
 
-@app.post("/analyze")
-def analyze(req: AnalyzeRequest) -> dict:
+@app.post("/analyze", response_model=Report)
+def analyze(req: AnalyzeRequest) -> Report:
     """Partial analysis: real H-1B sponsorship lookup; the rest is pending.
 
-    JD parsing, resume fit, risk, and recommendation are added in later phases
-    per docs/DESIGN.md.
+    Returns the structured Report (see docs/REPORT_SCHEMA.md). JD parsing,
+    resume fit, risk, and recommendation are added in later phases.
     """
-    sponsorship = (
-        search_h1b_company(req.company)
-        if req.company
-        else {"matched": False, "reason": "no company provided"}
-    )
-    return {
-        "status": "partial",
-        "sponsorship": sponsorship,
-        "pending": ["jd_parsing", "resume_fit", "risk", "recommendation"],
-        "received": {
+    if req.company:
+        sponsorship = SponsorshipAnalysis(**search_h1b_company(req.company))
+    else:
+        sponsorship = SponsorshipAnalysis(
+            matched=False, reason="no company provided"
+        )
+    return Report(
+        status="partial",
+        pending=["jd_parsing", "resume_fit", "risk", "recommendation"],
+        sponsorship=sponsorship,
+        received={
             "company": req.company,
             "title": req.title,
             "jd_chars": len(req.jd_text),
             "has_resume": req.resume_text is not None,
             "job_url": req.job_url,
         },
-    }
+    )
