@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.4.0";
+  const EXTENSION_VERSION = "2.5.0";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -291,8 +291,12 @@
     }
   }
 
-  function renderChrome() {
-    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand">Apply Scout</span><button type="button" class="lca-close" aria-label="Close">×</button></div>`;
+  function renderChrome(showAnalyze = true) {
+    const logo = runtime.getURL("icons/rabbit.png");
+    const analyzeBtn = showAnalyze
+      ? `<button type="button" class="lca-analyze-btn">Analyze</button>`
+      : "";
+    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><img class="lca-logo" src="${logo}" alt="" width="18" height="18" /><span class="lca-brand">Hop</span>${analyzeBtn}<button type="button" class="lca-close" aria-label="Close">×</button></div>`;
   }
 
   function initDrag(el) {
@@ -328,7 +332,7 @@
     };
 
     el.addEventListener("pointerdown", (e) => {
-      if (!e.target.closest(".lca-chrome") || e.target.closest(".lca-close")) return;
+      if (!e.target.closest(".lca-chrome") || e.target.closest(".lca-close") || e.target.closest(".lca-analyze-btn")) return;
       e.preventDefault();
       dragging = true;
       pointerId = e.pointerId;
@@ -415,9 +419,6 @@
                </details>`
             : `${renderNotes(notes)}${renderWarnings(warnings)}`
         }
-        <div class="lca-action-row">
-          <button type="button" class="lca-analyze-btn">Run analysis</button>
-        </div>
         <div class="lca-analyze-result" hidden></div>
         ${renderFoot(ctx, [footLinkedInHint(ctx, employer.name), "Source: U.S. DOL H-1B"])}
       </div>`;
@@ -440,9 +441,6 @@
             ${companyLine}
           </div>
         </div>
-        <div class="lca-action-row">
-          <button type="button" class="lca-analyze-btn">Run analysis</button>
-        </div>
         <div class="lca-analyze-result" hidden></div>
         ${renderDisclaimer("employer may file under a different legal name")}
       </div>`;
@@ -453,7 +451,7 @@
     const el = ensureBadge();
     el.className = "lca-badge lca-loading";
     el.innerHTML = `
-      ${renderChrome()}
+      ${renderChrome(false)}
       <div class="lca-body">
         <div class="lca-loading-row"><span class="lca-spinner"></span> Checking H-1B records…</div>
       </div>`;
@@ -464,7 +462,7 @@
     const el = ensureBadge();
     el.className = "lca-badge lca-waiting";
     el.innerHTML = `
-      ${renderChrome()}
+      ${renderChrome(false)}
       <div class="lca-body">
         <div class="lca-title">Waiting for job details…</div>
         <div class="lca-hint">Open a job posting to detect the employer.</div>
@@ -496,16 +494,28 @@
   function findJobDetailsRoot() {
     const selectors = [
       "#job-details",
+      ".show-more-less-html",
       ".jobs-description",
       ".jobs-description__content",
+      ".jobs-description-content__text",
       ".jobs-search__job-details",
-      ".jobs-search__right-rail .jobs-details",
+      ".jobs-search__right-rail",
+      ".scaffold-layout__detail",
       "[class*='jobs-details__main-content']",
-      ".scaffold-layout__detail .jobs-details",
+      ".jobs-details",
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
       if (el && !el.closest(`#${BADGE_ID}`)) return el;
+    }
+    const titleEl = document.querySelector(
+      ".job-details-jobs-unified-top-card__job-title, .jobs-unified-top-card__job-title, h1.t-24, .top-card-layout__title"
+    );
+    if (titleEl) {
+      const panel = titleEl.closest(
+        ".scaffold-layout__detail, .jobs-search__job-details, [class*='job-details'], .jobs-search__right-rail"
+      );
+      if (panel && !panel.closest(`#${BADGE_ID}`)) return panel;
     }
     return null;
   }
@@ -542,6 +552,7 @@
       ".jobs-description__footer-button",
       "[data-tracking-control-name='public_jobs_show-more-html-btn']",
       ".show-more-less-html__button--more",
+      ".show-more-less-html__button",
       "button.show-more-less-html__button--more",
     ];
     for (const sel of selectors) {
@@ -898,7 +909,7 @@
         btn.textContent = "Hide";
       } else {
         out.setAttribute("hidden", "");
-        btn.textContent = "Run analysis";
+        btn.textContent = "Analyze";
       }
       return;
     }
@@ -912,7 +923,8 @@
       const report = await analyzeWithBackend(inputs);
       out.innerHTML = renderAnalysisInline(report);
       const jdChars = report.received?.jd_chars ?? inputs.jd_text?.length ?? 0;
-      if (jdChars >= 40 && report.jd?.available) {
+      const ok = (report.jd?.available || report.recommendation?.available) && jdChars >= 40;
+      if (ok) {
         out.dataset.loaded = "1";
         btn.textContent = "Hide";
       } else {

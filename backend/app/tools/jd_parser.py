@@ -7,6 +7,8 @@ reference them under the citation contract (see docs/DESIGN.md §7-8).
 
 from __future__ import annotations
 
+import re
+
 from app.tools.llm import complete_json_with_retry, llm_available
 
 _VALID_CATEGORIES = {
@@ -49,38 +51,120 @@ def _clean_str(v) -> str:
     return v.strip() if isinstance(v, str) else ""
 
 
-def parse_job_description(jd_text: str, title: str | None = None) -> dict:
-    """Parse a JD into the JDParse shape. Never raises; returns available=False on failure."""
+_VISA_RE = re.compile(r"sponsorship|visa|h-1b|h1b|work authorization|authorized to work", re.I)
+_SKILL_HINT = re.compile(
+    r"\b(python|java|javascript|typescript|react|aws|sql|kubernetes|docker|"
+    r"machine learning|llm|pytorch|tensorflow|c\+\+|go\b|rust\b|scala)\b",
+    re.I,
+)
+
+
+def _categorize_fallback(line: str) -> str:
+    low = line.lower()
+    if _VISA_RE.search(line):
+        return "visa"
+    if re.search(r"\d+\+?\s*(years|yrs)\b", line, re.I):
+        return "experience"
+    if re.search(r"\b(bachelor|master|phd|degree|bs\b|ms\b)\b", line, re.I):
+        return "education"
+    if _SKILL_HINT.search(line):
+        return "required_skill"
+    if any(w in low for w in ("preferred", "nice to have", "plus")):
+        return "preferred_skill"
+    return "other"
+
+
+def _build_parse_result(requirements: list[dict], visa_language: list[str], risk_keywords: list[str]) -> dict:
+    evidence = []
+    for req in requirements:
+        evidence.append(
+            {
+                "id": req["id"],
+                "type": "jd_requirement",
+                "value": req["category"],
+                "detail": req.get("evidence_quote") or req["text"],
+            }
+        )
+    return {
+        "available": True,
+        "location": None,
+        "seniority": None,
+        "requirements": requirements,
+        "visa_language": visa_language,
+        "risk_keywords": risk_keywords,
+        "evidence": evidence,
+        "evidence_ids": [e["id"] for e in evidence],
+    }
+
+
+def _fallback_parse(jd_text: str) -> dict | None:
+    """Rule-based parse when LLM is down or returns garbage. Needs real JD text."""
     text = (jd_text or "").strip()
-    if not text:
-        return {"available": False, "reason": "no job description text provided"}
-    if not llm_available():
-        return {"available": False, "reason": "LLM not configured (set LLM_API_KEY)"}
+    if len(text) < 40:
+        return None
 
-    user_base = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n"
-    last_reason = "unknown error"
-    # Long JDs + free models: retry with shorter text if the model returns garbage.
-    char_limits = (12000, 7000, 4000)
-    for i, limit in enumerate(char_limits):
-        user = user_base + text[:limit]
-        try:
-            data = complete_json_with_retry(
-                _SYSTEM, user, max_attempts=2 if i == 0 else 1, base_delay_sec=0.8, max_tokens=3000
+    requirements: list[dict] = []
+    seen: set[str] = set()
+    visa_language: list[str] = []
+    risk_keywords: list[str] = []
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if len(line) < 10 or len(line) > 280:
+            continue
+        is_bullet = bool(re.match(r"^[\s•\-\*●▪]+", line)) or bool(re.match(r"^\d+[.)]\s+", line))
+        is_reqish = is_bullet or any(
+            k in line.lower()
+            for k in ("required", "must ", "years of", "experience with", "proficiency", "qualification")
+        )
+        if not is_reqish:
+            if _VISA_RE.search(line) and line not in visa_language:
+                visa_language.append(line[:200])
+            continue
+        clean = re.sub(r"^[\s•\-\*●▪\d.)]+", "", line).strip()
+        key = clean.lower()
+        if not clean or key in seen:
+            continue
+        seen.add(key)
+        idx = len(requirements) + 1
+        requirements.append(
+            {
+                "id": f"jd_req_{idx:02d}",
+                "category": _categorize_fallback(clean),
+                "text": clean[:180],
+                "evidence_quote": clean[:120],
+            }
+        )
+
+    if len(requirements) < 2 and len(text) > 120:
+        for sent in re.split(r"[.;\n]+", text):
+            sent = sent.strip()
+            if len(sent) < 20 or len(sent) > 200:
+                continue
+            if not (_SKILL_HINT.search(sent) or re.search(r"\d+\+?\s*years", sent, re.I)):
+                continue
+            key = sent.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            idx = len(requirements) + 1
+            requirements.append(
+                {
+                    "id": f"jd_req_{idx:02d}",
+                    "category": _categorize_fallback(sent),
+                    "text": sent[:180],
+                    "evidence_quote": sent[:120],
+                }
             )
-            break
-        except Exception as e:  # noqa: BLE001
-            last_reason = str(e)
-            data = None
-    if data is None:
-        return {
-            "available": False,
-            "reason": (
-                f"parse failed after retries: {last_reason}. "
-                "Free LLM sometimes fails on long job posts — click Analyze again, "
-                "or check LLM_API_KEY / LLM_MODEL in .env."
-            ),
-        }
+            if len(requirements) >= 12:
+                break
 
+    if not requirements:
+        return None
+    return _build_parse_result(requirements[:15], visa_language[:5], risk_keywords)
+
+
+def _format_llm_result(data: dict) -> dict:
     requirements = []
     evidence = []
     for i, raw in enumerate(data.get("requirements") or [], start=1):
@@ -119,3 +203,45 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
         "evidence": evidence,
         "evidence_ids": [e["id"] for e in evidence],
     }
+
+
+def parse_job_description(jd_text: str, title: str | None = None) -> dict:
+    """Parse a JD into the JDParse shape. Never raises; returns available=False on failure."""
+    text = (jd_text or "").strip()
+    if not text:
+        return {"available": False, "reason": "no job description text provided"}
+
+    if not llm_available():
+        fb = _fallback_parse(text)
+        if fb:
+            return fb
+        return {"available": False, "reason": "LLM not configured (set LLM_API_KEY)"}
+
+    user_base = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n"
+    last_reason = "unknown error"
+    data = None
+    char_limits = (12000, 7000, 4000)
+    for i, limit in enumerate(char_limits):
+        user = user_base + text[:limit]
+        try:
+            data = complete_json_with_retry(
+                _SYSTEM, user, max_attempts=2 if i == 0 else 1, base_delay_sec=0.8, max_tokens=3000
+            )
+            break
+        except Exception as e:  # noqa: BLE001
+            last_reason = str(e)
+            data = None
+    if data is None:
+        fb = _fallback_parse(text)
+        if fb:
+            return fb
+        return {
+            "available": False,
+            "reason": (
+                f"parse failed after retries: {last_reason}. "
+                "Free LLM sometimes fails — click Analyze again."
+            ),
+        }
+
+    return _format_llm_result(data)
+
