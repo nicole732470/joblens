@@ -8,6 +8,7 @@ from app.config import settings
 from app.db import check_db_connection
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import (
+    CompanyAnalysis,
     JDParse,
     Report,
     RecommendationResult,
@@ -15,6 +16,7 @@ from app.schemas.report import (
     RiskAnalysis,
     SponsorshipAnalysis,
 )
+from app.tools.company_signals import score_company
 from app.tools.entity_resolver import get_resolver
 from app.tools.jd_parser import parse_job_description
 from app.tools.profile_loader import get_candidate_profile
@@ -120,8 +122,15 @@ def analyze(req: AnalyzeRequest) -> Report:
         profile = None
 
     risk = RiskAnalysis()
+    company = CompanyAnalysis()
     recommendation = RecommendationResult()
     if profile is not None:
+        try:
+            company = CompanyAnalysis(
+                **score_company(req.company, jd, req.jd_text, profile, sponsorship)
+            )
+        except Exception as e:  # noqa: BLE001
+            company = CompanyAnalysis(available=False, reason=str(e))
         try:
             risk = RiskAnalysis(**run_risk_rules(jd, resume_fit, profile))
         except Exception as e:  # noqa: BLE001
@@ -151,6 +160,7 @@ def analyze(req: AnalyzeRequest) -> Report:
         status=status,
         pending=pending,
         sponsorship=sponsorship,
+        company=company,
         jd=jd,
         resume_fit=resume_fit,
         risk=risk,

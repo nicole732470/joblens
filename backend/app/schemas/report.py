@@ -161,10 +161,25 @@ class RiskAnalysis(BaseModel):
     risks: list[Claim] = []
 
 
+class CompanyAnalysis(BaseModel):
+    """Employer quality vs profile preferences — separate from H-1B sponsor lookup."""
+
+    available: bool = False
+    reason: Optional[str] = None
+    company_score: Optional[float] = None
+    company_tier: Optional[int] = None
+    company_label: str = ""
+    summary: str = ""
+    preference_hits: list[str] = []
+    industry_label: Optional[str] = None
+    dealbreakers_matched: int = 0
+
+
 class Report(BaseModel):
     status: Literal["partial", "complete"] = "partial"
     pending: list[str] = []
     sponsorship: SponsorshipAnalysis
+    company: CompanyAnalysis = CompanyAnalysis()
     jd: JDParse = JDParse()
     resume_fit: ResumeFitAnalysis = ResumeFitAnalysis()
     risk: RiskAnalysis = RiskAnalysis()

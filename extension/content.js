@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.7.9";
+  const EXTENSION_VERSION = "2.8.0";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -1082,7 +1082,7 @@
     return true;
   }
 
-  function renderMetricsGrid(rec) {
+  function renderMetricsGrid(rec, co) {
     const cells = [];
 
     cells.push({
@@ -1107,13 +1107,21 @@
       hint: rec.location_label || "Location tier",
     });
 
+    if (co?.company_tier != null) {
+      cells.push({
+        val: `P${co.company_tier}`,
+        lbl: "Company",
+        hint: co.company_label || co.summary || "Employer vs your preferences",
+      });
+    }
+
     const pref = rec.preferences_matched ?? 0;
     cells.push({
       val: String(pref),
       lbl: "Prefs",
       hint:
         (rec.preferences_total ?? 0) > 0
-          ? `${pref} of ${rec.preferences_total} preference(s) matched`
+          ? `${pref} of ${rec.preferences_total} JD preference hit(s)`
           : "No preferences configured",
     });
 
@@ -1128,6 +1136,11 @@
     });
 
     return renderMetricGrid(cells);
+  }
+
+  function renderCompanyLine(co) {
+    if (!co?.available || !co.summary) return "";
+    return `<div class="lca-evidence"><span class="lca-ev lca-ev-neutral">${escapeHtml(truncateText(co.summary, 72))}</span></div>`;
   }
 
   function renderEvidenceLine(rf) {
@@ -1165,11 +1178,11 @@
     "Low priority": { text: "Consider", tone: "consider" },
   };
 
-  function renderAnalysisBlock(rec, rf) {
+  function renderAnalysisBlock(rec, rf, co) {
     if (!rec?.available && !rf?.available) return "";
     if (!rec?.available) return "";
 
-    const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", tone: "later" };
+    const meta = VERDICT_LABELS[rec.decision] || { text: rec.decision || "?", tone: "consider" };
     const note = buildVerdictNote(rec);
 
     return `
@@ -1178,7 +1191,8 @@
           ${statusPill(meta.text, meta.tone)}
           ${note ? `<span class="lca-verdict-note">${escapeHtml(note)}</span>` : ""}
         </div>
-        ${renderMetricsGrid(rec)}
+        ${renderMetricsGrid(rec, co)}
+        ${renderCompanyLine(co)}
         ${renderEvidenceLine(rf)}
       </div>`;
   }
@@ -1232,13 +1246,14 @@
     const jd = report.jd;
     const rec = report.recommendation;
     const rf = report.resume_fit;
+    const co = report.company;
 
     if (!jd?.available && chars < 40) {
       return `<div class="lca-analyze-inner">${renderCaptureMeta(chars, captureProbe)}<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p></div>`;
     }
 
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    return `<div class="lca-analyze-inner">${errLine}${renderAnalysisBlock(rec, rf)}${renderRiskSection(report.risk)}</div>`;
+    return `<div class="lca-analyze-inner">${errLine}${renderAnalysisBlock(rec, rf, co)}${renderRiskSection(report.risk)}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
