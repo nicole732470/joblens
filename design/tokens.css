@@ -1,0 +1,18 @@
+/**
+ * JobLens — Notion-inspired design tokens (extension + web).
+ * Import or mirror these variables in each surface.
+ */
+:root {
+  --jn-bg: #ffffff;
+  --jn-bg-subtle: #f7f6f3;
+  --jn-text: #37352f;
+  --jn-text-secondary: #787774;
+  --jn-border: #e9e9e7;
+  --jn-border-strong: #d3d1cb;
+  --jn-accent: #2383e2;
+  --jn-accent-hover: #1a6fc9;
+  --jn-radius: 6px;
+  --jn-radius-lg: 8px;
+  --jn-shadow: 0 1px 3px rgba(15, 15, 15, 0.06);
+  --jn-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+}

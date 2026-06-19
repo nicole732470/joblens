@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "3.0.2";
+  const EXTENSION_VERSION = "3.1.0";
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
@@ -459,7 +459,7 @@
     const refreshBtn = showRefresh
       ? `<button type="button" class="lca-refresh-btn" title="Reload for this job">Refresh</button>`
       : "";
-    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-mark" aria-hidden="true">JL</span><span class="lca-brand">JobLens</span>${refreshBtn}<button type="button" class="lca-close" aria-label="Close">×</button></div>`;
+    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand">JobLens</span>${refreshBtn}<button type="button" class="lca-close" aria-label="Close">×</button></div>`;
   }
 
   function initDrag(el) {
