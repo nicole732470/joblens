@@ -20,3 +20,8 @@ def fetch_all(query: str, params: tuple = ()) -> list[dict]:
     with psycopg.connect(settings.database_url, row_factory=dict_row) as conn:
         register_vector(conn)
         return conn.execute(query, params).fetchall()
+
+
+def fetch_one(query: str, params: tuple = ()) -> dict | None:
+    rows = fetch_all(query, params)
+    return rows[0] if rows else None

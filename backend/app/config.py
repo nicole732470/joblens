@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://jobintel:jobintel@localhost:5432/jobintel"
     cors_origins: list[str] = ["*"]
 
+    jwt_secret: str = "change-me-in-production"
+    jwt_expire_days: int = 30
+
     # LLM (OpenAI-compatible). Defaults target OpenRouter's free tier; swap the
     # base_url/model/key for OpenAI, AWS Bedrock proxy, etc. without code changes.
     llm_base_url: str = "https://openrouter.ai/api/v1"
