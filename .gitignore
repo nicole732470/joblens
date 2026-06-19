@@ -16,6 +16,8 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+node_modules/
+web/dist/
 
 # Extension dev (keep committed gzip; ignore uncompressed export for size)
 extension/data/employers.json
