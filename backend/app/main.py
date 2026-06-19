@@ -7,10 +7,12 @@ from pydantic import BaseModel
 from app.config import settings
 from app.db import check_db_connection
 from app.schemas.candidate_profile import CandidateProfile
-from app.schemas.report import JDParse, Report, SponsorshipAnalysis
+from app.schemas.report import JDParse, Report, ResumeFitAnalysis, SponsorshipAnalysis
 from app.tools.entity_resolver import get_resolver
 from app.tools.jd_parser import parse_job_description
 from app.tools.profile_loader import get_candidate_profile
+from app.tools.resume_fit import analyze_resume_fit
+from app.tools.resume_store import index_resume
 from app.tools.sponsorship import search_h1b_company
 
 
@@ -45,6 +47,11 @@ class AnalyzeRequest(BaseModel):
     job_url: str | None = None
 
 
+class IndexResumeRequest(BaseModel):
+    resume_text: str
+    resume_key: str | None = None
+
+
 @app.get("/health")
 def health() -> dict:
     db_ok = check_db_connection()
@@ -67,13 +74,18 @@ def candidate_profile() -> CandidateProfile:
     return get_candidate_profile()
 
 
+@app.post("/resume/index")
+def resume_index(req: IndexResumeRequest) -> dict:
+    """Chunk, embed, and store resume text in pgvector."""
+    try:
+        return index_resume(req.resume_text, req.resume_key)
+    except Exception as e:  # noqa: BLE001
+        return {"indexed": False, "reason": str(e)}
+
+
 @app.post("/analyze", response_model=Report)
 def analyze(req: AnalyzeRequest) -> Report:
-    """Partial analysis: H-1B sponsorship lookup + JD parsing.
-
-    Returns the structured Report (see docs/REPORT_SCHEMA.md). Resume fit, risk,
-    and recommendation are added in later phases.
-    """
+    """Partial analysis: H-1B sponsorship lookup + JD parsing + resume fit."""
     if req.company:
         sponsorship = SponsorshipAnalysis(**search_h1b_company(req.company))
     else:
@@ -83,15 +95,27 @@ def analyze(req: AnalyzeRequest) -> Report:
 
     jd = JDParse(**parse_job_description(req.jd_text, req.title))
 
-    pending = ["resume_fit", "risk", "recommendation"]
+    resume_fit = ResumeFitAnalysis()
+    if req.resume_text:
+        try:
+            resume_fit = ResumeFitAnalysis(**analyze_resume_fit(jd, req.resume_text))
+        except Exception as e:  # noqa: BLE001
+            resume_fit = ResumeFitAnalysis(available=False, reason=str(e))
+
+    pending = ["risk", "recommendation"]
     if not jd.available:
         pending.insert(0, "jd_parsing")
+    if not req.resume_text:
+        pending.insert(0, "resume_fit")
+    elif not resume_fit.available:
+        pending.insert(0, "resume_fit")
 
     return Report(
         status="partial",
         pending=pending,
         sponsorship=sponsorship,
         jd=jd,
+        resume_fit=resume_fit,
         received={
             "company": req.company,
             "title": req.title,

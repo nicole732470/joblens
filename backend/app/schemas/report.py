@@ -128,6 +128,7 @@ class JDParse(BaseModel):
 
 class ResumeFitAnalysis(BaseModel):
     available: bool = False
+    reason: Optional[str] = None
     strong_matches: list[Claim] = []
     partial_matches: list[Claim] = []
     missing: list[Claim] = []
