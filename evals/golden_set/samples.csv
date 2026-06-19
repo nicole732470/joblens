@@ -1,4 +1,4 @@
-id,company,title,job_url,jd_text,expected_sponsors,expected_priority,notes
+id,company,title,job_url,jd_text,expected_sponsors,expected_priority,expected_decision,notes
 ex1,HERE Technologies,Technical Customer Success Manager,https://www.linkedin.com/jobs/view/4429108869/?alternateChannel=search&trackingId=6s1VnhqjRkePgjCgtWdcfw%3D%3D,"About the job
 What's the role? 
 
@@ -59,7 +59,7 @@ Under Section 503 of the Rehabilitation Act of 1973 and VEVRAA, we have develope
 
 HERE Technologies is a location data and technology platform company. We empower our customers to achieve better outcomes ? from helping a city manage its infrastructure or a business optimize its assets to guiding drivers to their destination safely.
 
-At HERE we take it upon ourselves to be the change we wish to see. We create solutions that fuel innovation, provide opportunity and foster inclusion to improve people?s lives. If you are inspired by an open world and driven to create positive change, join us. Learn more about us on our YouTube Channel.",yes,3,
+At HERE we take it upon ourselves to be the change we wish to see. We create solutions that fuel innovation, provide opportunity and foster inclusion to improve people?s lives. If you are inspired by an open world and driven to create positive change, join us. Learn more about us on our YouTube Channel.",yes,3,skip,
 ex2,Salesforce,Applied Research Engineer,https://www.linkedin.com/jobs/view/4426389602/?alternateChannel=search&trackingId=FaNH2doqRl6KBuxutrkERg%3D%3D,"About the job
 To get the best candidate experience, please consider applying for a maximum of 3 roles within 12 months to ensure you are not duplicating efforts.
 
@@ -123,7 +123,7 @@ At Salesforce, we believe in equitable compensation practices that reflect the d
 
 Benefits found in job post
 
-401(k), Disability insurance",yes,4,
+401(k), Disability insurance",yes,4,skip,
 ex3,Sourcerer,Member of Technical Staff (a16z),https://www.linkedin.com/jobs/view/4424602559/?alternateChannel=search&eBP=CwEAAAGe3iHjJFFie0mq1MayljC53DZGnXXoHWpVmLdHl0vCIJXhs3XhQoT3DgK5WdwpPMlzw6IkslfUH7TLNbL2QEJ9SUekhg2HnSzL7K1RtApGCeizcu0kgCYuDjK08NFSubtQ_QaBHQZ0o9ErPexBRoaIpuVibQpjtXEPfVeZzJFfHgtUJJp4vCFo2Z6dUbSTAAUlwYNe02r5ur9rahuDa8exc9jqTMGfzpgVVILd8xE6reoGmvssumRSCONnNpbc0jw1MReR_Dy5yCv7OkMJYQDtC2aeNBe6Td-hZzO2W7Wzohso_exJ-ZdYZ9_RhWXzLZiPcnyY5y4RkxLscMWI359UfrsspfWEKOUJv4esAH3C_6yR4ayABK69_LgU9u7yr_vIQTS_rEA1U_Hmkcmz_y-QG785jIma_o-CsQCoBr7IPfr4VxGWmpyjYLyUVEInegOEXZpzF4o9-1PmawkLRO2dJK1mbQ&refId=H9iEAXSEYgMJnPFn4ScVWw%3D%3D&trackingId=S6OGL8z4ugKOckAck%2F85pw%3D%3D,"About the job
 Sourcerer is the autonomous procurement platform. Our AI agents discover suppliers across the globe underwrite them with proprietary data, negotiate terms, and execute transactions end-to-end ù the work of an entire global procurement organization, done by software. Some of the largest distributors and retailers in America already trust us to move real goods and real money through our platform, and demand is compounding every month.
 
@@ -158,7 +158,7 @@ What you get
 
 Competitive salary + early-stage equity calibrated to what you bring
 Full benefits (health, dental, vision)
-The most leverage-per-person you will find anywhere: small team, huge market, direct line to founders and customers",unknown,1,
+The most leverage-per-person you will find anywhere: small team, huge market, direct line to founders and customers",unknown,1,skip,
 ex4,DSM-H Consulting,"Technical Business Analyst (HPC, Linux) - 390",https://www.linkedin.com/jobs/view/4429595902/?alternateChannel=search&eBP=null&refId=NotAvailable&trackingId=28KojVBrQvmb8mcuZ9E7uQ%3D%3D,"About the job
 Role and Overview of the Role
 
@@ -190,7 +190,7 @@ Slurm.
 InfiniBand.
 
 
-Position’s Contributions to Work Group:
+Positionùs Contributions to Work Group:
 
 - Provides end to end technical and strategic leadership for enterprise HPC platforms that enable advanced engineering, simulation, analytics, and AI/ML workloads.
 
@@ -200,17 +200,17 @@ Position’s Contributions to Work Group:
 
 Typical task breakdown:
 
-· Lead the architecture, design, and lifecycle management of on prem, hybrid, and cloud based HPC platforms.
+ù Lead the architecture, design, and lifecycle management of on prem, hybrid, and cloud based HPC platforms.
 
-· Define reference architectures for compute (CPU/GPU/accelerators), high speed interconnects, parallel storage, and workload orchestration.
+ù Define reference architectures for compute (CPU/GPU/accelerators), high speed interconnects, parallel storage, and workload orchestration.
 
-· Translate complex workload requirements into scalable, resilient, and cost effective system designs.
+ù Translate complex workload requirements into scalable, resilient, and cost effective system designs.
 
-· Establish performance benchmarks, capacity models, and scaling strategies.
+ù Establish performance benchmarks, capacity models, and scaling strategies.
 
-· Evaluate emerging technologies and guide vendor selection and platform roadmaps.
+ù Evaluate emerging technologies and guide vendor selection and platform roadmaps.
 
-· Ensure compliance with security, reliability, availability, and enterprise architecture standards.
+ù Ensure compliance with security, reliability, availability, and enterprise architecture standards.
 
 
 
@@ -284,4 +284,4 @@ Soft Skills
 
 - Collaboration
 
-- Emotional intelligence",yes,4,
+- Emotional intelligence",yes,4,skip,
