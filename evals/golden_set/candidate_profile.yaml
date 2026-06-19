@@ -1,0 +1,133 @@
+# Candidate Profile — your job-search INTENT (separate from the resume).
+# Spec: docs/FIT_AND_RECOMMENDATION.md
+#
+# HOW TO WRITE LISTS (trajectory / dealbreakers / preferences / example_titles):
+#   - Each item on its own line with "  - " in front, OR
+#   - One line in brackets: ["item one", "item two"]
+#   - Use quotes when the text has commas or special chars; plain text is fine too.
+#   - Rough / general wording is OK — the system interprets meaning, not exact words.
+#
+# Lines starting with # are comments (ignored).
+
+# ---------------------------------------------------------------------------
+# TRACKS — role CATEGORIES you want. priority: 1 = most wanted, 5 = last resort.
+# Same number = same tier. Add as many tracks as you need.
+# ---------------------------------------------------------------------------
+tracks:
+  - id: pm_eng
+    label: "product roles"
+    priority: 1
+    example_titles: 
+      - Techinical Product Manager
+      - Product Owner
+      - Product Manager
+      - System Engineer
+      - Solution Architect
+      - Solution Engineer 
+      - Product Engineer
+  
+  - id: ai_eng
+    label: "AI Engineer"
+    priority: 1
+    example_titles: 
+      - AI Engineer
+      - AI Developer
+      - Forward Deoloyed Engineer
+      - AI Builder
+      - Agentic AI Engineer
+      
+
+  - id: sde_eng
+    label: "SDE roles"
+    priority: 3
+    example_titles: 
+      - Software Engineer
+      - Full Stack Engineer
+      - Backend Engineer
+      - Frontend Engineer
+      - DevOps Engineer
+      - Cloud Engineer
+      - Data Engineer
+      - Machine Learning Engineer
+
+  - id: business_analyst
+    label: "Analyst role"
+    priority: 4
+    example_titles: 
+      - Data Analyst
+      - Business Analyst
+      - Consultant
+
+  # Copy this block for more tracks:
+  # - id: <short_english_id>
+  #   label: "<how you call this category>"
+  #   priority: 2
+  #   example_titles: ["Title A", "Title B"]
+
+# ---------------------------------------------------------------------------
+# AVOID TRACKS — role types you do NOT want (negative examples / anti-patterns).
+# If a job looks like these, recommendation should lean Skip regardless of fit.
+# Same flexible matching as tracks — rough descriptions work.
+# ---------------------------------------------------------------------------
+avoid_tracks:
+  - id: pure_sales
+    label: "sales"
+    example_titles:
+      - Sales Representative
+
+
+  # - id: <short_id>
+  #   label: "<category you never want>"
+  #   example_titles: ["..."]
+
+# ---------------------------------------------------------------------------
+# LOCATIONS — tier lists are OPTIONAL; use summary for a vague overall stance.
+# Fill summary alone, tiers alone, or both. Rough wording OK — not a rigid whitelist.
+# ---------------------------------------------------------------------------
+locations:
+  summary: ""              # one loose sentence, e.g. "US major metros OK; prefer hybrid; open to remote"
+  tier_1: [Chicago]        # optional — most want
+  tier_2:                  # optional — acceptable
+    - Texas
+    - California
+    - New York
+  tier_3:                  # optional — avoid / hard no
+    - onsite-only in rural areas in the US
+    - not in the US
+  remote_ok: true
+  relocation_ok: true
+
+# ---------------------------------------------------------------------------
+# TRAJECTORY — projects in progress / soon on resume (near-term fit).
+# One sentence per line is fine. Rough description OK.
+# ---------------------------------------------------------------------------
+trajectory:
+  - "Evidence-based AI job-intelligence agent (this project): FastAPI, RAG, evaluation"
+  # - "another project you're building — one line, rough is fine"
+
+# ---------------------------------------------------------------------------
+# DEALBREAKERS — hard no's for ANY job (can veto recommendation). Optional.
+# PREFERENCES — nice-to-haves (only nudge, not veto). Optional.
+# Write plain phrases; quotes only if you want.
+# ---------------------------------------------------------------------------
+dealbreakers: []
+# dealbreakers example (pick one style):
+# dealbreakers:
+#   - 
+#   - unpaid internship
+#   - no visa sponsorship stated in JD
+
+preferences: []
+# preferences example:
+# preferences:
+#   - startup
+#   - works on LLMs directly
+#   - Python stack
+
+# ---------------------------------------------------------------------------
+# CONSTRAINTS
+# needs_sponsorship: used ONLY when JD says "no sponsorship" (JD veto).
+# H-1B database does NOT affect recommendation — see docs/FIT_AND_RECOMMENDATION.md §6
+# ---------------------------------------------------------------------------
+constraints:
+  needs_sponsorship: true

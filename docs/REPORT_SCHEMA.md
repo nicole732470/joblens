@@ -96,11 +96,17 @@ Enforced by `validate_claims()` in `backend/app/tools/citations.py`:
    analysis. (No inventing citations.)
 3. Claims not grounded in evidence are allowed **only** if explicitly marked
    `inference: true`.
+4. **A `claim_type="recommendation"` claim must NOT cite `h1b_evidence_ids`.**
+   The apply decision is kept independent of the H-1B/LCA database match (which
+   can be wrong and is volatile). A recommendation may cite `jd_evidence_ids`
+   (including JD-stated visa language) and `resume_evidence_ids` only. JD text
+   that explicitly denies sponsorship *does* affect the recommendation; the
+   historical sponsorship database does not. See DESIGN.md §8.1.
 
 Violations are returned as a list of issues (`no_evidence`,
-`unknown_evidence_id`). Once the LLM generation stage exists (Week 3), violating
-claims are rejected and regenerated rather than shown. This is a code-level
-guarantee, not just a prompt instruction.
+`unknown_evidence_id`, `h1b_in_recommendation`). Once the LLM generation stage
+exists (Week 3), violating claims are rejected and regenerated rather than
+shown. This is a code-level guarantee, not just a prompt instruction.
 
 ---
 

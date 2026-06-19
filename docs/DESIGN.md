@@ -234,7 +234,8 @@ Returns: evidence chunk ID, source section, matched text, similarity score.
 
 Classifies each requirement as Strong match / Partial match / Weak-missing. Each
 classification must include: JD evidence ID, resume evidence ID (if applicable),
-explanation.
+explanation. **Gaps are time-aware** (editable / near-term / fundamental) rather
+than a static fail — see FIT_AND_RECOMMENDATION.md §3.
 
 ### `run_risk_rules(parsed_jd, sponsorship_result, company_signals)`
 
@@ -246,6 +247,9 @@ requirement.
 ### `generate_recommendation(all_results)`
 
 Generates final recommendation using structured inputs. Must cite evidence IDs.
+**Excludes H-1B database signals** (see §8.1): it consumes JD requirements
+(incl. JD-stated visa language), resume fit, and risk rules — but never the
+H-1B/LCA match as a reason to apply or not.
 
 ## 8. Citation Enforcement
 
@@ -271,6 +275,36 @@ Validation rules:
 - Allow unsupported claims only if explicitly marked as inference or unknown.
 
 This is a core engineering feature, not just prompt wording.
+
+### 8.1 Separation of Concerns: Sponsorship Signal vs. Apply Recommendation
+
+The **"should I apply?"** decision and the **"does this company sponsor?"**
+signal are deliberately kept independent. They are two different questions and
+must not contaminate each other.
+
+- **H-1B / LCA database matching does NOT feed the recommendation.** Whether a
+  company appears in our historical sponsorship data is shown to the user as a
+  **standalone informational signal only**. It is never an input to
+  `generate_recommendation`. Rationale: the entity match can be wrong, and
+  sponsorship behavior is volatile (sponsoring last year does not guarantee this
+  year, and vice versa). We refuse to let a noisy/historical signal raise or
+  lower an apply decision.
+- **JD-stated visa language DOES feed the recommendation.** If the job
+  description itself explicitly states a policy (e.g. "we do not provide
+  sponsorship"), that is a current, authoritative fact about *this* role and
+  must lower — potentially veto — the recommendation. This comes from the JD
+  parser (`category="visa"` requirement / `visa_language`), not from the H-1B
+  database.
+
+Concretely, this becomes a citation-contract rule (see REPORT_SCHEMA.md): a
+`claim_type="recommendation"` Claim may cite `jd_evidence_ids` and
+`resume_evidence_ids`, but **must never cite `h1b_evidence_ids`.** The
+`SponsorshipAnalysis` section stays a peer field on the `Report`, surfaced to the
+user but excluded from the recommendation's evidence.
+
+> The full apply-decision model — candidate profile, time-aware resume gaps, and
+> the multi-factor per-track recommendation — lives in
+> **FIT_AND_RECOMMENDATION.md**.
 
 ## 9. LangGraph Workflow
 
