@@ -21,7 +21,7 @@ spreadsheet). One row = one job posting you want to evaluate.
 | `jd_text` | The full job description text | free text (paste it in) |
 | `expected_sponsors` | In U.S. H-1B data? | `yes` / `no` / `unknown` / blank |
 | `expected_priority` | Role track tier (P1–P5) | `1`–`5` / `skip` / `unknown` / blank |
-| `expected_decision` | Apply verdict | `apply` / `consider` / `skip` / `unknown` / blank |
+| `expected_decision` | Apply verdict | `apply` / `near_apply` / `consider` / `skip` / `unknown` / blank |
 | `notes` | Anything useful | free text |
 
 **`expected_sponsors`:** `yes` = in H-1B data; `no` = not found; **`unknown`** = not
@@ -52,7 +52,7 @@ Examples from the sample set:
 mean the backend still weights **title-only track match** and not JD penalties yet —
 not that your label is wrong.
 
-**`expected_decision`:** whether you would apply — `apply` / `consider` / `skip`.
+**`expected_decision`:** rule-based verdict — `apply` / `near_apply` / `consider` / `skip`.
 Compared to the report `decision` field (`Apply`, `Consider`, or `Skip`). Separate
 from Role P-tier.
 
@@ -86,4 +86,4 @@ It prints per-sample results and a summary:
 
 - **sponsors acc** — H-1B employer match vs `expected_sponsors`
 - **priority acc** — Role P-tier vs `expected_priority`
-- **decision acc** — Apply / Consider / Skip vs `expected_decision` (when filled in)
+- **decision acc** — Apply / Near apply / Consider / Skip vs `expected_decision` (when filled in)

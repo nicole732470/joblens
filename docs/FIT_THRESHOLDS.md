@@ -37,22 +37,22 @@ Constants: `_STRONG_MAX = 0.34`, `_PARTIAL_MAX = 0.52`.
 From resume fit counts, compute **fit_ratio**:
 
 ```
-effective = strong + partial + (weak × 0.65)
+effective = strong + partial × 0.5 + weak × 0.3
 fit_ratio = effective / total_requirements
 ```
 
-| fit_ratio | Typical decision |
-|-----------|------------------|
-| ≥ 0.48 and enough strong | **Apply** |
-| ≥ 0.35 or several partial/weak | **Apply with modifications** |
-| ≥ 0.15, or **priority 1–2 track match** | at least **Apply with modifications** (not Skip) |
-| lower | **Skip** (unless priority 1–2 track + AI JD → bump) |
+| Rule | Verdict |
+|------|---------|
+| ≥ **2 strong** AND fit_ratio ≥ **50%** | **Apply** |
+| Track **P1–P2**, title sim ≥ **0.30**, fit_ratio ≥ **22%**, below Apply bar | **Near apply** |
+| fit_ratio ≥ **28%**, or enough partial/weak touches | **Consider** |
+| P1–P2 track floor: fit_ratio ≥ **12%** | at least **Consider** (not Skip) |
+| lower / dealbreakers / avoid track | **Skip** |
 
-**Priority floor:** if title semantically matches a **priority 1 or 2** track
-(similarity ≥ 0.30), we **do not Skip** on low vector fit alone — minimum
-«Apply with modifications».
+**Near apply** = right target track (priority 1–2) but resume has not cleared the
+Apply bar — not subjective intent; purely threshold-based.
 
-Hard **Skip** only for: JD visa veto, avoid-track match, or truly zero overlap.
+Hard **Skip** for: JD visa veto, avoid-track match, dealbreakers, or truly zero overlap.
 
 ## 4. Golden set labels
 

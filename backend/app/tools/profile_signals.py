@@ -63,9 +63,11 @@ _WORK_ENV_RE = re.compile(
 )
 
 
-def _primary_location_blob(jd: JDParse, jd_text: str) -> str:
+def _primary_location_blob(jd: JDParse, jd_text: str, job_title: str | None = None) -> str:
     """Text that describes where *this* job is based — not HQ mentions elsewhere in the JD."""
     parts: list[str] = []
+    if job_title:
+        parts.append(job_title.strip())
     raw = jd_text or ""
 
     m = _WORK_ENV_RE.search(raw)
@@ -246,7 +248,7 @@ def _match_tier_places(places: list[str], text: str) -> str | None:
 
 _ONSITE_RE = re.compile(
     r"\b("
-    r"full[- ]time in office|in[- ]office|on[- ]site|on site|"
+    r"full[- ]time in office|in[- ]office|on[- ]site|on site|\bonsite\b|"
     r"in person|in-person|office based|office-based|must be located"
     r")\b",
     re.I,
@@ -268,7 +270,7 @@ _REMOTE_TECH_RE = re.compile(
     r"\bremote (?:monitoring|access|desktop|support|debugging|login|session|server|control|diagnostics)\b",
     re.I,
 )
-_PLACE_RE = re.compile(r"\b([A-Za-z][A-Za-z .'-]{1,40}),\s*([A-Z]{2})\b")
+_PLACE_RE = re.compile(r"\b([A-Za-z][A-Za-z .'-]{1,40}),\s*([A-Za-z]{2})\b")
 _RURAL_KW = ("rural", "small town", "agricultural", "farm community")
 
 
@@ -311,15 +313,17 @@ def _mentions_remote_policy(text: str) -> bool:
     return False
 
 
-def score_location(jd: JDParse, jd_text: str, profile: CandidateProfile) -> dict:
+def score_location(jd: JDParse, jd_text: str, profile: CandidateProfile, job_title: str | None = None) -> dict:
     """Return location_score, location_label, location_tier (P1–P3) for UI."""
-    full = _jd_scan_blob(jd, jd_text).lower()
-    primary = _primary_location_blob(jd, jd_text).lower()
+    full_raw = _jd_scan_blob(jd, jd_text)
+    primary_raw = _primary_location_blob(jd, jd_text, job_title)
+    place = _extract_place(primary_raw, jd) or _extract_place(full_raw, jd)
+    full = full_raw.lower()
+    primary = primary_raw.lower()
 
     if not full.strip() and not primary.strip():
         return {"location_score": None, "location_label": "—", "location_tier": None}
 
-    place = _extract_place(primary, jd) or _extract_place(full, jd)
     tier_text = primary if primary.strip() else full
     policy_text = primary if primary.strip() else full
 
@@ -356,7 +360,7 @@ def evaluate_profile_signals(
     job_title: str | None = None,
 ) -> dict:
     job_blob = _full_job_blob(jd, jd_text, job_title)
-    loc = score_location(jd, jd_text, profile)
+    loc = score_location(jd, jd_text, profile, job_title)
     pref_n, pref_hits = _semantic_phrase_hits(profile.preferences, job_blob)
     deal_n, deal_hits = _dealbreaker_hits(profile.dealbreakers, job_blob)
     return {

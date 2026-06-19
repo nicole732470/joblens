@@ -1,0 +1,41 @@
+"""Location / onsite detection — regression tests."""
+
+from app.schemas.candidate_profile import CandidateProfile, Locations
+from app.schemas.report import JDParse
+from app.tools.profile_signals import _is_onsite_job, _mentions_remote_policy, score_location
+
+
+def _profile(**kwargs) -> CandidateProfile:
+    defaults = {
+        "tracks": [],
+        "locations": Locations(
+            tier_1=["Chicago"],
+            tier_2=["Texas", "California", "New York"],
+            tier_3=["rural"],
+            remote_ok=True,
+        ),
+    }
+    defaults.update(kwargs)
+    return CandidateProfile(**defaults)
+
+
+def test_onsite_one_word_in_linkedin_title():
+    title = "(Part-time/Onsite - Clearwater, FL)"
+    assert _is_onsite_job(title)
+    assert not _mentions_remote_policy(title)
+
+
+def test_clearwater_onsite_not_remote():
+    title = "Software Engineer (Part-time/Onsite - Clearwater, FL)"
+    jd = JDParse(available=False)
+    loc = score_location(jd, "Must work from our Clearwater office.", _profile(), title)
+    assert loc["location_tier"] == 3
+    assert "Remote" not in (loc["location_label"] or "")
+    assert "Clearwater" in (loc["location_label"] or "")
+
+
+def test_fully_remote_still_p2():
+    jd = JDParse(available=True, location="Fully remote within the US")
+    loc = score_location(jd, "This role is fully remote.", _profile())
+    assert loc["location_tier"] == 2
+    assert "Remote" in (loc["location_label"] or "")

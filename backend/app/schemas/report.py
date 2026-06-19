@@ -50,6 +50,7 @@ class SponsorshipLikelihood(str, Enum):
 
 class Recommendation(str, Enum):
     APPLY = "Apply"
+    NEAR_APPLY = "Near apply"
     CONSIDER = "Consider"
     SKIP = "Skip"
 

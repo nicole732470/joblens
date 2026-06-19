@@ -14,9 +14,40 @@ from app.tools.role_priority import (
 from app.tools.track_match import match_job_to_profile, resolve_job_title
 
 
+# Apply: strong resume overlap. Near apply: P1–P2 track match but resume below Apply bar.
+_APPLY_STRONG_MIN = 2
+_APPLY_RATIO_MIN = 0.50
+_NEAR_APPLY_PRIORITY_MAX = 2
+_NEAR_APPLY_TRACK_SIM_MIN = 0.30
+_NEAR_APPLY_RATIO_MIN = 0.22
+_CONSIDER_RATIO_MIN = 0.28
+_CONSIDER_RATIO_FLOOR = 0.12
+
 # Resume–requirement match weights (tune via golden set / run_eval).
 _PARTIAL_WEIGHT = 0.5
 _WEAK_WEIGHT = 0.3
+
+
+def _qualifies_apply(strong: int, ratio: float) -> bool:
+    return strong >= _APPLY_STRONG_MIN and ratio >= _APPLY_RATIO_MIN
+
+
+def _qualifies_near_apply(
+    penalized_priority: int | None,
+    track_sim: float,
+    ratio: float,
+    strong: int,
+    *,
+    has_role_penalty: bool,
+) -> bool:
+    """Right target track (P1–P2) but resume fit has not cleared the Apply bar."""
+    if has_role_penalty or penalized_priority is None:
+        return False
+    if penalized_priority > _NEAR_APPLY_PRIORITY_MAX or track_sim < _NEAR_APPLY_TRACK_SIM_MIN:
+        return False
+    if ratio < _NEAR_APPLY_RATIO_MIN:
+        return False
+    return not _qualifies_apply(strong, ratio)
 
 
 def _fit_counts(resume_fit: ResumeFitAnalysis) -> tuple[int, int, int, int, float]:
@@ -87,6 +118,8 @@ def _build_summary(
 
     if ratio >= 0.48 and strong >= 2:
         parts.append("strong skill match")
+    elif decision == Recommendation.NEAR_APPLY:
+        parts.append("resume below Apply bar")
     elif ratio >= 0.35 or partial >= 2:
         parts.append("partial skill match")
     elif pure_gap > strong + partial:
@@ -273,31 +306,42 @@ def generate_recommendation(
 
     signal_fields = _signal_fields(signals)
 
-    # P1–P2 title match: floor at Consider, not Skip (title fit alone is not Apply).
+    has_role_penalty = bool(track_fields.get("technical_penalty_hits"))
+
+    # P1–P2 title match: floor at Consider, not Skip (title fit alone is not Apply/Near apply).
     priority_floor = (
         display_track is not None
         and penalized_priority is not None
         and penalized_priority <= 2
-        and track_sim >= 0.30
-        and not track_fields.get("technical_penalty_hits")
+        and track_sim >= _NEAR_APPLY_TRACK_SIM_MIN
+        and not has_role_penalty
     )
 
-    if strong >= 2 and ratio >= 0.50:
+    if _qualifies_apply(strong, ratio):
         decision = Recommendation.APPLY
         reasoning = (
             f"{strong} strong, {partial} partial, {weak} weak across {total} JD requirements "
-            f"(vector fit ratio {ratio:.0%}).{track_note}"
+            f"(fit ratio {ratio:.0%}).{track_note}"
         )
-    elif ratio >= 0.28 or (partial + weak) >= max(2, total * 0.25):
+    elif _qualifies_near_apply(
+        penalized_priority, track_sim, ratio, strong, has_role_penalty=has_role_penalty
+    ):
+        decision = Recommendation.NEAR_APPLY
+        reasoning = (
+            f"Target track P{penalized_priority} (similarity {track_sim:.0%}) but resume fit "
+            f"{ratio:.0%} is below Apply bar (need ≥{_APPLY_RATIO_MIN:.0%} with "
+            f"≥{_APPLY_STRONG_MIN} strong).{track_note}"
+        )
+    elif ratio >= _CONSIDER_RATIO_MIN or (partial + weak) >= max(2, total * 0.25):
         decision = Recommendation.CONSIDER
         reasoning = (
             f"Resume touches {strong + partial + weak}/{total} requirements "
             f"(fit ratio {ratio:.0%}); {pure_gap} clear gap(s).{track_note}"
         )
-    elif priority_floor and ratio >= 0.12:
+    elif priority_floor and ratio >= _CONSIDER_RATIO_FLOOR:
         decision = Recommendation.CONSIDER
         reasoning = f"Limited overlap ({ratio:.0%}) but role fits your target track.{track_note}"
-    elif ratio >= 0.12:
+    elif ratio >= _CONSIDER_RATIO_FLOOR:
         decision = Recommendation.CONSIDER
         reasoning = f"Limited overlap ({ratio:.0%}).{track_note}"
     else:

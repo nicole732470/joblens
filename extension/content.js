@@ -582,7 +582,22 @@
       .join("")}</div>`;
   }
 
-  function renderH1bSummary(employer) {
+  function titlesRoughlyMatch(a, b) {
+    const strip = (t) =>
+      String(t || "")
+        .toLowerCase()
+        .replace(/\([^)]*\)/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const na = strip(a);
+    const nb = strip(b);
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    if (na.length >= 12 && nb.length >= 12 && (na.includes(nb) || nb.includes(na))) return true;
+    return false;
+  }
+
+  function renderH1bSummary(employer, currentJobTitle) {
     const filings = Number(employer.lca_count) || 0;
     if (filings <= 0) return "";
 
@@ -592,12 +607,15 @@
       { val: filings.toLocaleString(), lbl: "Filings", hint: "Total H-1B filings on record" },
     ]);
 
-    const jobRows = (employer.top_jobs || []).slice(0, 2).map((j) => {
-      const wage = formatWage(j.wage_from);
-      const title = escapeHtml(j.title);
-      const wageHtml = wage ? `<span class="lca-h1b-wage">${escapeHtml(wage)}</span>` : "";
-      return `<div class="lca-h1b-role" title="${escapeHtml(j.title)}${wage ? ` · ${wage}` : ""}">${title}${wageHtml}</div>`;
-    });
+    const jobRows = (employer.top_jobs || [])
+      .slice(0, 2)
+      .filter((j) => !titlesRoughlyMatch(j.title, currentJobTitle))
+      .map((j) => {
+        const wage = formatWage(j.wage_from);
+        const title = escapeHtml(j.title);
+        const wageHtml = wage ? `<span class="lca-h1b-wage">${escapeHtml(wage)}</span>` : "";
+        return `<div class="lca-h1b-role" title="${escapeHtml(j.title)}${wage ? ` · ${wage}` : ""}">${title}${wageHtml}</div>`;
+      });
 
     if (!jobRows.length) return grid;
     return `${grid}<div class="lca-h1b-roles">${jobRows.join("")}</div>`;
@@ -624,7 +642,7 @@
       <div class="lca-body">
         ${renderHeadBlock(statusPill(meta.title, meta.status === "found" || meta.status === "ok" ? "ok" : "caution"), displayName, employer.name)}
         ${renderJobTitleLine(jobTitle)}
-        ${renderH1bSummary(employer)}
+        ${renderH1bSummary(employer, jobTitle)}
         <div class="lca-analyze-result"></div>
         ${renderFoot(["Source: U.S. DOL H-1B"])}
       </div>`;
@@ -1270,7 +1288,7 @@
 
     cells.push({
       val: rec.location_tier != null ? `P${rec.location_tier}` : "—",
-      lbl: "Loc",
+      lbl: "Location",
       tipTitle: "Location",
       tip: [{ k: "Tier", v: rec.location_label || "—" }],
     });
@@ -1288,7 +1306,7 @@
       }
       cells.push({
         val: `P${co.company_tier}`,
-        lbl: "Co",
+        lbl: "Company",
         tipTitle: "Company fit",
         tip: coTip,
       });
@@ -1306,7 +1324,7 @@
     }
     cells.push({
       val: String(pref),
-      lbl: "Prefs",
+      lbl: "Preferences",
       tipTitle: "Preferences",
       tip: prefTip,
     });
@@ -1323,7 +1341,7 @@
     }
     cells.push({
       val: String(deal),
-      lbl: "Flags",
+      lbl: "Dealbreakers",
       tipTitle: "Dealbreakers",
       tip: flagTip,
     });
@@ -1357,6 +1375,7 @@
 
   const VERDICT_LABELS = {
     Apply: { text: "Apply", tone: "apply" },
+    "Near apply": { text: "Near apply", tone: "near-apply" },
     Consider: { text: "Consider", tone: "consider" },
     Skip: { text: "Skip", tone: "skip" },
     // legacy API strings (cached responses)

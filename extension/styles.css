@@ -135,6 +135,10 @@
   background: rgba(145, 89, 7, 0.12);
   color: #915907;
 }
+.lca-pill-near-apply {
+  background: rgba(0, 115, 177, 0.12);
+  color: #0073b1;
+}
 .lca-pill-neutral,
 .lca-pill-later {
   background: #f3f2ef;
@@ -302,9 +306,9 @@
   font-weight: 600;
   color: rgba(0, 0, 0, 0.42);
   margin-top: 2px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  line-height: 1.1;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  word-break: break-word;
 }
 
 .lca-metric-tip {

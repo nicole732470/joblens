@@ -72,10 +72,12 @@ def norm_priority(raw: str) -> str:
 
 
 def norm_decision(raw: str) -> str:
-    """Golden-set verdict label: apply, consider, skip, unknown, or blank."""
+    """Golden-set verdict label: apply, near apply, consider, skip, unknown, or blank."""
     v = (raw or "").strip().lower().replace("_", " ")
     if v in ("apply", "yes", "y"):
         return "apply"
+    if v in ("near apply", "nearapply"):
+        return "near apply"
     if v in (
         "consider",
         "maybe",
@@ -96,6 +98,8 @@ def api_decision_bucket(decision: str | None) -> str:
     d = (decision or "").strip().lower()
     if d == "apply":
         return "apply"
+    if d in ("near apply", "near_apply"):
+        return "near apply"
     if d in ("consider", "apply with modifications", "low priority"):
         return "consider"
     if d == "skip":
@@ -195,7 +199,7 @@ def main() -> None:
         if expected_dec == "unknown":
             decision_unknown += 1
             verdict.append("decision=unknown (skipped)")
-        elif expected_dec in ("apply", "consider", "skip"):
+        elif expected_dec in ("apply", "near apply", "consider", "skip"):
             decision_total += 1
             actual_dec = api_decision_bucket(rec.get("decision"))
             ok = actual_dec == expected_dec
