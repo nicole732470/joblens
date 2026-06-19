@@ -1,6 +1,9 @@
 (function () {
   const BADGE_ID = "lca-sponsor-checker-badge";
+  const PANEL_ID = "lca-job-intelligence-panel";
   const RABBIT_ICON = chrome.runtime.getURL("icons/rabbit.png");
+  // Backend for the AI Job Intelligence analysis. Override for deployed envs.
+  const BACKEND_URL = "http://localhost:8000";
   let lastPageKey = null;
 
   const CONFIDENCE_META = {
@@ -286,9 +289,11 @@
       ${renderNotes(notes)}
       ${renderWarnings(warnings)}
       ${showAlternatives}
+      <button class="lca-analyze-btn">🔍 Analyze This Job</button>
       <div class="lca-foot">${sourceLabel(ctx)}</div>
     `;
     el.querySelector(".lca-close").addEventListener("click", () => el.remove());
+    el.querySelector(".lca-analyze-btn")?.addEventListener("click", () => onAnalyzeClick(ctx));
   }
 
   function renderMiss(ctx) {
@@ -311,9 +316,11 @@
         <li>May not sponsor H-1B, file under a different legal name, or use a parent company.</li>
         <li>No meaningful token overlap with DOL legal names on file.</li>
       </ul>
+      <button class="lca-analyze-btn">🔍 Analyze This Job</button>
       <div class="lca-foot">Absence here is not proof of no sponsorship.</div>
     `;
     el.querySelector(".lca-close").addEventListener("click", () => el.remove());
+    el.querySelector(".lca-analyze-btn")?.addEventListener("click", () => onAnalyzeClick(ctx));
   }
 
   function renderLoading() {
@@ -339,6 +346,205 @@
       <div class="lca-foot">Open a job posting to detect the employer.</div>
     `;
     el.querySelector(".lca-close").addEventListener("click", () => el.remove());
+  }
+
+  // ---- AI Job Intelligence (backend) ----
+
+  function extractJobTitle() {
+    const selectors = [
+      ".job-details-jobs-unified-top-card__job-title",
+      ".jobs-unified-top-card__job-title",
+      ".job-details-jobs-unified-top-card__job-title h1",
+      "h1.jobs-unified-top-card__job-title",
+      ".top-card-layout__title",
+    ];
+    for (const sel of selectors) {
+      const text = document.querySelector(sel)?.textContent?.trim();
+      if (text) return text.replace(/\s+/g, " ");
+    }
+    return null;
+  }
+
+  function extractJobDescription() {
+    const selectors = [
+      "#job-details",
+      ".jobs-description__content",
+      ".jobs-description-content__text",
+      ".jobs-box__html-content",
+      ".jobs-description",
+      ".show-more-less-html__markup",
+    ];
+    for (const sel of selectors) {
+      const text = document.querySelector(sel)?.innerText?.trim();
+      if (text && text.length > 40) return text.replace(/\s+\n/g, "\n");
+    }
+    return "";
+  }
+
+  function gatherJobInputs(ctx) {
+    return {
+      company: ctx.displayName || null,
+      title: extractJobTitle(),
+      jd_text: extractJobDescription(),
+      job_url: window.location.href,
+    };
+  }
+
+  async function analyzeWithBackend(inputs) {
+    const resp = await fetch(`${BACKEND_URL}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jd_text: inputs.jd_text || "",
+        company: inputs.company,
+        title: inputs.title,
+        job_url: inputs.job_url,
+      }),
+    });
+    if (!resp.ok) {
+      let detail = "";
+      try {
+        detail = JSON.stringify(await resp.json());
+      } catch (_) {
+        /* ignore */
+      }
+      throw new Error(`Backend responded ${resp.status}${detail ? ` — ${detail}` : ""}`);
+    }
+    return resp.json();
+  }
+
+  function ensurePanel() {
+    let el = document.getElementById(PANEL_ID);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = PANEL_ID;
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function renderAnalysisLoading() {
+    const el = ensurePanel();
+    el.className = "lca-panel lca-panel-loading";
+    el.innerHTML = `
+      <div class="lca-header">
+        <img class="lca-mascot lca-mascot-bounce" src="${RABBIT_ICON}" alt="Bunny mascot" />
+        <div class="lca-title">Analyzing job…</div>
+      </div>
+      <div class="lca-foot">Contacting backend at ${escapeHtml(BACKEND_URL)}</div>
+    `;
+  }
+
+  function renderAnalysisError(err) {
+    const el = ensurePanel();
+    el.className = "lca-panel lca-panel-error";
+    const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(err.message);
+    el.innerHTML = `
+      <button class="lca-close" aria-label="Close">×</button>
+      <div class="lca-header">
+        <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
+        <div class="lca-title">Analysis unavailable</div>
+      </div>
+      ${
+        isNetwork
+          ? `<div class="lca-meta">Couldn't reach the backend at <code>${escapeHtml(BACKEND_URL)}</code>.</div>
+             <div class="lca-foot">Start it locally with <code>docker compose up -d</code>, then try again.</div>`
+          : `<div class="lca-meta">${escapeHtml(err.message)}</div>`
+      }
+    `;
+    el.querySelector(".lca-close").addEventListener("click", () => el.remove());
+  }
+
+  function likelihoodClass(likelihood) {
+    const v = String(likelihood || "").toLowerCase();
+    if (v === "high") return "lca-confidence-high";
+    if (v === "medium") return "lca-confidence-medium";
+    if (v === "low") return "lca-confidence-low";
+    return "";
+  }
+
+  function renderSponsorshipSection(sp) {
+    if (!sp || !sp.matched) {
+      const reason = sp?.reason || "No confident match in H-1B data.";
+      return `
+        <div class="lca-section">
+          <div class="lca-label">Sponsorship</div>
+          <div class="lca-meta">❌ ${escapeHtml(reason)}</div>
+        </div>`;
+    }
+    const c = sp.company || {};
+    const loc = [c.city, c.state].filter(Boolean).join(", ");
+    const likelihood = sp.sponsorship_likelihood || "Unknown";
+    const titles = (sp.sponsored_titles || [])
+      .slice(0, 3)
+      .map((t) => `<li>${escapeHtml(typeof t === "string" ? t : t.title || "")}</li>`)
+      .join("");
+    return `
+      <div class="lca-section">
+        <div class="lca-label">Sponsorship</div>
+        <div class="lca-company">${escapeHtml(c.name || sp.query || "")}</div>
+        <div class="lca-confidence ${likelihoodClass(likelihood)}">
+          Likelihood: ${escapeHtml(String(likelihood))}${
+            sp.match_confidence ? ` · match ${escapeHtml(String(sp.match_confidence))}` : ""
+          }
+        </div>
+        <div class="lca-stats">
+          ${sp.total_lca_count != null ? `<span>${Number(sp.total_lca_count).toLocaleString()} LCA</span>` : ""}
+          ${sp.h1b_count != null ? `<span>${Number(sp.h1b_count).toLocaleString()} H-1B</span>` : ""}
+          ${sp.certified_count != null ? `<span>${Number(sp.certified_count).toLocaleString()} Certified</span>` : ""}
+        </div>
+        ${loc ? `<div class="lca-meta">${escapeHtml(loc)}${c.fein ? ` · FEIN ${escapeHtml(c.fein)}` : ""}</div>` : ""}
+        ${titles ? `<ul class="lca-jobs">${titles}</ul>` : ""}
+        ${renderWarnings(sp.warnings)}
+      </div>`;
+  }
+
+  function renderPendingSection(report) {
+    const pending = report.pending || [];
+    if (!pending.length) return "";
+    const labels = {
+      jd_parsing: "Job description parsing",
+      resume_fit: "Resume fit",
+      risk: "Risk analysis",
+      recommendation: "Recommendation",
+    };
+    const items = pending.map((p) => `<li>${escapeHtml(labels[p] || p)}</li>`).join("");
+    return `
+      <div class="lca-section">
+        <div class="lca-label">Coming soon</div>
+        <ul class="lca-notes">${items}</ul>
+      </div>`;
+  }
+
+  function renderAnalysis(report, inputs) {
+    const el = ensurePanel();
+    el.className = "lca-panel";
+    el.innerHTML = `
+      <button class="lca-close" aria-label="Close">×</button>
+      <div class="lca-header">
+        <img class="lca-mascot" src="${RABBIT_ICON}" alt="Bunny mascot" />
+        <div>
+          <div class="lca-title">🔍 Job Intelligence <span class="lca-beta">beta</span></div>
+          ${inputs.title ? `<div class="lca-confidence">${escapeHtml(inputs.title)}</div>` : ""}
+        </div>
+      </div>
+      ${renderSponsorshipSection(report.sponsorship)}
+      ${renderPendingSection(report)}
+      <div class="lca-foot">Powered by ${escapeHtml(BACKEND_URL)}</div>
+    `;
+    el.querySelector(".lca-close").addEventListener("click", () => el.remove());
+  }
+
+  async function onAnalyzeClick(ctx) {
+    const inputs = gatherJobInputs(ctx);
+    renderAnalysisLoading();
+    try {
+      const report = await analyzeWithBackend(inputs);
+      renderAnalysis(report, inputs);
+    } catch (err) {
+      console.error("[Job Intelligence]", err);
+      renderAnalysisError(err);
+    }
   }
 
   async function run() {
