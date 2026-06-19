@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LCA Sponsor Checker",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "description": "Check H-1B sponsorship + run AI Job Intelligence analysis on a LinkedIn job.",
   "host_permissions": [
     "https://www.linkedin.com/*",
@@ -9,6 +9,9 @@
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*", "https://linkedin.com/*"],

@@ -108,6 +108,33 @@ const LcaMatcher = (() => {
   let tokenIndex = null;
   let loadPromise = null;
 
+  /** Capture at script load while extension context is still valid. */
+  const EXT_RUNTIME = (() => {
+    try {
+      const rt = globalThis.chrome?.runtime ?? globalThis.browser?.runtime;
+      if (rt?.getURL && rt?.id) return rt;
+    } catch (_) {
+      /* extension context invalidated */
+    }
+    return null;
+  })();
+
+  function extensionResourceUrl(path) {
+    if (!EXT_RUNTIME) {
+      throw new Error(
+        "Extension disconnected — open chrome://extensions, reload Job Check, then refresh this LinkedIn tab (F5)."
+      );
+    }
+    try {
+      void EXT_RUNTIME.id;
+    } catch (_) {
+      throw new Error(
+        "Extension was updated — refresh this LinkedIn tab (F5), then try again."
+      );
+    }
+    return EXT_RUNTIME.getURL(path);
+  }
+
   function tokenizeRaw(text) {
     return String(text)
       .toLowerCase()
@@ -549,7 +576,7 @@ const LcaMatcher = (() => {
     if (loadPromise) return loadPromise;
 
     loadPromise = (async () => {
-      const url = chrome.runtime.getURL("data/employers.json.gz");
+      const url = extensionResourceUrl("data/employers.json.gz");
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Failed to load employer index: ${resp.status}`);
 

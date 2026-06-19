@@ -161,7 +161,11 @@
       return {
         slug,
         displayName,
-        pageKey: slug ? `job:${jobId || "unknown"}:${slug}` : null,
+        pageKey: jobId
+          ? `job:${jobId}:${slug || "unknown"}`
+          : slug
+            ? `job:unknown:${slug}`
+            : null,
         source: "job page",
       };
     }
@@ -882,13 +886,19 @@
       console.error("[LCA Sponsor Checker]", err);
       const el = ensureBadge();
       el.className = "lca-badge lca-miss";
+      const hint =
+        /extension disconnected|extension was updated|getURL/i.test(String(err.message))
+          ? `<div class="lca-hint">${escapeHtml(err.message)}</div>`
+          : `<div class="lca-foot">${escapeHtml(err.message)}</div>`;
       el.innerHTML = `
         ${renderChrome()}
         <div class="lca-body">
-          <div class="lca-title">Lookup failed</div>
-          <div class="lca-foot">${escapeHtml(err.message)}</div>
+          <div class="lca-title">H-1B lookup failed</div>
+          ${hint}
+          <button type="button" class="lca-analyze-btn">Analyze job</button>
+          <div class="lca-analyze-result" hidden></div>
         </div>`;
-      finishBadge(el, null);
+      finishBadge(el, ctx);
     }
   }
 
