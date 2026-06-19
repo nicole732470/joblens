@@ -409,6 +409,53 @@
     return null;
   }
 
+  function clickShowMoreIn(root) {
+    let clicked = false;
+    const selectors = [
+      ".show-more-less-html__button--more",
+      ".show-more-less-html__button",
+      "button[aria-label*='Show more' i]",
+      "button[aria-label*='See more' i]",
+      ".jobs-description__footer button",
+      ".feed-shared-inline-show-more-text",
+    ];
+    for (const sel of selectors) {
+      root.querySelectorAll(sel).forEach((btn) => {
+        if (btn instanceof HTMLElement && btn.offsetParent !== null) {
+          btn.click();
+          clicked = true;
+        }
+      });
+    }
+    root.querySelectorAll("button, [role='button']").forEach((el) => {
+      const label = (el.textContent || "").trim().toLowerCase();
+      if (label === "show more" || label === "see more" || label === "show all") {
+        el.click();
+        clicked = true;
+      }
+    });
+    return clicked;
+  }
+
+  /** Expand LinkedIn's collapsed JD ("Show more") before we scrape text. */
+  async function expandJobDescription() {
+    const root =
+      document.querySelector("#job-details") ||
+      document.querySelector(".jobs-description") ||
+      document.querySelector(".jobs-search__job-details") ||
+      document.querySelector("[class*='jobs-details']") ||
+      document;
+
+    root.scrollIntoView({ block: "nearest", behavior: "instant" });
+
+    for (let i = 0; i < 6; i++) {
+      const clicked = clickShowMoreIn(root);
+      if (!clicked) break;
+      await new Promise((r) => setTimeout(r, 180));
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
   function extractJobDescription() {
     const selectors = [
       "#job-details",
@@ -425,7 +472,8 @@
     return "";
   }
 
-  function gatherJobInputs(ctx) {
+  async function gatherJobInputs(ctx) {
+    await expandJobDescription();
     return {
       company: ctx.displayName || null,
       title: extractJobTitle(),
@@ -565,7 +613,7 @@
     const r = String(reason || "").toLowerCase();
     if (!reason) return "Could not parse this job posting.";
     if (r.includes("no job description")) {
-      return "Couldn't read the job description from this page. Scroll the JD into view and try again.";
+      return "Couldn't read the job description from this page. Try opening the full job view, then Analyze again.";
     }
     if (r.includes("llm not configured")) {
       return "Backend LLM not configured — set LLM_API_KEY in .env and restart docker.";
@@ -656,7 +704,7 @@
     out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing…</div>`;
     btn.disabled = true;
     try {
-      const report = await analyzeWithBackend(gatherJobInputs(ctx));
+      const report = await analyzeWithBackend(await gatherJobInputs(ctx));
       out.innerHTML = renderAnalysisInline(report);
       out.dataset.loaded = "1";
       btn.textContent = "Hide analysis";
