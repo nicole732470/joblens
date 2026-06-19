@@ -1,58 +1,60 @@
-/* LinkedIn-adjacent floating card — no heavy left bar; draggable via .lca-chrome */
+/* Job Check — compact floating card for LinkedIn */
 
 #lca-sponsor-checker-badge {
   position: fixed;
   top: 80px;
   right: 24px;
   z-index: 99999;
-  width: 300px;
-  max-width: calc(100vw - 48px);
-  max-height: min(78vh, 640px);
+  width: 312px;
+  max-width: calc(100vw - 32px);
+  max-height: min(72vh, 560px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   font-family: -apple-system, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   font-size: 13px;
-  line-height: 1.4;
-  color: rgba(0, 0, 0, 0.9);
+  line-height: 1.45;
+  color: #1a1a1a;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.04), 0 16px 40px rgba(0, 0, 0, 0.12);
 }
 
 .lca-badge.lca-dragging {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.08), 0 24px 48px rgba(0, 0, 0, 0.16);
   user-select: none;
 }
 
-/* Title bar — drag handle */
 .lca-chrome {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  background: #f3f2ef;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px 8px 0 0;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #fafafa 0%, #f3f3f3 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
   cursor: grab;
+  touch-action: none;
 }
 .lca-badge.lca-dragging .lca-chrome {
   cursor: grabbing;
 }
 .lca-drag-handle {
-  color: rgba(0, 0, 0, 0.35);
-  font-size: 12px;
+  color: rgba(0, 0, 0, 0.28);
+  font-size: 11px;
   letter-spacing: -2px;
   line-height: 1;
   flex-shrink: 0;
+  pointer-events: none;
 }
 .lca-brand {
   flex: 1;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.6);
+  color: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
 }
 .lca-close {
   border: none;
@@ -60,88 +62,91 @@
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.4);
   padding: 0 2px;
+  flex-shrink: 0;
 }
 .lca-close:hover {
   color: rgba(0, 0, 0, 0.75);
 }
 
 .lca-body {
-  padding: 12px 14px 14px;
+  padding: 12px 14px 10px;
   overflow-y: auto;
   flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+.lca-body::-webkit-scrollbar {
+  width: 5px;
+}
+.lca-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 99px;
+}
+.lca-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.22);
 }
 
-/* Status row */
-.lca-row {
+.lca-hero {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
+}
+.lca-hero-text {
+  min-width: 0;
+  flex: 1;
 }
 .lca-status-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   margin-top: 5px;
   flex-shrink: 0;
 }
-.lca-status-found {
-  background: #057642;
-}
-.lca-status-caution {
-  background: #b24020;
-}
-.lca-status-miss {
-  background: #cc1016;
-}
-.lca-status-loading {
-  background: #0a66c2;
-}
+.lca-status-found { background: #0d7a4a; }
+.lca-status-caution { background: #c45c26; }
+.lca-status-miss { background: #d93025; }
+.lca-status-loading { background: #0a66c2; }
 
 .lca-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.9);
+  font-weight: 650;
+  font-size: 15px;
+  color: #111;
+  letter-spacing: -0.01em;
 }
-.lca-sub {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
-  margin-top: 2px;
-}
-
 .lca-company {
-  font-weight: 600;
   font-size: 13px;
-  margin: 6px 0 2px;
-}
-.lca-compare {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.6);
-  margin: 2px 0;
+  color: rgba(0, 0, 0, 0.62);
+  margin-top: 2px;
+  line-height: 1.35;
 }
 
-.lca-sponsor-summary {
+.lca-stat-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.75);
-  margin: 8px 0 0;
+  color: rgba(0, 0, 0, 0.55);
 }
-.lca-sponsor-summary b {
-  color: #057642;
+.lca-stat b {
+  color: #0d7a4a;
+  font-weight: 650;
 }
-.lca-badge.lca-caution .lca-sponsor-summary b {
-  color: #b24020;
+.lca-badge.lca-caution .lca-stat b {
+  color: #c45c26;
 }
 
 .lca-details {
-  margin-top: 8px;
+  margin: 6px 0 0;
   font-size: 12px;
 }
 .lca-details summary {
   cursor: pointer;
-  color: rgba(0, 0, 0, 0.6);
+  color: rgba(0, 0, 0, 0.5);
   font-weight: 600;
+  font-size: 11px;
   list-style: none;
 }
 .lca-details summary::-webkit-details-marker {
@@ -150,48 +155,31 @@
 .lca-details[open] summary {
   margin-bottom: 6px;
 }
-.lca-meta {
-  color: rgba(0, 0, 0, 0.6);
-  font-size: 12px;
-}
-.lca-jobs-label {
+.lca-details-compact {
   margin-top: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.45);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+}
+.lca-meta {
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
 }
 .lca-jobs {
   margin: 4px 0 0;
   padding-left: 16px;
-  color: rgba(0, 0, 0, 0.75);
+  color: rgba(0, 0, 0, 0.7);
 }
 .lca-jobs li {
   margin-bottom: 2px;
 }
-
-.lca-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.45);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
 .lca-notes {
   margin: 4px 0 0;
   padding-left: 16px;
-  color: rgba(0, 0, 0, 0.65);
+  color: rgba(0, 0, 0, 0.6);
   font-size: 12px;
 }
 .lca-warnings {
   margin: 6px 0 0;
   padding-left: 16px;
-  color: #b24020;
-  font-size: 12px;
-}
-.lca-alternatives {
-  margin-top: 6px;
+  color: #c45c26;
   font-size: 12px;
 }
 .lca-alternatives ul {
@@ -206,89 +194,144 @@
 .lca-analyze-btn {
   display: block;
   width: 100%;
-  margin-top: 12px;
-  padding: 8px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 20px;
-  background: #fff;
-  color: #0a66c2;
-  font-size: 14px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: #0a66c2;
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 .lca-analyze-btn:hover {
-  background: rgba(10, 102, 194, 0.08);
-  border-color: #0a66c2;
+  background: #004182;
+}
+.lca-analyze-btn:active {
+  transform: scale(0.99);
 }
 .lca-analyze-btn:disabled {
   opacity: 0.55;
   cursor: default;
+  transform: none;
 }
 
 .lca-analyze-result {
   margin-top: 10px;
 }
-
-.lca-loading-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: rgba(0, 0, 0, 0.6);
-  font-size: 12px;
-  padding: 4px 0;
-}
-
 .lca-analyze-inner {
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  padding-top: 10px;
-}
-.lca-analyze-err {
-  color: #cc1016;
-  font-size: 12px;
+  padding-top: 2px;
 }
 
-.lca-section {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+.lca-verdict {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
 }
-.lca-section:first-child {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
+.lca-verdict-pill {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding: 4px 12px;
+  border-radius: 999px;
 }
-
-.lca-hint {
+.lca-verdict-track {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.45);
+  vertical-align: middle;
+}
+.lca-verdict-note {
+  margin-top: 6px;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.55);
-  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.lca-verdict-apply {
+  background: #ecfdf3;
+}
+.lca-verdict-apply .lca-verdict-pill {
+  background: #0d7a4a;
+  color: #fff;
+}
+.lca-verdict-consider {
+  background: #fffbeb;
+}
+.lca-verdict-consider .lca-verdict-pill {
+  background: #b45309;
+  color: #fff;
+}
+.lca-verdict-later {
+  background: #f4f4f5;
+}
+.lca-verdict-later .lca-verdict-pill {
+  background: #71717a;
+  color: #fff;
+}
+.lca-verdict-skip {
+  background: #fef2f2;
+}
+.lca-verdict-skip .lca-verdict-pill {
+  background: #dc2626;
+  color: #fff;
+}
+
+.lca-block {
+  margin-bottom: 10px;
+}
+.lca-block-title {
+  font-size: 11px;
+  font-weight: 650;
+  color: rgba(0, 0, 0, 0.42);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.lca-block-muted {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+  line-height: 1.4;
+}
+.lca-block-risk .lca-risk-list {
+  margin: 0;
+  padding-left: 16px;
+  color: #c45c26;
+  font-size: 12px;
+}
+.lca-micro {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.48);
   line-height: 1.35;
 }
 
-.lca-rec {
-  display: inline-block;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 4px;
-  padding: 3px 8px;
-  margin: 4px 0 2px;
+.lca-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
 }
-.lca-rec-apply {
-  background: #e8f5e9;
-  color: #057642;
+.lca-chip {
+  font-size: 11px;
+  line-height: 1.2;
+  padding: 4px 8px;
+  border-radius: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.lca-rec-modify {
-  background: #fff8e1;
-  color: #915907;
+.lca-chip-strong {
+  background: #dcfce7;
+  color: #166534;
 }
-.lca-rec-low {
-  background: #f3f2ef;
-  color: rgba(0, 0, 0, 0.65);
-}
-.lca-rec-skip {
-  background: #fde7e9;
-  color: #cc1016;
+.lca-chip-partial {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .lca-fit-list {
@@ -297,59 +340,35 @@
   list-style: none;
 }
 .lca-fit-list li {
-  display: flex;
-  gap: 6px;
-  font-size: 12px;
-  margin-bottom: 3px;
-  color: rgba(0, 0, 0, 0.75);
+  font-size: 11px;
+  margin-bottom: 2px;
+  color: rgba(0, 0, 0, 0.6);
   line-height: 1.35;
-}
-.lca-fit-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  margin-top: 6px;
-  flex-shrink: 0;
-}
-.lca-fit-strong .lca-fit-dot {
-  background: #057642;
-}
-.lca-fit-partial .lca-fit-dot {
-  background: #915907;
-}
-.lca-fit-missing .lca-fit-dot {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.lca-reqs {
-  margin: 4px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.lca-reqs li {
-  margin-bottom: 4px;
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.75);
-}
-.lca-req-tag {
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.45);
-  margin-right: 4px;
-}
-
-.lca-risk-list li {
-  color: #b24020;
 }
 
 .lca-foot {
-  margin-top: 10px;
+  margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  color: rgba(0, 0, 0, 0.45);
-  font-size: 11px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 10px;
+  line-height: 1.35;
+  flex-shrink: 0;
 }
-.lca-foot code,
+
+.lca-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.lca-analyze-err {
+  color: #dc2626;
+  font-size: 12px;
+  line-height: 1.4;
+}
 .lca-analyze-err code {
   font-size: 10px;
   background: rgba(0, 0, 0, 0.06);
@@ -367,12 +386,9 @@
   flex-shrink: 0;
 }
 @keyframes lca-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
-/* Legacy class hooks — keep minimal */
 .lca-badge.lca-found,
 .lca-badge.lca-caution,
 .lca-badge.lca-miss,
@@ -380,15 +396,7 @@
 .lca-badge.lca-waiting {
   border-left: none;
 }
-.lca-icon {
-  display: none;
-}
-.lca-kv {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.lca-hint {
   font-size: 12px;
-}
-.lca-odds-unknown {
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }

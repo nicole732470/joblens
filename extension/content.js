@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "2.2.5";
+  const EXTENSION_VERSION = "2.3.0";
   const BADGE_ID = "lca-sponsor-checker-badge";
   const POSITION_KEY = "lca-badge-position";
   // Backend for the AI Job Intelligence analysis. Override for deployed envs.
@@ -40,15 +40,54 @@
   }
 
   const CONFIDENCE_META = {
-    high: { title: "H-1B sponsor", sub: "Strong match", status: "found", icon: "✓" },
-    medium: { title: "Possible H-1B sponsor", sub: "Verify — uncertain match", status: "caution", icon: "?" },
-    low: { title: "Possible H-1B sponsor", sub: "Verify — uncertain match", status: "caution", icon: "?" },
+    high: { title: "H-1B sponsor", status: "found" },
+    medium: { title: "Possible sponsor", status: "caution" },
+    low: { title: "Possible sponsor", status: "caution" },
   };
 
-  function sourceLabel(ctx) {
-    if (ctx.source === "job page") return "Detected on this job posting";
-    if (ctx.source === "company page") return "Detected on this company page";
-    return "";
+  const SOFT_REQUIREMENT_RE =
+    /\b(leadership|lead\b|collaborat|cross[- ]?functional|teamwork|communicat|stakeholder|mentor|passion|fast[- ]?paced|self[- ]?starter|culture|interpersonal|organiz|detail[- ]?oriented|problem[- ]?solving|work across| agile|ownership|motivated|dynamic|ambitious|innovative mindset|people skills|verbal and written)\b/i;
+
+  function renderFoot(ctx, parts) {
+    const bits = (parts || []).filter(Boolean);
+    bits.push(`v${EXTENSION_VERSION}`);
+    return `<div class="lca-foot">${bits.map((p) => escapeHtml(p)).join(" · ")}</div>`;
+  }
+
+  function footLinkedInHint(ctx, legalName) {
+    if (!ctx.displayName) return null;
+    if (legalName && ctx.displayName.toLowerCase() === legalName.toLowerCase()) return null;
+    return `LinkedIn: ${ctx.displayName}`;
+  }
+
+  function isSoftRequirement(claim) {
+    return SOFT_REQUIREMENT_RE.test(stripClaimPrefix(claim?.claim || ""));
+  }
+
+  function partitionResumeFit(rf) {
+    const buckets = { strong: [], partial: [], gaps: [], soft: 0 };
+    for (const c of rf.strong_matches || []) {
+      (isSoftRequirement(c) ? buckets.soft++ : buckets.strong.push(c));
+    }
+    for (const c of rf.partial_matches || []) {
+      (isSoftRequirement(c) ? buckets.soft++ : buckets.partial.push(c));
+    }
+    for (const c of rf.missing || []) {
+      (isSoftRequirement(c) ? buckets.soft++ : buckets.gaps.push(c));
+    }
+    return buckets;
+  }
+
+  function simplifyReasoning(text) {
+    return String(text || "")
+      .replace(/\s*\(vector fit ratio \d+%\)/gi, "")
+      .replace(/\s*\(fit ratio \d+%\)/gi, "")
+      .replace(/vector fit ratio \d+%/gi, "")
+      .replace(/fit ratio \d+%/gi, "")
+      .replace(/vector overlap/gi, "resume overlap")
+      .replace(/across \d+ JD requirements/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
   }
 
   function renderAlternatives(alternatives) {
@@ -254,16 +293,15 @@
 
   function initDrag(el) {
     if (el.dataset.dragWired === "1") return;
-    const chrome = el.querySelector(".lca-chrome");
-    if (!chrome) return;
     el.dataset.dragWired = "1";
 
     let dragging = false;
     let offsetX = 0;
     let offsetY = 0;
+    let pointerId = null;
 
     const onMove = (e) => {
-      if (!dragging) return;
+      if (!dragging || e.pointerId !== pointerId) return;
       const w = el.offsetWidth;
       const h = el.offsetHeight;
       const x = Math.max(8, Math.min(window.innerWidth - w - 8, e.clientX - offsetX));
@@ -273,27 +311,31 @@
       el.style.right = "auto";
     };
 
-    const onUp = () => {
-      if (!dragging) return;
+    const onUp = (e) => {
+      if (!dragging || (e.pointerId != null && e.pointerId !== pointerId)) return;
       dragging = false;
+      pointerId = null;
       el.classList.remove("lca-dragging");
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
+      el.releasePointerCapture?.(e.pointerId);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
       const rect = el.getBoundingClientRect();
       localStorage.setItem(POSITION_KEY, JSON.stringify({ x: rect.left, y: rect.top }));
     };
 
-    chrome.addEventListener("mousedown", (e) => {
-      if (e.target.closest(".lca-close")) return;
+    el.addEventListener("pointerdown", (e) => {
+      if (!e.target.closest(".lca-chrome") || e.target.closest(".lca-close")) return;
       e.preventDefault();
       dragging = true;
+      pointerId = e.pointerId;
       el.classList.add("lca-dragging");
+      el.setPointerCapture?.(e.pointerId);
       const rect = el.getBoundingClientRect();
       offsetX = e.clientX - rect.left;
       offsetY = e.clientY - rect.top;
       el.style.right = "auto";
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
     });
   }
 
@@ -338,11 +380,6 @@
 
     const location = [employer.city, employer.state].filter(Boolean).join(", ");
 
-    const linkedInLine =
-      ctx.displayName && ctx.displayName.toLowerCase() !== (employer.name || "").toLowerCase()
-        ? `<div class="lca-compare">LinkedIn shows <b>${escapeHtml(ctx.displayName)}</b></div>`
-        : "";
-
     const showAlternatives =
       confidence !== "high" && alternatives?.length ? renderAlternatives(alternatives) : "";
 
@@ -350,34 +387,33 @@
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        <div class="lca-row">
+        <div class="lca-hero lca-hero-${meta.status}">
           <span class="lca-status-dot lca-status-${meta.status === "found" ? "found" : "caution"}"></span>
-          <div>
+          <div class="lca-hero-text">
             <div class="lca-title">${meta.title}</div>
-            <div class="lca-sub">${escapeHtml(employer.name)}${meta.sub ? ` · ${meta.sub}` : ""}</div>
+            <div class="lca-company">${escapeHtml(employer.name)}</div>
           </div>
         </div>
-        ${linkedInLine}
         ${
           filings > 0
-            ? `<div class="lca-sponsor-summary"><b>${approvedPct}%</b> visa approvals · ${filings.toLocaleString()} filings</div>`
+            ? `<div class="lca-stat-row"><span class="lca-stat"><b>${approvedPct}%</b> approved</span><span class="lca-stat">${filings.toLocaleString()} filings</span></div>`
             : ""
         }
         ${
           jobsHtml || location || showAlternatives
             ? `<details class="lca-details">
-                 <summary>More H-1B details</summary>
+                 <summary>H-1B details</summary>
                  ${location ? `<div class="lca-meta">${escapeHtml(location)}</div>` : ""}
-                 ${jobsHtml ? `<div class="lca-jobs-label">Top sponsored roles</div><ul class="lca-jobs">${jobsHtml}</ul>` : ""}
+                 ${jobsHtml ? `<ul class="lca-jobs">${jobsHtml}</ul>` : ""}
                  ${renderNotes(notes)}
                  ${renderWarnings(warnings)}
                  ${showAlternatives}
                </details>`
             : `${renderNotes(notes)}${renderWarnings(warnings)}`
         }
-        <button type="button" class="lca-analyze-btn">Analyze job</button>
+        <button type="button" class="lca-analyze-btn">Analyze</button>
         <div class="lca-analyze-result" hidden></div>
-        <div class="lca-foot">${sourceLabel(ctx)} · U.S. DOL H-1B data · v${EXTENSION_VERSION}</div>
+        ${renderFoot(ctx, [footLinkedInHint(ctx, employer.name), "U.S. DOL H-1B"])}
       </div>`;
     finishBadge(el, ctx);
   }
@@ -385,24 +421,22 @@
   function renderMiss(ctx) {
     const el = ensureBadge();
     el.className = "lca-badge lca-miss";
+    const companyLine = ctx.displayName
+      ? `<div class="lca-company">${escapeHtml(ctx.displayName)}</div>`
+      : "";
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        <div class="lca-row">
+        <div class="lca-hero lca-hero-miss">
           <span class="lca-status-dot lca-status-miss"></span>
-          <div>
+          <div class="lca-hero-text">
             <div class="lca-title">No H-1B record</div>
-            <div class="lca-sub">Not in U.S. visa sponsorship data</div>
+            ${companyLine}
           </div>
         </div>
-        ${
-          ctx.displayName
-            ? `<div class="lca-compare">LinkedIn: <b>${escapeHtml(ctx.displayName)}</b></div>`
-            : `<div class="lca-hint">Couldn't detect the company on this page yet.</div>`
-        }
-        <div class="lca-hint">May file under another legal name — not proof they don't sponsor.</div>
-        <button type="button" class="lca-analyze-btn">Analyze job</button>
+        <button type="button" class="lca-analyze-btn">Analyze</button>
         <div class="lca-analyze-result" hidden></div>
+        ${renderFoot(ctx, ["may use a different legal name"])}
       </div>`;
     finishBadge(el, ctx);
   }
@@ -704,70 +738,109 @@
       .join("")}${items.length > 8 ? `<li class="lca-hint">+${items.length - 8} more</li>` : ""}</ul>`;
   }
 
+  function renderFitChips(items, kind) {
+    if (!items?.length) return "";
+    return items
+      .slice(0, 6)
+      .map((c) => `<span class="lca-chip lca-chip-${kind}">${escapeHtml(stripClaimPrefix(c.claim))}</span>`)
+      .join("");
+  }
+
   function renderResumeFitSection(rf) {
     if (!rf?.available) {
       const reason = rf?.reason || "";
-      return reason
-        ? `<div class="lca-section"><div class="lca-label">Resume match</div><div class="lca-hint">${escapeHtml(reason)}</div></div>`
-        : "";
+      return reason ? `<div class="lca-block lca-block-muted">${escapeHtml(reason)}</div>` : "";
     }
-    const strong = rf.strong_matches?.length || 0;
-    const partial = rf.partial_matches?.length || 0;
-    const missing = rf.missing?.length || 0;
-    const summary = `${strong} strong · ${partial} partial · ${missing} gap${missing === 1 ? "" : "s"}`;
+    const fit = partitionResumeFit(rf);
+    const skillHits = fit.strong.length + fit.partial.length;
+    const gapCount = fit.gaps.length;
+    const chips = [
+      renderFitChips(fit.strong, "strong"),
+      renderFitChips(fit.partial, "partial"),
+    ].join("");
+    const gapLine =
+      gapCount > 0
+        ? `<details class="lca-details lca-details-compact"><summary>${gapCount} skill gap${gapCount === 1 ? "" : "s"}</summary>${renderFitList(fit.gaps, "lca-fit-missing", "")}</details>`
+        : "";
+    const softLine =
+      fit.soft > 0
+        ? `<div class="lca-micro">${fit.soft} soft requirement${fit.soft === 1 ? "" : "s"} (leadership, teamwork…) not scored as skill gaps</div>`
+        : "";
+    const summary =
+      skillHits > 0
+        ? `${skillHits} skill${skillHits === 1 ? "" : "s"} match your resume`
+        : "No strong skill overlap found";
     return `
-      <div class="lca-section">
-        <div class="lca-label">Resume match</div>
-        <div class="lca-hint">${escapeHtml(summary)}</div>
-        ${renderFitList(rf.strong_matches, "lca-fit-strong", "")}
-        ${renderFitList(rf.partial_matches, "lca-fit-partial", "")}
-        ${missing ? `<div class="lca-label" style="margin-top:6px">Gaps</div>${renderFitList(rf.missing, "lca-fit-missing", "")}` : ""}
+      <div class="lca-block">
+        <div class="lca-block-title">Resume</div>
+        <div class="lca-micro">${escapeHtml(summary)}</div>
+        ${chips ? `<div class="lca-chips">${chips}</div>` : ""}
+        ${gapLine}
+        ${softLine}
       </div>`;
   }
 
-  const RECOMMENDATION_LABELS = {
-    Apply: { text: "Apply", cls: "lca-rec-apply" },
-    "Apply with modifications": { text: "Apply (tweak resume)", cls: "lca-rec-modify" },
-    "Low priority": { text: "Low priority", cls: "lca-rec-low" },
-    Skip: { text: "Skip", cls: "lca-rec-skip" },
+  const VERDICT_LABELS = {
+    Apply: { text: "Apply", cls: "lca-verdict-apply" },
+    "Apply with modifications": { text: "Consider", cls: "lca-verdict-consider" },
+    "Low priority": { text: "Later", cls: "lca-verdict-later" },
+    Skip: { text: "Skip", cls: "lca-verdict-skip" },
   };
 
-  function renderRecommendationSection(rec) {
+  function renderVerdictSection(rec) {
     if (!rec?.available) {
       const reason = rec?.reason || "";
-      return reason
-        ? `<div class="lca-section"><div class="lca-label">Recommendation</div><div class="lca-hint">${escapeHtml(reason)}</div></div>`
-        : "";
+      return reason ? `<div class="lca-block lca-block-muted">${escapeHtml(reason)}</div>` : "";
     }
-    const meta = RECOMMENDATION_LABELS[rec.decision] || {
-      text: rec.decision || "Unknown",
-      cls: "lca-rec-low",
+    const meta = VERDICT_LABELS[rec.decision] || {
+      text: rec.decision || "?",
+      cls: "lca-verdict-later",
     };
+    const track =
+      rec.track_label && rec.track_priority != null
+        ? `${rec.track_label} · P${rec.track_priority}`
+        : rec.track_label || "";
+    const note = simplifyReasoning(rec.reasoning || "");
     return `
-      <div class="lca-section">
-        <div class="lca-label">Recommendation</div>
-        <div class="lca-rec ${meta.cls}">${escapeHtml(meta.text)}</div>
-        ${
-          rec.track_priority != null
-            ? `<div class="lca-hint">Track: ${escapeHtml(rec.track_label || rec.track_id || "")} · priority ${rec.track_priority}${
-                rec.track_similarity != null ? ` · ${Math.round(rec.track_similarity * 100)}% title match` : ""
-              }${rec.fit_ratio != null ? ` · ${Math.round(rec.fit_ratio * 100)}% resume fit` : ""}</div>`
-            : ""
-        }
-        ${rec.reasoning ? `<div class="lca-hint">${escapeHtml(rec.reasoning)}</div>` : ""}
+      <div class="lca-verdict ${meta.cls}">
+        <span class="lca-verdict-pill">${escapeHtml(meta.text)}</span>
+        ${track ? `<span class="lca-verdict-track">${escapeHtml(track)}</span>` : ""}
+        ${note ? `<div class="lca-verdict-note">${escapeHtml(note)}</div>` : ""}
       </div>`;
   }
 
   function renderRiskSection(risk) {
     if (!risk?.available || !risk.risks?.length) return "";
     const items = risk.risks
-      .slice(0, 4)
+      .slice(0, 3)
       .map((r) => `<li>${escapeHtml(r.claim)}</li>`)
       .join("");
     return `
-      <div class="lca-section">
-        <div class="lca-label">Risk signals</div>
-        <ul class="lca-notes lca-risk-list">${items}</ul>
+      <div class="lca-block lca-block-risk">
+        <div class="lca-block-title">Risk</div>
+        <ul class="lca-risk-list">${items}</ul>
+      </div>`;
+  }
+
+  function renderJdErrorOnly(jd, received) {
+    if (jd?.available) return "";
+    const reason = jd?.reason || "";
+    const chars = received?.jd_chars;
+    const captureHint =
+      typeof chars === "number" && chars < 40
+        ? `Captured ${chars} chars from page — wait for JD to load, then retry.`
+        : "";
+    if (!reason && !captureHint) return "";
+    return `<div class="lca-block lca-block-muted">${captureHint ? `<div>${escapeHtml(captureHint)}</div>` : ""}${reason ? `<div>${escapeHtml(friendlyParseReason(reason))}</div>` : ""}</div>`;
+  }
+
+  function renderAnalysisInline(report) {
+    return `
+      <div class="lca-analyze-inner">
+        ${renderVerdictSection(report.recommendation)}
+        ${renderResumeFitSection(report.resume_fit)}
+        ${renderRiskSection(report.risk)}
+        ${renderJdErrorOnly(report.jd, report.received)}
       </div>`;
   }
 
@@ -784,58 +857,6 @@
       return "AI parser failed (free model timeout or bad response). Click Analyze again — often works on retry.";
     }
     return reason;
-  }
-
-  function renderJdSection(jd, received) {
-    if (!jd || !jd.available) {
-      const reason = jd?.reason || "";
-      const chars = received?.jd_chars;
-      const captureHint =
-        typeof chars === "number" && chars < 40
-          ? `<div class="lca-hint">Page capture: ${chars} characters — LinkedIn may not have loaded the job text yet. Wait a second, then click Analyze again.</div>`
-          : "";
-      return reason || captureHint
-        ? `<div class="lca-section"><div class="lca-label">Job parsing failed</div>${captureHint}<div class="lca-hint">${escapeHtml(friendlyParseReason(reason))}</div></div>`
-        : captureHint;
-    }
-    const meta = [jd.seniority, jd.location].filter(Boolean).join(" · ");
-    const reqs = (jd.requirements || [])
-      .slice(0, 12)
-      .map((r) => {
-        const tag = REQ_CATEGORY_LABELS[r.category] || "Other";
-        return `<li><span class="lca-req-tag">${escapeHtml(tag)}</span> ${escapeHtml(r.text)}</li>`;
-      })
-      .join("");
-    const visa = (jd.visa_language || [])
-      .map((v) => `<li>${escapeHtml(v)}</li>`)
-      .join("");
-    return `
-      <div class="lca-section">
-        <div class="lca-label">Job requirements</div>
-        ${meta ? `<div class="lca-hint">${escapeHtml(meta)}</div>` : ""}
-        ${reqs ? `<ul class="lca-reqs">${reqs}</ul>` : `<div class="lca-hint">No explicit requirements extracted.</div>`}
-        ${visa ? `<div class="lca-label" style="margin-top:6px">Visa language</div><ul class="lca-notes">${visa}</ul>` : ""}
-      </div>`;
-  }
-
-  function renderAnalysisInline(report) {
-    const pending = report.pending || [];
-    const labels = {
-      jd_parsing: "Job description parsing",
-      resume_fit: "Resume matching",
-      recommendation: "Apply recommendation",
-    };
-    const pendingHtml = pending.length
-      ? `<div class="lca-section"><div class="lca-label">Still processing</div><ul class="lca-notes">${pending.map((p) => `<li>${escapeHtml(labels[p] || p)}</li>`).join("")}</ul></div>`
-      : "";
-    return `
-      <div class="lca-analyze-inner">
-        ${renderRecommendationSection(report.recommendation)}
-        ${renderResumeFitSection(report.resume_fit)}
-        ${renderRiskSection(report.risk)}
-        ${renderJdSection(report.jd, report.received)}
-        ${pendingHtml}
-      </div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -859,10 +880,10 @@
     if (out.dataset.loaded === "1") {
       if (out.hasAttribute("hidden")) {
         out.removeAttribute("hidden");
-        btn.textContent = "Hide analysis";
+        btn.textContent = "Hide";
       } else {
         out.setAttribute("hidden", "");
-        btn.textContent = "Analyze job";
+        btn.textContent = "Analyze";
       }
       return;
     }
@@ -878,9 +899,9 @@
       const jdChars = report.received?.jd_chars ?? inputs.jd_text?.length ?? 0;
       if (jdChars >= 40 && report.jd?.available) {
         out.dataset.loaded = "1";
-        btn.textContent = "Hide analysis";
+        btn.textContent = "Hide";
       } else {
-        btn.textContent = "Retry analyze";
+        btn.textContent = "Retry";
       }
     } catch (err) {
       console.error("[Job Intelligence]", err);
