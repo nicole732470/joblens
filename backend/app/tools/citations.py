@@ -25,6 +25,15 @@ def validate_claims(claims: list[Claim], available_evidence_ids: set[str]) -> li
     issues: list[dict] = []
     for claim in claims:
         ids = claim_evidence_ids(claim)
+        if claim.claim_type == "recommendation" and claim.h1b_evidence_ids:
+            issues.append(
+                {
+                    "claim": claim.claim,
+                    "claim_type": claim.claim_type,
+                    "issue": "h1b_in_recommendation",
+                    "detail": "recommendation claims must not cite H-1B database evidence",
+                }
+            )
         if not ids and not claim.inference:
             issues.append(
                 {

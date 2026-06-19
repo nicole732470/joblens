@@ -134,16 +134,18 @@ class ResumeFitAnalysis(BaseModel):
     missing: list[Claim] = []
 
 
-class RiskAnalysis(BaseModel):
-    available: bool = False
-    risks: list[Claim] = []
-
-
 class RecommendationResult(BaseModel):
     available: bool = False
+    reason: Optional[str] = None
     decision: Optional[Recommendation] = None
     reasoning: str = ""
     evidence_ids: list[str] = []
+
+
+class RiskAnalysis(BaseModel):
+    available: bool = False
+    reason: Optional[str] = None
+    risks: list[Claim] = []
 
 
 class Report(BaseModel):

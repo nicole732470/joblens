@@ -7,13 +7,22 @@ from pydantic import BaseModel
 from app.config import settings
 from app.db import check_db_connection
 from app.schemas.candidate_profile import CandidateProfile
-from app.schemas.report import JDParse, Report, ResumeFitAnalysis, SponsorshipAnalysis
+from app.schemas.report import (
+    JDParse,
+    Report,
+    RecommendationResult,
+    ResumeFitAnalysis,
+    RiskAnalysis,
+    SponsorshipAnalysis,
+)
 from app.tools.entity_resolver import get_resolver
 from app.tools.jd_parser import parse_job_description
 from app.tools.profile_loader import get_candidate_profile
+from app.tools.recommendation import generate_recommendation
 from app.tools.resume_fit import analyze_resume_fit
 from app.tools.resume_loader import resolve_resume_text
 from app.tools.resume_store import index_resume
+from app.tools.risk_rules import run_risk_rules
 from app.tools.sponsorship import search_h1b_company
 
 
@@ -105,20 +114,47 @@ def analyze(req: AnalyzeRequest) -> Report:
         except Exception as e:  # noqa: BLE001
             resume_fit = ResumeFitAnalysis(available=False, reason=str(e))
 
-    pending = ["risk", "recommendation"]
+    try:
+        profile = get_candidate_profile()
+    except Exception:
+        profile = None
+
+    risk = RiskAnalysis()
+    recommendation = RecommendationResult()
+    if profile is not None:
+        try:
+            risk = RiskAnalysis(**run_risk_rules(jd, resume_fit, profile))
+        except Exception as e:  # noqa: BLE001
+            risk = RiskAnalysis(available=False, reason=str(e))
+        try:
+            recommendation = RecommendationResult(
+                **generate_recommendation(jd, resume_fit, profile, req.title)
+            )
+        except Exception as e:  # noqa: BLE001
+            recommendation = RecommendationResult(available=False, reason=str(e))
+
+    pending: list[str] = []
     if not jd.available:
-        pending.insert(0, "jd_parsing")
+        pending.append("jd_parsing")
     if not resume_text:
-        pending.insert(0, "resume_fit")
+        pending.append("resume_fit")
     elif not resume_fit.available:
-        pending.insert(0, "resume_fit")
+        pending.append("resume_fit")
+    if profile is None:
+        pending.append("recommendation")
+    elif not recommendation.available:
+        pending.append("recommendation")
+
+    status = "complete" if not pending else "partial"
 
     return Report(
-        status="partial",
+        status=status,
         pending=pending,
         sponsorship=sponsorship,
         jd=jd,
         resume_fit=resume_fit,
+        risk=risk,
+        recommendation=recommendation,
         received={
             "company": req.company,
             "title": req.title,
