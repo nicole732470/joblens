@@ -46,3 +46,15 @@ def test_rejects_short_non_job_text():
     ok, reason = looks_like_job_posting("Welcome to our homepage. About us.", "Home")
     assert not ok
     assert "job" in reason.lower()
+
+
+def test_accepts_linkedin_extension_scrape():
+    """Extension sends long in-browser JD + linkedin job URL — do not false-reject."""
+    text = (
+        "Technical Manager I will provide review and control over engineering projects. "
+        "Successful candidates must have a current PE registration and healthcare design experience. "
+        "Bachelor's degree in Electrical engineering. 10+ years in a consulting firm."
+    )
+    url = "https://www.linkedin.com/jobs/view/4306005860/?currentJobId=4306005860"
+    ok, reason = looks_like_job_posting(text, "Technical Manager I", url)
+    assert ok, reason

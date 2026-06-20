@@ -315,7 +315,7 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
 
     company, title, job_location = normalize_job_fields(company, title, job_location)
 
-    jd_ok, jd_reason = looks_like_job_posting(jd_text, title or "")
+    jd_ok, jd_reason = looks_like_job_posting(jd_text, title or "", job_url)
     if not jd_ok:
         raise HTTPException(
             status_code=400,

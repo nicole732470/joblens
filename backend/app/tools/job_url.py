@@ -74,18 +74,44 @@ def is_likely_job_url(url: str) -> tuple[bool, str]:
     return False, "URL does not look like a job posting — paste a careers/jobs link or the JD text manually"
 
 
-def looks_like_job_posting(text: str, title: str = "") -> tuple[bool, str]:
+def looks_like_job_posting(
+    text: str, title: str = "", job_url: str | None = None
+) -> tuple[bool, str]:
     """Content heuristic after fetch."""
-    blob = f"{title}\n{text}".lower()
+    body = (text or "").strip()
+    blob = f"{title}\n{body}".lower()
     if len(blob.strip()) < 80:
         return False, "extracted text too short to be a job description"
+
+    u = (job_url or "").lower()
+    # Extension scrapes LinkedIn in-browser — long text on a job URL is trusted.
+    if len(body) >= 180 and (
+        re.search(r"linkedin\.com/jobs/|currentJobId=", u)
+        or _JOB_URL_HINTS.search(u)
+    ):
+        return True, ""
+
     hits = sum(1 for s in _JOB_CONTENT_SIGNALS if s in blob)
     if hits >= 2:
         return True, ""
-    if hits >= 1 and len(text) >= 400:
+    if hits >= 1 and len(body) >= 400:
         return True, ""
     # Single strong signal
     if any(x in blob for x in ("job description", "responsibilities", "qualifications")):
+        return True, ""
+    extra_signals = (
+        "job requirements",
+        "minimum qualifications",
+        "must have",
+        "years of experience",
+        "years'",
+        "preferred qualifications",
+        "what you'll do",
+        "about the role",
+        "about this role",
+        "key responsibilities",
+    )
+    if any(x in blob for x in extra_signals) and len(body) >= 120:
         return True, ""
     return False, "page content does not look like a job description — paste the JD manually or use a direct job link"
 
