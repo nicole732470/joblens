@@ -990,23 +990,38 @@
     return dom.length >= jsonLd.length ? dom : jsonLd;
   }
 
-  /** Never click LinkedIn UI — passive read + Voyager API only. */
+  /** Passive read: Voyager API (full JD) + JSON-LD + DOM — never click Show more. */
   async function captureJobDescription() {
     if (isCompanyProfilePage()) return "";
 
-    let best = extractJobDescription();
+    const jobId = extractJobId();
+    const candidates = [];
+
+    if (jobId) {
+      candidates.push(await fetchJobDescriptionFromApi(jobId));
+    }
+    candidates.push(extractJobDescriptionFromJsonLd());
+    candidates.push(extractJobDescriptionFromDom());
+
+    let best = "";
+    for (const text of candidates) {
+      const t = text || "";
+      if (t.length > best.length) best = t;
+    }
+
     if (best.length < 200) {
       const retry = extractFromJobPanelHeuristic();
       if (retry.length > best.length) best = retry;
     }
 
-    const jobId = extractJobId();
-    if (jobId && best.length < 400) {
-      const apiText = await fetchJobDescriptionFromApi(jobId);
-      if (apiText.length > best.length) best = apiText;
+    // LinkedIn often hydrates late — retry Voyager once before giving up.
+    if (jobId && best.length < 300) {
+      await sleep(900);
+      const apiRetry = await fetchJobDescriptionFromApi(jobId);
+      if (apiRetry.length > best.length) best = apiRetry;
     }
 
-    console.info("[JobLens] JD capture:", best.length, "chars (passive)");
+    console.info("[JobLens] JD capture:", best.length, "chars", jobId ? `(job ${jobId})` : "(no job id)");
     return best;
   }
 
@@ -1253,21 +1268,24 @@
     const probeBit = probe
       ? ` (debug: legacy ${probe.jobDetails}/${probe.markup}, alt ${probe.showMoreLess}/${probe.metaAnchor})`
       : "";
-    return `<p class="lca-err-mini">Couldn't read job description${probeBit}. Expand on LinkedIn, wait, Retry.</p>`;
+    return `<p class="lca-err-mini">Couldn't read job description${probeBit}. Wait a moment and Retry.</p>`;
   }
 
   function shortJdError(chars, jd) {
     if (typeof chars === "number" && chars < 40) {
-      return `Expand the job description on LinkedIn (click Show more), wait a moment, then Retry.`;
+      return "Job description not loaded yet — wait a moment, then Retry.";
     }
     const reason = jd?.reason || "";
-    if (!reason) return "Could not parse job requirements — expand the JD and Retry.";
+    if (!reason) return "Could not parse job requirements — Retry in a moment.";
     const r = reason.toLowerCase();
     if (r.includes("no job description")) return "No job text sent to server.";
     if (r.includes("llm not configured")) return "Server LLM not configured.";
     if (r.includes("parse failed")) return "Server parse failed — Retry.";
     if (r.includes("no requirements extracted")) {
-      return "Could not read job requirements — open the full posting, expand description, Retry.";
+      return "Could not read job requirements from this posting — Retry.";
+    }
+    if (r.includes("does not look like a job")) {
+      return "Server rejected job text — Retry; if it persists, tell us the job URL.";
     }
     return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
   }
@@ -1418,7 +1436,7 @@
     try {
       let inputs = await gatherJobInputs(ctx);
       let jdWait = 0;
-      while ((inputs.jd_text || "").length < 80 && jdWait < 6) {
+      while ((inputs.jd_text || "").length < 80 && jdWait < 10) {
         if (!stillCurrent()) return;
         out.innerHTML = renderLoadingInline("Loading job description…");
         await sleep(900);
@@ -1429,7 +1447,7 @@
       if (!stillCurrent()) return;
 
       if ((inputs.jd_text || "").length < 80) {
-        out.innerHTML = `<div class="lca-analyze-inner">${renderCaptureMeta(inputs.jd_text?.length || 0, inputs.captureProbe)}<p class="lca-err-mini">Job description not loaded yet — expand it on LinkedIn, wait a moment, then click <strong>Retry</strong>.</p></div>`;
+        out.innerHTML = `<div class="lca-analyze-inner">${renderCaptureMeta(inputs.jd_text?.length || 0, inputs.captureProbe)}<p class="lca-err-mini">Job description not loaded yet — wait a moment, then click <strong>Retry</strong>.</p></div>`;
         out.dataset.analyzedFor = "";
         return;
       }
