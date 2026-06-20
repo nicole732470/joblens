@@ -7,8 +7,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  --lca-fs-sm: 11px;
-  --lca-fs-xs: 10px;
+  --lca-fs-sm: 12px;
+  --lca-fs-xs: 11px;
   --jn-bg: #fdfaf3;
   --jn-bg-subtle: #f0e9da;
   --jn-text: #2a2418;
@@ -52,6 +52,11 @@
   color: #37352f;
   box-shadow: 0 0 0 1px #e0e0de;
 }
+.lca-pill-no-record {
+  background: #fde1df;
+  color: #8a1f1c;
+  box-shadow: 0 0 0 1px #f3c8c5;
+}
 .lca-pill-skip {
   background: #fde1df;
   color: #8a1f1c;
@@ -75,19 +80,29 @@
   border-color: rgba(74, 103, 65, 0.2);
   background: linear-gradient(160deg, rgba(238, 245, 232, 0.95), rgba(255, 255, 255, 0.9));
 }
+.lca-section-card--h1b-none {
+  border-color: rgba(138, 31, 28, 0.22);
+  background: linear-gradient(160deg, rgba(254, 242, 241, 0.96), rgba(255, 255, 255, 0.92));
+}
 .lca-section-card--fit {
   border-color: rgba(196, 101, 74, 0.18);
   background: linear-gradient(160deg, rgba(255, 248, 242, 0.95), rgba(255, 255, 255, 0.92));
 }
 
 .lca-section-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--jn-text-faint);
   line-height: 1.2;
   margin-bottom: 2px;
+}
+.lca-section-label--pillar {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--jn-text-secondary);
 }
 
 .lca-h1b-subline {
@@ -121,39 +136,73 @@
 .lca-resume-summary {
   font-size: var(--lca-fs-sm);
   color: var(--jn-text-secondary);
-  line-height: 1.45;
+  line-height: 1.5;
   margin: 0;
+}
+.lca-resume-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(42, 36, 24, 0.08);
+}
+.lca-resume-file-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.lca-resume-file-name {
+  font-size: var(--lca-fs-sm);
+  font-weight: 600;
+  color: var(--jn-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .lca-resume-cols {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
 }
+.lca-resume-col {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(42, 36, 24, 0.07);
+}
 @media (min-width: 520px) {
   .lca-resume-cols {
     grid-template-columns: repeat(3, 1fr);
   }
+  .lca-resume-col {
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+  }
 }
 .lca-resume-col-hd {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--jn-text-faint);
+  color: var(--jn-text-muted);
   margin-bottom: 6px;
 }
 .lca-resume-list {
   margin: 0;
   padding-left: 14px;
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: var(--lca-fs-sm);
+  line-height: 1.45;
   color: var(--jn-text-secondary);
 }
-.lca-resume-list li { margin: 0 0 4px; }
+.lca-resume-list li { margin: 0 0 5px; }
 .lca-resume-empty {
-  font-size: 11px;
+  font-size: var(--lca-fs-sm);
   color: var(--jn-text-faint);
   margin: 0;
+  line-height: 1.4;
 }
 
 .lca-analyze-inner {
@@ -256,14 +305,14 @@
 }
 .lca-metric-val {
   display: block;
-  font-size: var(--lca-fs-sm);
+  font-size: 14px;
   font-weight: 650;
   color: var(--jn-text);
   line-height: 1.2;
 }
 .lca-metric-lbl {
   display: block;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 650;
   color: var(--jn-text-faint);
   margin-top: 3px;

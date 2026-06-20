@@ -262,8 +262,30 @@ function hasFitSignals(rec) {
   );
 }
 
+function sectionLabel(text) {
+  return `<div class="lca-section-label lca-section-label--pillar">${escapeHtml(text)}</div>`;
+}
+
+function humanizeSponsorshipReason(reason) {
+  const r = String(reason || "").trim();
+  if (!r || r === "no company provided") return "No company name to look up";
+  if (/no reliable match/i.test(r)) return "Not found in U.S. DOL database";
+  return r;
+}
+
+function resumeDisplayName(received) {
+  if (received?.resume_filename) return String(received.resume_filename);
+  if (received?.resume_source === "default") return "resume.md";
+  return "resume.pdf";
+}
+
+function renderResumeFileLine(received) {
+  const name = resumeDisplayName(received);
+  return `<div class="lca-resume-file"><span class="lca-resume-file-icon" aria-hidden="true">📄</span><span class="lca-resume-file-name">${escapeHtml(name)}</span></div>`;
+}
+
 function sponsorHeadPillFromApi(sp) {
-  if (!sp?.matched) return statusPill("No H-1B record", "neutral");
+  if (!sp?.matched) return statusPill("No H-1B record", "no-record");
   const n = sp.total_lca_count || 0;
   if (n > 0) return statusPill(`H-1B sponsor · ${n} LCAs`, "ok");
   return statusPill("H-1B sponsor", "ok");
@@ -313,7 +335,7 @@ function renderAnalysisBlock(rec, rf, co, explain) {
 
   return `
     <div class="lca-section-card lca-section-card--fit lca-analysis lca-fadein">
-      <div class="lca-section-label">Fit analysis</div>
+      ${sectionLabel("Role fit")}
       ${verdictCard}
       ${metrics}
       ${renderCompanySignals(co)}
@@ -341,51 +363,54 @@ function renderResumeClaimList(items, emptyLabel) {
   return `<ul class="lca-resume-list">${rows}</ul>`;
 }
 
-/** Your resume snapshot + requirement-level match for this posting. */
-function renderResumeDetailSection(rf, received) {
+/** Resume file + requirement-level match for this posting (section 3). */
+function renderResumeDetailSection(rf, received, options = {}) {
+  const compact = Boolean(options.compactResume);
   const hasResume = Boolean(received?.has_resume);
-  const summary = (received?.resume_summary || "").trim();
   if (!hasResume && !rf?.available) return "";
 
-  const blocks = [];
+  const bodyParts = [];
   if (hasResume) {
-    const body = summary
-      ? `<p class="lca-resume-summary">${escapeHtml(summary)}</p>`
-      : `<p class="lca-resume-summary">${Number(received?.resume_chars || 0).toLocaleString()} characters on file.</p>`;
-    blocks.push(`
-      <div class="lca-section-card lca-section-card--resume lca-resume-you">
-        <div class="lca-section-label">Your resume</div>
-        ${body}
-      </div>`);
+    bodyParts.push(renderResumeFileLine(received));
+    if (!compact) {
+      const summary = (received?.resume_summary || "").trim();
+      if (summary) {
+        const short = summary.length > 220 ? `${summary.slice(0, 217)}…` : summary;
+        bodyParts.push(`<p class="lca-resume-summary">${escapeHtml(short)}</p>`);
+      }
+    }
   }
 
   if (rf?.available) {
     const strong = rf.strong_matches || [];
     const partial = rf.partial_matches || [];
     const missing = rf.missing || [];
-    blocks.push(`
-      <div class="lca-section-card lca-section-card--resume lca-resume-role">
-        <div class="lca-section-label">Resume vs this role</div>
-        <div class="lca-resume-cols">
-          <div class="lca-resume-col">
-            <div class="lca-resume-col-hd">Strong (${strong.length})</div>
-            ${renderResumeClaimList(strong, "No strong overlaps.")}
-          </div>
-          <div class="lca-resume-col">
-            <div class="lca-resume-col-hd">Partial (${partial.length})</div>
-            ${renderResumeClaimList(partial, "No partial overlaps.")}
-          </div>
-          <div class="lca-resume-col">
-            <div class="lca-resume-col-hd">Gaps (${missing.length})</div>
-            ${renderResumeClaimList(missing, "No major gaps flagged.")}
-          </div>
+    bodyParts.push(`
+      <div class="lca-resume-cols">
+        <div class="lca-resume-col">
+          <div class="lca-resume-col-hd">Strong (${strong.length})</div>
+          ${renderResumeClaimList(strong, "No strong overlaps.")}
+        </div>
+        <div class="lca-resume-col">
+          <div class="lca-resume-col-hd">Partial (${partial.length})</div>
+          ${renderResumeClaimList(partial, "No partial overlaps.")}
+        </div>
+        <div class="lca-resume-col">
+          <div class="lca-resume-col-hd">Gaps (${missing.length})</div>
+          ${renderResumeClaimList(missing, "No major gaps flagged.")}
         </div>
       </div>`);
   } else if (hasResume && rf?.reason) {
-    blocks.push(`<p class="lca-h1b-subline">${escapeHtml(rf.reason)}</p>`);
+    bodyParts.push(`<p class="lca-h1b-subline">${escapeHtml(rf.reason)}</p>`);
   }
 
-  return blocks.join("");
+  if (!bodyParts.length) return "";
+
+  return `
+    <div class="lca-section-card lca-section-card--resume lca-resume-role">
+      ${sectionLabel("Resume vs this role")}
+      ${bodyParts.join("")}
+    </div>`;
 }
 
 /** H-1B block — works with extension employer object or API sponsorship. */
@@ -427,12 +452,15 @@ function renderH1bBlock(data, currentJobTitle = null) {
     });
 
   const rolesBlock = jobRows.length ? `<div class="lca-h1b-roles">${jobRows.join("")}</div>` : "";
-  const headerPill = data.pillHtml || "";
+  const isEmpty = filings <= 0 && data.showWhenEmpty;
+  const cardMod = isEmpty || data.noRecord ? " lca-section-card--h1b-none" : "";
+  const headerPill =
+    data.pillHtml || (isEmpty ? statusPill("No H-1B record", "no-record") : "");
   const subline = data.subline
     ? `<p class="lca-h1b-subline">${escapeHtml(data.subline)}</p>`
     : "";
 
-  return `<div class="lca-section-card lca-section-card--h1b"><div class="lca-section-label">H-1B sponsorship</div>${headerPill}${subline}${grid}${rolesBlock}</div>`;
+  return `<div class="lca-section-card lca-section-card--h1b${cardMod}">${sectionLabel("Visa sponsorship")}${headerPill}${subline}${grid}${rolesBlock}</div>`;
 }
 
 function renderSponsorshipFromApi(sp, currentJobTitle = null) {
@@ -441,8 +469,9 @@ function renderSponsorshipFromApi(sp, currentJobTitle = null) {
     return renderH1bBlock({
       filings: 0,
       showWhenEmpty: true,
-      pillHtml: statusPill("No H-1B record", "neutral"),
-      subline: sp.reason || "Not in DOL database",
+      noRecord: true,
+      pillHtml: statusPill("No H-1B record", "no-record"),
+      subline: humanizeSponsorshipReason(sp.reason),
     });
   }
   const name = sp.company?.name;
@@ -472,7 +501,7 @@ function renderUnifiedReport(report, options = {}) {
     report.sponsorship?.company?.name && report.sponsorship.company.name !== company
       ? report.sponsorship.company.name
       : null;
-  const pill = options.headPillHtml || sponsorHeadPillFromApi(report.sponsorship);
+  const pill = "headPillHtml" in options ? options.headPillHtml : null;
 
   const parts = ['<div class="jl-report-results">'];
 
@@ -490,16 +519,22 @@ function renderUnifiedReport(report, options = {}) {
             filings: report.sponsorship.total_lca_count,
             certified: report.sponsorship.certified_count,
             sponsored_titles: report.sponsorship.sponsored_titles,
+            pillHtml: statusPill(
+              `H-1B sponsor · ${report.sponsorship.total_lca_count} LCAs`,
+              "ok"
+            ),
           },
           title
         )
       );
-    } else if (report.sponsorship && !report.sponsorship.matched) {
+    } else if (report.sponsorship) {
       parts.push(
         renderH1bBlock({
           filings: 0,
           showWhenEmpty: true,
-          subline: report.sponsorship.reason || "Not in DOL database",
+          noRecord: true,
+          pillHtml: statusPill("No H-1B record", "no-record"),
+          subline: humanizeSponsorshipReason(report.sponsorship.reason),
         })
       );
     }
@@ -511,7 +546,7 @@ function renderUnifiedReport(report, options = {}) {
     );
   }
   if (sections.includes("resume_detail")) {
-    parts.push(renderResumeDetailSection(report.resume_fit, report.received));
+    parts.push(renderResumeDetailSection(report.resume_fit, report.received, options));
   }
   if (sections.includes("risk")) {
     parts.push(renderRiskSection(report.risk));
@@ -660,5 +695,5 @@ const JobLensReportView = {
 
 if (typeof globalThis !== "undefined") {
   globalThis.JobLensReportView = JobLensReportView;
-  globalThis.__JOBLENS_REPORT_VIEW_BUILD__ = "3.3.6-classic";
+  globalThis.__JOBLENS_REPORT_VIEW_BUILD__ = "3.3.7-classic";
 }

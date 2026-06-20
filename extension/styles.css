@@ -348,13 +348,19 @@
 }
 
 .lca-section-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--jn-text-faint);
   line-height: 1.2;
   margin-bottom: 2px;
+}
+.lca-section-label--pillar {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--jn-text-secondary);
 }
 
 .lca-analyze-result {
@@ -735,4 +741,27 @@ body > .lca-metric-tip.lca-tip-visible,
   font-size: 13px;
   color: var(--jn-text-secondary);
   line-height: 1.45;
+}
+
+/* Extension panel: stacked resume match cards + tighter gaps */
+#joblens-panel .jl-report-results {
+  gap: 12px;
+}
+#joblens-panel .lca-resume-cols {
+  gap: 8px;
+}
+#joblens-panel .lca-resume-col {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(42, 36, 24, 0.08);
+}
+#joblens-panel .lca-h1b-subline,
+#joblens-panel .lca-resume-list,
+#joblens-panel .lca-verdict-note {
+  font-size: 12px;
+}
+#joblens-panel .lca-foot a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }

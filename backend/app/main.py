@@ -315,11 +315,17 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
         )
 
     resume_text = req.resume_text or stored_resume
+    resume_filename = None
+    if user_id:
+        resume_filename = get_user_resume_status(user_id).get("filename")
+    elif resume_text:
+        resume_filename = "resume.md"
     return {
         "jd_text": jd_text,
         "company_name": company,
         "title": title,
         "resume_text": resume_text,
+        "resume_filename": resume_filename,
         "job_url": job_url,
         "job_location": job_location,
         "linkedin_followers": req.linkedin_followers,

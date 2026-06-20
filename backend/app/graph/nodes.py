@@ -31,7 +31,7 @@ def node_prepare(state: dict) -> dict:
             profile = get_candidate_profile()
         except Exception:  # noqa: BLE001
             pass
-        patch_input(resolved_resume=resolved, resume_source=source)
+        patch_input(resolved_resume=resolved, resume_source=source, resume_filename=req.get("resume_filename"))
     return {
         "resolved_resume": resolved,
         "resume_source": source,

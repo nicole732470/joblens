@@ -73,6 +73,7 @@ def assemble_report(
             "has_resume": bool(resolved),
             "resume_chars": len(resolved),
             "resume_summary": resume_summary(resolved),
+            "resume_filename": req.get("resume_filename"),
             "resume_source": req.get("resume_source"),
             "job_url": req.get("job_url"),
             "job_location": req.get("job_location"),

@@ -80,7 +80,9 @@
   function renderFoot(parts) {
     const bits = (parts || []).map((p) => escapeHtml(p)).filter(Boolean);
     if (WEB_APP_URL) {
-      bits.push(`<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener">Open web</a>`);
+      bits.push(
+        `<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener" title="Paste job links and edit your profile">Full site</a>`
+      );
     }
     bits.push(`v${EXTENSION_VERSION}`);
     return `<div class="lca-foot">${bits.join(" · ")}</div>`;
@@ -545,22 +547,28 @@
     await runAnalysis(out, ctx);
   }
 
-  function renderH1bSummary(employer, currentJobTitle) {
+  function renderOfflineH1bSection(employer, confidence, jobTitle) {
+    const meta = resolveSponsorMeta(confidence, employer);
     const filings = Number(employer.lca_count) || 0;
-    if (filings <= 0) return "";
+    let tone = "no-record";
+    if (meta.status === "found" || meta.status === "ok") tone = "ok";
+    else if (meta.status === "caution") tone = "caution";
     return RV.renderH1bBlock(
       {
         filings,
         certified: employer.certified_count,
         top_jobs: employer.top_jobs,
+        showWhenEmpty: filings <= 0,
+        noRecord: filings <= 0,
+        pillHtml: statusPill(meta.title, filings > 0 ? tone : "no-record"),
+        subline: filings <= 0 ? "Not found in U.S. DOL database" : undefined,
       },
-      currentJobTitle
+      jobTitle
     );
   }
 
   function renderBadge(result, ctx) {
     const { employer, confidence } = result;
-    const meta = resolveSponsorMeta(confidence, employer);
     const el = ensureBadge();
     const displayName = ctx.displayName || employer.name;
     const jobTitle = extractJobTitle();
@@ -569,8 +577,8 @@
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        ${renderHeadBlock(statusPill(meta.title, meta.status === "found" || meta.status === "ok" ? "ok" : "caution"), displayName, employer.name, jobTitle)}
-        ${renderH1bSummary(employer, jobTitle)}
+        ${renderHeadBlock(null, displayName, employer.name, jobTitle)}
+        ${renderOfflineH1bSection(employer, confidence, jobTitle)}
         <div class="lca-analyze-result" data-section="fit"></div>
         ${renderFoot(["Source: U.S. DOL H-1B"])}
       </div>`;
@@ -583,7 +591,14 @@
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        ${renderHeadBlock(statusPill("No H-1B record", "neutral"), ctx.displayName || "", null, extractJobTitle())}
+        ${renderHeadBlock(null, ctx.displayName || "", null, extractJobTitle())}
+        ${RV.renderH1bBlock({
+          filings: 0,
+          showWhenEmpty: true,
+          noRecord: true,
+          pillHtml: statusPill("No H-1B record", "no-record"),
+          subline: "Not found in U.S. DOL database",
+        })}
         <div class="lca-analyze-result"></div>
         ${renderFoot(["May file under a different legal name"])}
       </div>`;
@@ -1244,7 +1259,10 @@
 
     const enriched = enrichReport(report, inputs);
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    const fitBlock = RV.renderUnifiedReport(enriched, { sections: ["fit", "resume_detail", "risk"] });
+    const fitBlock = RV.renderUnifiedReport(enriched, {
+      sections: ["fit", "resume_detail", "risk"],
+      compactResume: true,
+    });
     return `<div class="lca-analyze-inner">${errLine}${fitBlock}</div>`;
   }
 
@@ -1275,14 +1293,14 @@
       return;
     }
 
-    out.innerHTML = `<div class="lca-section-card lca-section-card--fit"><div class="lca-section-label">Fit analysis</div><div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing fit… usually 30–60s</div></div>`;
+    out.innerHTML = `<div class="lca-section-card lca-section-card--fit"><div class="lca-section-label lca-section-label--pillar">Role fit</div><div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing fit… usually 30–60s</div></div>`;
 
     try {
       let inputs = await gatherJobInputs(ctx);
       let jdWait = 0;
       while ((inputs.jd_text || "").length < 80 && jdWait < 6) {
         if (!stillCurrent()) return;
-        out.innerHTML = `<div class="lca-section-card lca-section-card--fit"><div class="lca-section-label">Fit analysis</div><div class="lca-loading-row"><span class="lca-spinner"></span> Loading job description…</div></div>`;
+        out.innerHTML = `<div class="lca-section-card lca-section-card--fit"><div class="lca-section-label lca-section-label--pillar">Role fit</div><div class="lca-loading-row"><span class="lca-spinner"></span> Loading job description…</div></div>`;
         await sleep(900);
         inputs = await gatherJobInputs(ctx);
         jdWait += 1;
