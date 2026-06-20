@@ -262,6 +262,30 @@ function hasFitSignals(rec) {
   );
 }
 
+function shortClaimText(raw, maxLen = 72) {
+  let text = stripClaimPrefix(raw?.claim || raw || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  text = text
+    .replace(/^As an?\s+[^,]+,\s*(?:you will\s+(?:be\s+)?)?/i, "")
+    .replace(/^You will (?:be )?/i, "")
+    .replace(/^The ideal candidate\s+/i, "")
+    .replace(/^We are (?:seeking|looking for)\s+/i, "")
+    .trim();
+  const first = (text.split(/(?<=[.;])\s+/)[0] || text).trim();
+  if (first.length <= maxLen) return first;
+  const cut = first.slice(0, maxLen);
+  const soft = Math.max(cut.lastIndexOf(","), cut.lastIndexOf(" — "));
+  if (soft > 24) return cut.slice(0, soft).trim();
+  return `${cut.trim()}…`;
+}
+
+function renderHighlightCard(pillHtml, note, tone) {
+  const noteHtml = note ? `<span class="lca-verdict-note">${escapeHtml(note)}</span>` : "";
+  return `<div class="lca-verdict-card lca-verdict-card--${tone}"><div class="lca-verdict-row">${pillHtml}${noteHtml}</div></div>`;
+}
+
 function sectionLabel(text) {
   return `<div class="lca-section-label lca-section-label--pillar">${escapeHtml(text)}</div>`;
 }
@@ -343,18 +367,13 @@ function renderAnalysisBlock(rec, rf, co, explain) {
 }
 
 function renderRiskSection(risk) {
-  if (!risk?.available || !risk.risks?.length) return "";
-  const top = risk.risks[0];
-  const claim = top.claim || "";
-  const truncated = claim.length > 56 ? `${claim.slice(0, 55)}…` : claim;
-  const more = risk.risks.length > 1 ? ` · +${risk.risks.length - 1}` : "";
-  return `<p class="lca-risk-line">⚠ ${escapeHtml(truncated)}${more ? `<span class="lca-risk-more">${escapeHtml(more)}</span>` : ""}</p>`;
+  return "";
 }
 
 function renderResumeClaimList(items, emptyLabel) {
   const rows = (items || [])
     .map((c) => {
-      const text = stripClaimPrefix(c?.claim || c);
+      const text = shortClaimText(c?.claim || c);
       return text ? `<li>${escapeHtml(text)}</li>` : "";
     })
     .filter(Boolean)
@@ -363,53 +382,34 @@ function renderResumeClaimList(items, emptyLabel) {
   return `<ul class="lca-resume-list">${rows}</ul>`;
 }
 
-/** Resume file + requirement-level match for this posting (section 3). */
+function renderResumeCol(title, count, items, emptyLabel, mod = "") {
+  return `
+    <div class="lca-resume-col${mod ? ` lca-resume-col--${mod}` : ""}">
+      <div class="lca-resume-col-hd">${escapeHtml(title)} (${count})</div>
+      <div class="lca-resume-col-body">
+        ${renderResumeClaimList(items, emptyLabel)}
+      </div>
+    </div>`;
+}
+
+/** Requirement-level resume match for this posting (section 3). */
 function renderResumeDetailSection(rf, received, options = {}) {
-  const compact = Boolean(options.compactResume);
-  const hasResume = Boolean(received?.has_resume);
-  if (!hasResume && !rf?.available) return "";
+  void received;
+  void options;
+  if (!rf?.available) return "";
 
-  const bodyParts = [];
-  if (hasResume) {
-    bodyParts.push(renderResumeFileLine(received));
-    if (!compact) {
-      const summary = (received?.resume_summary || "").trim();
-      if (summary) {
-        const short = summary.length > 220 ? `${summary.slice(0, 217)}…` : summary;
-        bodyParts.push(`<p class="lca-resume-summary">${escapeHtml(short)}</p>`);
-      }
-    }
-  }
-
-  if (rf?.available) {
-    const strong = rf.strong_matches || [];
-    const partial = rf.partial_matches || [];
-    const missing = rf.missing || [];
-    bodyParts.push(`
-      <div class="lca-resume-cols">
-        <div class="lca-resume-col">
-          <div class="lca-resume-col-hd">Strong (${strong.length})</div>
-          ${renderResumeClaimList(strong, "No strong overlaps.")}
-        </div>
-        <div class="lca-resume-col">
-          <div class="lca-resume-col-hd">Partial (${partial.length})</div>
-          ${renderResumeClaimList(partial, "No partial overlaps.")}
-        </div>
-        <div class="lca-resume-col">
-          <div class="lca-resume-col-hd">Gaps (${missing.length})</div>
-          ${renderResumeClaimList(missing, "No major gaps flagged.")}
-        </div>
-      </div>`);
-  } else if (hasResume && rf?.reason) {
-    bodyParts.push(`<p class="lca-h1b-subline">${escapeHtml(rf.reason)}</p>`);
-  }
-
-  if (!bodyParts.length) return "";
+  const strong = rf.strong_matches || [];
+  const partial = rf.partial_matches || [];
+  const missing = rf.missing || [];
 
   return `
     <div class="lca-section-card lca-section-card--resume lca-resume-role">
       ${sectionLabel("Resume vs this role")}
-      ${bodyParts.join("")}
+      <div class="lca-resume-cols">
+        ${renderResumeCol("Strong", strong.length, strong, "None flagged.", "strong")}
+        ${renderResumeCol("Partial", partial.length, partial, "None flagged.", "partial")}
+        ${renderResumeCol("Gaps", missing.length, missing, "None flagged.", "gaps")}
+      </div>
     </div>`;
 }
 
@@ -453,14 +453,17 @@ function renderH1bBlock(data, currentJobTitle = null) {
 
   const rolesBlock = jobRows.length ? `<div class="lca-h1b-roles">${jobRows.join("")}</div>` : "";
   const isEmpty = filings <= 0 && data.showWhenEmpty;
-  const cardMod = isEmpty || data.noRecord ? " lca-section-card--h1b-none" : "";
-  const headerPill =
-    data.pillHtml || (isEmpty ? statusPill("No H-1B record", "no-record") : "");
-  const subline = data.subline
-    ? `<p class="lca-h1b-subline">${escapeHtml(data.subline)}</p>`
-    : "";
+  const isNoRecord = isEmpty || data.noRecord;
+  const cardMod = isNoRecord ? " lca-section-card--h1b-none" : "";
+  const pill =
+    data.pillHtml || (isNoRecord ? statusPill("No H-1B record", "no-record") : statusPill("H-1B sponsor", "ok"));
+  const tone = isNoRecord ? "no-record" : filings > 0 ? "ok" : "consider";
+  const note = isNoRecord
+    ? humanizeSponsorshipReason(data.subline) || "Not found in U.S. DOL database"
+    : data.subline || "";
+  const highlight = renderHighlightCard(pill, note, tone);
 
-  return `<div class="lca-section-card lca-section-card--h1b${cardMod}">${sectionLabel("Visa sponsorship")}${headerPill}${subline}${grid}${rolesBlock}</div>`;
+  return `<div class="lca-section-card lca-section-card--h1b${cardMod}">${sectionLabel("Visa sponsorship")}${highlight}${grid}${rolesBlock}</div>`;
 }
 
 function renderSponsorshipFromApi(sp, currentJobTitle = null) {
@@ -492,7 +495,7 @@ function renderSponsorshipFromApi(sp, currentJobTitle = null) {
 
 /** Web + extension: unified layout (company → H-1B → fit). */
 function renderUnifiedReport(report, options = {}) {
-  const sections = options.sections || ["head", "h1b", "fit", "resume_detail", "risk"];
+  const sections = options.sections || ["head", "h1b", "fit", "resume_detail"];
   const title = options.title || report.received?.title || null;
   const jobLocation = options.jobLocation || report.received?.job_location || null;
   const company =

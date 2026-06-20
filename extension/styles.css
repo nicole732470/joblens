@@ -311,6 +311,10 @@
   border-color: rgba(74, 103, 65, 0.2);
   background: linear-gradient(160deg, rgba(238, 245, 232, 0.95), rgba(255, 255, 255, 0.9));
 }
+.lca-section-card--h1b.lca-section-card--h1b-none {
+  border-color: rgba(138, 31, 28, 0.28);
+  background: linear-gradient(160deg, rgba(254, 242, 241, 0.98), rgba(255, 255, 255, 0.94));
+}
 .lca-section-card--fit {
   border-color: rgba(196, 101, 74, 0.18);
   background: linear-gradient(160deg, rgba(255, 248, 242, 0.95), rgba(255, 255, 255, 0.92));

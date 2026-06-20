@@ -80,9 +80,9 @@
   border-color: rgba(74, 103, 65, 0.2);
   background: linear-gradient(160deg, rgba(238, 245, 232, 0.95), rgba(255, 255, 255, 0.9));
 }
-.lca-section-card--h1b-none {
-  border-color: rgba(138, 31, 28, 0.22);
-  background: linear-gradient(160deg, rgba(254, 242, 241, 0.96), rgba(255, 255, 255, 0.92));
+.lca-section-card--h1b.lca-section-card--h1b-none {
+  border-color: rgba(138, 31, 28, 0.28);
+  background: linear-gradient(160deg, rgba(254, 242, 241, 0.98), rgba(255, 255, 255, 0.94));
 }
 .lca-section-card--fit {
   border-color: rgba(196, 101, 74, 0.18);
@@ -168,27 +168,39 @@
 }
 .lca-resume-col {
   padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(42, 36, 24, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(42, 36, 24, 0.1);
+  box-shadow: 0 1px 2px rgba(42, 36, 24, 0.04);
+}
+.lca-resume-col-body {
+  margin-top: 2px;
+}
+.lca-resume-col-hd {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--jn-text-secondary);
+  margin-bottom: 8px;
+}
+.lca-resume-col--gaps {
+  border-color: rgba(138, 31, 28, 0.18);
+  background: rgba(254, 247, 246, 0.9);
+}
+.lca-resume-col--gaps .lca-resume-col-hd {
+  color: #8a1f1c;
+}
+.lca-resume-col--strong .lca-resume-col-hd {
+  color: #1c5b2e;
+}
+.lca-resume-col--partial .lca-resume-col-hd {
+  color: #7a5b00;
 }
 @media (min-width: 520px) {
   .lca-resume-cols {
     grid-template-columns: repeat(3, 1fr);
   }
-  .lca-resume-col {
-    padding: 8px 10px;
-    background: transparent;
-    border: none;
-  }
-}
-.lca-resume-col-hd {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--jn-text-muted);
-  margin-bottom: 6px;
 }
 .lca-resume-list {
   margin: 0;
@@ -197,7 +209,7 @@
   line-height: 1.45;
   color: var(--jn-text-secondary);
 }
-.lca-resume-list li { margin: 0 0 5px; }
+.lca-resume-list li { margin: 0 0 6px; }
 .lca-resume-empty {
   font-size: var(--lca-fs-sm);
   color: var(--jn-text-faint);
@@ -251,6 +263,10 @@
   border-color: #f3e2a0;
 }
 .lca-verdict-card--skip {
+  background: #fef2f1;
+  border-color: #f3c8c5;
+}
+.lca-verdict-card--no-record {
   background: #fef2f1;
   border-color: #f3c8c5;
 }
