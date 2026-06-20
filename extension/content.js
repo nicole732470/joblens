@@ -1081,10 +1081,22 @@
       document.title,
     ].filter(Boolean);
     for (const raw of sources) {
-      const bit = String(raw).split("|")[0].trim();
       if (typeof RV.parseLinkedInStyleTitle !== "function") continue;
-      const parsed = RV.parseLinkedInStyleTitle(bit, null, null);
+      const full = String(raw).trim();
+      const parsed = RV.parseLinkedInStyleTitle(full, null, null);
       if (parsed.company) return parsed.company;
+      // Logged-in LinkedIn often uses "Role | Company | LinkedIn" rather than
+      // the public "Company hiring Role in Location" title.
+      const pipe = full.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*LinkedIn\s*$/i);
+      if (pipe) {
+        const cleaned = cleanDisplayName(pipe[2]);
+        if (cleaned) return cleaned;
+      }
+      const at = full.match(/^.+?\s+at\s+(.+?)(?:\s*\|\s*LinkedIn)?$/i);
+      if (at) {
+        const cleaned = cleanDisplayName(at[1]);
+        if (cleaned) return cleaned;
+      }
     }
     return null;
   }
@@ -1147,6 +1159,24 @@
       captureProbe: probe,
       company_logo_url: extractCompanyLogoUrl(),
     };
+  }
+
+  async function enrichMissingJobMetadata(inputs) {
+    if (inputs?.company || !inputs?.job_url) return inputs;
+    try {
+      const parsed = await extensionApiJson("/jobs/parse-url", {
+        method: "POST",
+        body: JSON.stringify({ url: inputs.job_url }),
+      });
+      return {
+        ...inputs,
+        company: parsed?.company || inputs.company || null,
+        title: inputs.title || parsed?.title || null,
+        job_location: inputs.job_location || parsed?.job_location || null,
+      };
+    } catch (_) {
+      return inputs;
+    }
   }
 
   async function analyzeAuthHeaders() {
@@ -1463,6 +1493,10 @@
         inputs = await gatherJobInputs(ctx);
         jdWait += 1;
       }
+
+      // Company is required for sponsorship lookup. If LinkedIn changed its
+      // logged-in DOM, recover metadata from the same job URL before querying.
+      inputs = await enrichMissingJobMetadata(inputs);
 
       if (!stillCurrent()) return;
 
