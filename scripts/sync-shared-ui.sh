@@ -13,10 +13,10 @@ echo "→ extension/report-panel.css"
 
 if [[ -d "$GLOW/src" ]]; then
   mkdir -p "$GLOW/src/lib" "$GLOW/src/styles" "$GLOW/public"
-  cp "$ROOT/shared/report-view.js" "$GLOW/src/lib/report-view.js"
+  cp "$ROOT/shared/report-view.js" "$GLOW/src/lib/report-view-core.js"
   cp "$ROOT/design/report-panel.css" "$GLOW/src/styles/joblens-report-panel.css"
   cp "$ROOT/design/report-panel.css" "$GLOW/public/joblens-report-panel.css"
-  echo "→ vision-job-glow/src/lib/report-view.js"
+  echo "→ vision-job-glow/src/lib/report-view-core.js"
   echo "→ vision-job-glow/src/styles/joblens-report-panel.css"
 else
   echo "skip vision-job-glow (set GLOW_DIR or clone repo next to joblens)"
