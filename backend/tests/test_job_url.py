@@ -1,6 +1,6 @@
 """Job URL validation — reject non-job pages."""
 
-from app.tools.job_url import is_likely_job_url, looks_like_job_posting
+from app.tools.job_url import _linkedin_description, is_likely_job_url, looks_like_job_posting
 
 
 def test_rejects_linkedin_feed():
@@ -58,3 +58,29 @@ def test_accepts_linkedin_extension_scrape():
     url = "https://www.linkedin.com/jobs/view/4306005860/?currentJobId=4306005860"
     ok, reason = looks_like_job_posting(text, "Technical Manager I", url)
     assert ok, reason
+
+
+def test_extracts_only_linkedin_job_description():
+    html = """
+    <html><body>
+      <div>Sign in to access AI-powered advice</div>
+      <section class="show-more-less-html">
+        <div class="show-more-less-html__markup show-more-less-html__markup--clamp-after-5">
+          Build landmark projects.<br><br><strong>Job Requirements</strong>
+          <ul><li>PE registration required</li><li>12+ years of experience</li></ul>
+        </div>
+      </section>
+      <section><h2>Similar jobs</h2><div>Unrelated software engineer role</div></section>
+    </body></html>
+    """
+    text = _linkedin_description(html)
+    assert "Build landmark projects" in text
+    assert "PE registration required" in text
+    assert "12+ years of experience" in text
+    assert "Sign in" not in text
+    assert "Similar jobs" not in text
+
+
+def test_linkedin_description_decodes_entities():
+    html = '<div class="show-more-less-html__markup">R&amp;D &mdash; 10+ years</div>'
+    assert _linkedin_description(html) == "R&D — 10+ years"

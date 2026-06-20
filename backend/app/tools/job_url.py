@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html as html_lib
 import re
+from html.parser import HTMLParser
 
 import httpx
 
@@ -140,7 +142,12 @@ def parse_job_url(url: str) -> dict:
     title = _meta(html, "og:title") or _title_tag(html) or ""
     company = _meta(html, "og:site_name") or ""
     company, title, job_location = normalize_job_fields(company, title, None)
-    text = _visible_text(html)
+    # LinkedIn's public page contains the real JD alongside sign-in prompts,
+    # recommendations, and other jobs.  Feeding the whole visible page to the
+    # analyzer makes Web and extension results diverge for the same posting.
+    text = _linkedin_description(html) if "linkedin.com" in url.lower() else ""
+    if not text:
+        text = _visible_text(html)
     text = re.sub(r"\s+", " ", text).strip()
 
     if "linkedin.com" in url.lower() and len(text) < 200:
@@ -192,4 +199,69 @@ def _visible_text(html: str) -> str:
     html = re.sub(r"(?is)<!--.*?-->", " ", html)
     html = re.sub(r"<[^>]+>", " ", html)
     html = re.sub(r"\s+", " ", html)
-    return html.strip()
+    return html_lib.unescape(html).strip()
+
+
+class _ClassTextParser(HTMLParser):
+    """Collect text from the first element containing a target CSS class."""
+
+    def __init__(self, target_class: str):
+        super().__init__(convert_charrefs=True)
+        self.target_class = target_class
+        self.depth = 0
+        self.done = False
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.done:
+            return
+        tag = tag.lower()
+        is_void = tag in {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "source",
+            "track",
+            "wbr",
+        }
+        if self.depth and not is_void:
+            self.depth += 1
+        else:
+            classes = dict(attrs).get("class") or ""
+            if self.target_class in classes.split():
+                self.depth = 1
+        if self.depth and tag in {"br", "li", "p", "h1", "h2", "h3", "h4"}:
+            self.parts.append("\n")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if self.depth:
+            self.depth -= 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.depth or self.done:
+            return
+        if tag.lower() in {"li", "p", "h1", "h2", "h3", "h4"}:
+            self.parts.append("\n")
+        self.depth -= 1
+        if self.depth == 0:
+            self.done = True
+
+    def handle_data(self, data: str) -> None:
+        if self.depth and not self.done:
+            self.parts.append(data)
+
+
+def _linkedin_description(html: str) -> str:
+    """Extract only LinkedIn's public job-description block."""
+    parser = _ClassTextParser("show-more-less-html__markup")
+    parser.feed(html or "")
+    text = " ".join(part.strip() for part in parser.parts if part.strip())
+    return re.sub(r"\s+", " ", text).strip()
