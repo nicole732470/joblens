@@ -120,8 +120,9 @@ def get_user_profile(user_id: uuid.UUID) -> CandidateProfile:
     data = row["profile"]
     if isinstance(data, str):
         data = json.loads(data)
-    profile = CandidateProfile.model_validate(data)
-    return merge_profile_with_yaml_defaults(profile)
+    # Once a user has a profile row, the database is the source of truth.
+    # Do not silently restore deleted/edited rules from the repo YAML.
+    return CandidateProfile.model_validate(data)
 
 
 def save_user_profile(user_id: uuid.UUID, profile: CandidateProfile) -> None:
