@@ -828,7 +828,7 @@ body > .lca-metric-tip.lca-tip-visible,
 #joblens-panel .jl-report-results {
   display: flex !important;
   flex-direction: column !important;
-  gap: 16px !important;
+  gap: 10px !important;
   padding-bottom: 2px;
 }
 #joblens-panel .lca-analyze-inner {
@@ -841,8 +841,8 @@ body > .lca-metric-tip.lca-tip-visible,
   margin-top: 0;
 }
 #joblens-panel .lca-section-card {
-  padding: 14px 14px 16px;
-  gap: 10px;
+  padding: 11px 12px 12px;
+  gap: 8px;
 }
 #joblens-panel .lca-resume-stack {
   display: flex;
@@ -892,6 +892,34 @@ body > .lca-metric-tip.lca-tip-visible,
   overflow-wrap: break-word;
   word-break: break-word;
   hyphens: auto;
+  max-height: none !important;
+  text-overflow: clip !important;
+  -webkit-line-clamp: unset !important;
+}
+#joblens-panel .lca-resume-block-body,
+#joblens-panel .lca-resume-block-body .lca-resume-list,
+#joblens-panel .lca-resume-block-body .lca-resume-list li {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+#joblens-panel .lca-company,
+#joblens-panel .lca-legal-name,
+#joblens-panel .lca-job-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  -webkit-line-clamp: unset;
+}
+#joblens-panel .lca-head-block {
+  gap: 4px;
+}
+#joblens-panel .lca-job-title {
+  margin-top: 5px;
+  padding-top: 5px;
+}
+#joblens-panel .lca-job-location {
+  margin-top: 2px;
 }
 #joblens-panel .lca-resume-block-body .lca-resume-empty {
   margin: 0;

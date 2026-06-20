@@ -6,7 +6,7 @@
 .jl-report-results {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
   overflow: visible;
   --lca-fs-sm: 12px;
   --lca-fs-xs: 11px;
@@ -67,12 +67,12 @@
 .lca-section-card {
   border-radius: 14px;
   border: 1px solid rgba(42, 36, 24, 0.08);
-  padding: 14px 14px 16px;
+  padding: 11px 12px 12px;
   background: rgba(255, 255, 255, 0.72);
   box-shadow: 0 1px 2px rgba(42, 36, 24, 0.04);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 .lca-section-card--company {
   background: rgba(255, 255, 255, 0.85);
@@ -118,8 +118,8 @@
   font-weight: 500;
   color: var(--jn-text-secondary);
   line-height: 1.35;
-  margin: 8px 0 0;
-  padding-top: 8px;
+  margin: 5px 0 0;
+  padding-top: 5px;
   border-top: 1px dashed rgba(55, 53, 47, 0.12);
 }
 .lca-job-title--solo {
@@ -135,7 +135,7 @@
   font-weight: 500;
   color: var(--jn-text-faint);
   line-height: 1.3;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .lca-company-line {
@@ -526,8 +526,8 @@ body > .lca-metric-tip.lca-tip-visible,
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin-top: 6px;
-  padding-top: 8px;
+  margin-top: 3px;
+  padding-top: 5px;
   border-top: 1px solid var(--jn-border);
 }
 .lca-h1b-role {
