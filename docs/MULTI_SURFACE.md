@@ -4,7 +4,7 @@
 
 | Surface | Where it lives | Role |
 |---------|----------------|------|
-| **Backend API** | `joblens` repo → EC2 `http://3.128.164.130:8000` | Analyze, auth, profile, resume |
+| **Backend API** | `joblens` repo → EC2 `https://3-128-164-130.sslip.io` | Analyze, auth, profile, resume |
 | **Chrome extension** | `joblens/extension/` | LinkedIn panel (UI matches Lovable tokens) |
 | **Web app** | **[`vision-job-glow`](https://github.com/nicole732470/vision-job-glow)** (Lovable) | Primary web UI — design source of truth |
 
@@ -36,12 +36,16 @@ Extension `@import "tokens.css"` in `styles.css`. Web loads `/joblens-tokens.css
 ## API (EC2)
 
 ```
-VITE_API_URL=http://3.128.164.130:8000
+# Production HTTPS (used by Lovable /api proxy — hardcoded default in vision-job-glow)
+https://3-128-164-130.sslip.io
+
+# HTTP debug (extension still uses this until updated)
+http://3.128.164.130:8000
 ```
 
-Endpoints: `/auth/register`, `/auth/login`, `/me/profile`, `/jobs/parse-url`, `/resume/upload`, `/analyze`
+Endpoints: `/auth/register`, `/auth/login`, `/me/profile`, `/resume/upload`, `/analyze`, `/analyze/async`, `/jobs/parse-url`
 
-Set in Lovable: **Project → Settings → Environment** (already in `vision-job-glow/.env`).
+No Lovable Environment panel — API URL is set in code (`vision-job-glow/src/routes/api/$.tsx`).
 
 ## Redeploy EC2 (auth + parse-url + schema)
 
@@ -54,7 +58,7 @@ Applies `db/auth_schema.sql`, sets `USE_REACT_AGENT=true`, rebuilds Docker.
 
 ## After Lovable Publish
 
-Live web: **https://vision-job-glow.lovable.app** (also set in extension footer).
+Live web: **https://job-lens-main.lovable.app**
 
 ## Deploy checklist
 
