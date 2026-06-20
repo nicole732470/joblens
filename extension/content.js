@@ -893,7 +893,7 @@
     return "";
   }
 
-  function simulateClick(el) {
+  function extractJobDescriptionByMetadataAnchor() {
     const anchorTexts = new Set(["Seniority level", "Employment type", "Job function", "Industries"]);
     let best = "";
 
