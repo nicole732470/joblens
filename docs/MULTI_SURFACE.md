@@ -21,9 +21,17 @@ LinkedIn ──extension──► EC2 API ◄── Lovable web (vision-job-glow
 
 ## Design tokens
 
-Shared palette: `design/tokens.css` (aligned with `vision-job-glow`).
+**Source of truth:** `design/tokens.css`
 
-Extension applies the same colors in `extension/styles.css`.
+After editing tokens, sync to extension + Lovable web:
+
+```bash
+./scripts/sync-design-tokens.sh
+```
+
+Copies to `extension/tokens.css` and `../vision-job-glow/public/joblens-tokens.css`.
+
+Extension `@import "tokens.css"` in `styles.css`. Web loads `/joblens-tokens.css`.
 
 ## API (EC2)
 

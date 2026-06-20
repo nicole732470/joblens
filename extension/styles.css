@@ -1,17 +1,7 @@
-/* JobLens extension — matches Lovable web (vision-job-glow) */
+/* JobLens extension — tokens: design/tokens.css (sync via scripts/sync-design-tokens.sh) */
+@import "tokens.css";
 
 #joblens-panel {
-  --jn-bg: #ffffff;
-  --jn-bg-subtle: #fbfaf6;
-  --jn-text: #37352f;
-  --jn-text-secondary: #787774;
-  --jn-text-faint: #9b9a97;
-  --jn-border: #ece9e1;
-  --jn-border-input: #e6e3dc;
-  --jn-primary: #37352f;
-  --jn-primary-hover: #2f2d28;
-  --jn-accent: #2383e2;
-  --jn-accent-soft: rgba(35, 131, 226, 0.18);
   --lca-fs: 13px;
   --lca-fs-sm: 11px;
   --lca-fs-xs: 10px;
@@ -73,9 +63,9 @@
 .lca-refresh-btn,
 .lca-analyze-btn {
   flex-shrink: 0;
-  border: 1px solid var(--jn-primary);
-  border-radius: 8px;
-  background: var(--jn-primary);
+  border: 1px solid var(--jn-cta);
+  border-radius: var(--jn-radius);
+  background: var(--jn-cta);
   color: #fff;
   font: inherit;
   font-size: 12px;
@@ -88,7 +78,7 @@
 }
 .lca-refresh-btn:hover,
 .lca-analyze-btn:hover {
-  background: var(--jn-primary-hover);
+  background: var(--jn-cta-hover);
 }
 .lca-refresh-btn:active,
 .lca-analyze-btn:active {
