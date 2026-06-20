@@ -1,5 +1,5 @@
 (function () {
-  const EXTENSION_VERSION = "3.2.1";
+  const EXTENSION_VERSION = "3.2.2";
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.

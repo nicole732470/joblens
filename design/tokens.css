@@ -1,40 +1,40 @@
 /**
- * JobLens design tokens — single source of truth.
+ * JobLens design tokens — warm paper, terracotta + sage (Lovable source of truth).
  * Sync: ./scripts/sync-design-tokens.sh
  */
 :root {
-  --jn-bg: #ffffff;
-  --jn-bg-page: #fafaf9;
-  --jn-bg-subtle: #f5f5f4;
-  --jn-bg-panel: #ffffff;
-  --jn-bg-tool: #f5f5f4;
-  --jn-text: #1c1917;
-  --jn-text-secondary: #57534e;
-  --jn-text-muted: #78716c;
-  --jn-text-faint: #a8a29e;
-  --jn-brand: #1c1917;
-  --jn-border: #e7e5e4;
-  --jn-border-input: #d6d3d1;
-  --jn-cta: #1c1917;
-  --jn-cta-hover: #292524;
-  --jn-accent: #0d9488;
-  --jn-accent-hover: #0f766e;
-  --jn-accent-soft: rgba(13, 148, 136, 0.14);
-  --jn-highlight: #b45309;
-  --jn-radius: 6px;
-  --jn-radius-lg: 10px;
-  --jn-font: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --jn-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --jn-verdict-apply-bg: #dcfce7;
-  --jn-verdict-apply-fg: #166534;
-  --jn-verdict-apply-ring: #bbf7d0;
-  --jn-verdict-near-bg: #e0f2fe;
-  --jn-verdict-near-fg: #075985;
-  --jn-verdict-near-ring: #bae6fd;
-  --jn-verdict-consider-bg: #fef3c7;
-  --jn-verdict-consider-fg: #92400e;
-  --jn-verdict-consider-ring: #fde68a;
-  --jn-verdict-skip-bg: #fee2e2;
-  --jn-verdict-skip-fg: #991b1b;
-  --jn-verdict-skip-ring: #fecaca;
+  --jn-bg: #fbf6ee;
+  --jn-bg-page: #f7f1e6;
+  --jn-bg-subtle: #f0e9da;
+  --jn-bg-panel: #fdfaf3;
+  --jn-bg-tool: #f3ecdc;
+  --jn-text: #2a2418;
+  --jn-text-secondary: #5b5240;
+  --jn-text-muted: #857a64;
+  --jn-text-faint: #b3a892;
+  --jn-brand: #c4654a;
+  --jn-border: #e6dcc6;
+  --jn-border-input: #d6c9ac;
+  --jn-cta: #c4654a;
+  --jn-cta-hover: #a8503a;
+  --jn-accent: #4a6741;
+  --jn-accent-hover: #3a5234;
+  --jn-accent-soft: rgba(135, 168, 120, 0.22);
+  --jn-highlight: #c4654a;
+  --jn-radius: 10px;
+  --jn-radius-lg: 16px;
+  --jn-font: "Work Sans", ui-sans-serif, system-ui, sans-serif;
+  --jn-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --jn-verdict-apply-bg: #d9e6ce;
+  --jn-verdict-apply-fg: #2f4a25;
+  --jn-verdict-apply-ring: #b6cda4;
+  --jn-verdict-near-bg: #f1e6c8;
+  --jn-verdict-near-fg: #6b5418;
+  --jn-verdict-near-ring: #d9c98e;
+  --jn-verdict-consider-bg: #f3d9c4;
+  --jn-verdict-consider-fg: #7a3e1f;
+  --jn-verdict-consider-ring: #e0b08a;
+  --jn-verdict-skip-bg: #ecc8be;
+  --jn-verdict-skip-fg: #6b2418;
+  --jn-verdict-skip-ring: #d59c8c;
 }

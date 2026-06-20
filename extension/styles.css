@@ -1,4 +1,5 @@
 /* JobLens extension — tokens: design/tokens.css (sync via scripts/sync-design-tokens.sh) */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap");
 @import "tokens.css";
 
 #joblens-panel {
@@ -16,14 +17,14 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  font-family: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--jn-font);
   font-size: var(--lca-fs);
   line-height: 1.5;
   color: var(--jn-text);
-  background: var(--jn-bg);
-  border-radius: 14px;
+  background: var(--jn-bg-panel);
+  border-radius: var(--jn-radius-lg);
   border: 1px solid var(--jn-border);
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04), 0 18px 40px -12px rgba(15, 15, 15, 0.18);
+  box-shadow: 0 1px 0 rgba(90, 70, 30, 0.04), 0 2px 12px -8px rgba(90, 70, 30, 0.12);
 }
 
 .lca-badge.lca-dragging {
@@ -36,7 +37,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--jn-bg-tool);
   border-bottom: 1px solid var(--jn-border);
   flex-shrink: 0;
   cursor: grab;
@@ -54,11 +55,17 @@
 }
 .lca-brand {
   flex: 1;
-  font-size: 15px;
-  font-weight: 650;
-  color: var(--jn-text);
-  letter-spacing: -0.03em;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--jn-font-mono);
+  color: var(--jn-brand);
+  letter-spacing: -0.02em;
   pointer-events: none;
+}
+.lca-brand::before {
+  content: "◐ ";
+  color: var(--jn-accent);
+  margin-right: 2px;
 }
 .lca-refresh-btn,
 .lca-analyze-btn {
@@ -66,10 +73,12 @@
   border: 1px solid var(--jn-cta);
   border-radius: var(--jn-radius);
   background: var(--jn-cta);
-  color: #fff;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
+  color: #fdfaf3;
+  font-family: var(--jn-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   line-height: 1;
   padding: 6px 12px;
   cursor: pointer;
