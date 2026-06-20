@@ -25,7 +25,7 @@ from app.schemas.report import Report
 from app.tools.sponsorship import search_h1b_company
 from app.tools.entity_resolver import get_resolver
 from app.tools.job_fields import normalize_job_fields
-from app.tools.job_url import looks_like_job_posting, parse_job_url
+from app.tools.job_url import parse_job_url
 from app.tools.llm import llm_available
 from app.tools.observability import (
     bind_run_id,
@@ -315,13 +315,7 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
 
     company, title, job_location = normalize_job_fields(company, title, job_location)
 
-    jd_ok, jd_reason = looks_like_job_posting(jd_text, title or "", job_url)
-    if not jd_ok:
-        raise HTTPException(
-            status_code=400,
-            detail=jd_reason or "text does not look like a job description",
-        )
-
+    # No keyword/format gate — extension scrape and web paste use the same analyze path.
     resume_text = req.resume_text or stored_resume
     resume_filename = None
     if user_id:

@@ -1436,7 +1436,7 @@
     try {
       let inputs = await gatherJobInputs(ctx);
       let jdWait = 0;
-      while ((inputs.jd_text || "").length < 80 && jdWait < 10) {
+      while ((inputs.jd_text || "").length < 40 && jdWait < 10) {
         if (!stillCurrent()) return;
         out.innerHTML = renderLoadingInline("Loading job description…");
         await sleep(900);
@@ -1446,7 +1446,7 @@
 
       if (!stillCurrent()) return;
 
-      if ((inputs.jd_text || "").length < 80) {
+      if ((inputs.jd_text || "").length < 40) {
         out.innerHTML = `<div class="lca-analyze-inner">${renderCaptureMeta(inputs.jd_text?.length || 0, inputs.captureProbe)}<p class="lca-err-mini">Job description not loaded yet — wait a moment, then click <strong>Retry</strong>.</p></div>`;
         out.dataset.analyzedFor = "";
         return;

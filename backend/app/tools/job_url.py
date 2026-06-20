@@ -151,11 +151,17 @@ def parse_job_url(url: str) -> dict:
             "title": title or None,
             "company": company or None,
             "job_location": job_location,
+            "jd_text": text[:12000] if len(text.strip()) >= 40 else None,
         }
 
-    content_ok, content_reason = looks_like_job_posting(text, title)
-    if not content_ok:
-        return {"ok": False, "reason": content_reason, "url": url, "title": title or None, "company": company or None}
+    if len(text.strip()) < 40:
+        return {
+            "ok": False,
+            "reason": "extracted text too short",
+            "url": url,
+            "title": title or None,
+            "company": company or None,
+        }
 
     return {
         "ok": True,
