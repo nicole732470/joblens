@@ -1,4 +1,5 @@
 import logging
+import re
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -301,10 +302,16 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
     job_url = req.job_url
     job_location = req.job_location
 
-    if job_url and len(jd_text.strip()) < 80:
+    # The browser DOM/Voyager and the public LinkedIn page can differ subtly.
+    # Canonicalize LinkedIn jobs on the server so both surfaces score one JD.
+    is_linkedin_job = bool(
+        job_url and re.search(r"linkedin\.com/jobs/|currentJobId=", job_url, re.I)
+    )
+    if job_url and (is_linkedin_job or len(jd_text.strip()) < 80):
         parsed = parse_job_url(job_url)
         if parsed.get("ok"):
-            jd_text = parsed.get("jd_text") or jd_text
+            if is_linkedin_job or len(jd_text.strip()) < 80:
+                jd_text = parsed.get("jd_text") or jd_text
             company = company or parsed.get("company")
             title = title or parsed.get("title")
         elif not jd_text.strip():

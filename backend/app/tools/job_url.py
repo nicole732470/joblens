@@ -148,7 +148,7 @@ def parse_job_url(url: str) -> dict:
     text = _linkedin_description(html) if "linkedin.com" in url.lower() else ""
     if not text:
         text = _visible_text(html)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = _normalize_job_text(text)
 
     if "linkedin.com" in url.lower() and len(text) < 200:
         return {
@@ -202,6 +202,15 @@ def _visible_text(html: str) -> str:
     return html_lib.unescape(html).strip()
 
 
+def _normalize_job_text(text: str) -> str:
+    """Normalize spacing without erasing requirement/list boundaries."""
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n").replace("\u00a0", " ")
+    text = re.sub(r"[^\S\n]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 class _ClassTextParser(HTMLParser):
     """Collect text from the first element containing a target CSS class."""
 
@@ -237,7 +246,7 @@ class _ClassTextParser(HTMLParser):
             classes = dict(attrs).get("class") or ""
             if self.target_class in classes.split():
                 self.depth = 1
-        if self.depth and tag in {"br", "li", "p", "h1", "h2", "h3", "h4"}:
+        if self.depth and tag in {"br", "ul", "ol", "p", "h1", "h2", "h3", "h4"}:
             self.parts.append("\n")
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -263,5 +272,4 @@ def _linkedin_description(html: str) -> str:
     """Extract only LinkedIn's public job-description block."""
     parser = _ClassTextParser("show-more-less-html__markup")
     parser.feed(html or "")
-    text = " ".join(part.strip() for part in parser.parts if part.strip())
-    return re.sub(r"\s+", " ", text).strip()
+    return _normalize_job_text("".join(parser.parts))

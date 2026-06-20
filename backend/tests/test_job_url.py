@@ -79,8 +79,10 @@ def test_extracts_only_linkedin_job_description():
     assert "12+ years of experience" in text
     assert "Sign in" not in text
     assert "Similar jobs" not in text
+    assert "PE registration required\n12+ years of experience" in text
 
 
 def test_linkedin_description_decodes_entities():
     html = '<div class="show-more-less-html__markup">R&amp;D &mdash; 10+ years</div>'
     assert _linkedin_description(html) == "R&D — 10+ years"
+

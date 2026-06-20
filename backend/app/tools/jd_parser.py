@@ -110,7 +110,9 @@ def _add_requirement(
     *,
     quote: str | None = None,
 ) -> None:
-    clean = re.sub(r"^[\s•\-\*●▪\d.)]+", "", text).strip()
+    # Strip an actual bullet/numbered-list marker, not meaningful leading
+    # numbers such as "10+ years" or "8 years of supervisory experience".
+    clean = re.sub(r"^\s*(?:[•\-*●▪]+\s*|\d+[.)]\s+)", "", text).strip()
     key = clean.lower()
     if len(clean) < 8 or key in seen:
         return
@@ -120,8 +122,10 @@ def _add_requirement(
         {
             "id": f"jd_req_{idx:02d}",
             "category": _categorize_fallback(clean),
-            "text": clean[:180],
-            "evidence_quote": (quote or clean)[:120],
+            # Keep complete requirement sentences. Character slicing produced
+            # user-visible half words such as "must hav" and "Federal, C".
+            "text": clean,
+            "evidence_quote": quote or clean,
         }
     )
 
