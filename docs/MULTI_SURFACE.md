@@ -35,11 +35,18 @@ Endpoints: `/auth/register`, `/auth/login`, `/me/profile`, `/jobs/parse-url`, `/
 
 Set in Lovable: **Project → Settings → Environment** (already in `vision-job-glow/.env`).
 
+## Redeploy EC2 (auth + parse-url + schema)
+
+```bash
+# On instance, or via SSM:
+cd /opt/joblens && git pull && bash deploy/ec2-redeploy.sh
+```
+
+Applies `db/auth_schema.sql`, sets `USE_REACT_AGENT=true`, rebuilds Docker.
+
 ## After Lovable Publish
 
-1. Copy the `*.lovable.app` URL from Lovable **Publish**.
-2. Set `WEB_APP_URL` in `extension/content.js` (footer link “Open web”).
-3. Optional: add the URL to this doc and README.
+Live web: **https://vision-job-glow.lovable.app** (also set in extension footer).
 
 ## Deploy checklist
 

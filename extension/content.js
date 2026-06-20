@@ -1,11 +1,11 @@
 (function () {
-  const EXTENSION_VERSION = "3.2.0";
+  const EXTENSION_VERSION = "3.2.1";
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
   const BACKEND_URL = "http://3.128.164.130:8000";
   // Lovable web app — set after Publish (vision-job-glow). Empty = no footer link.
-  const WEB_APP_URL = "";
+  const WEB_APP_URL = "https://vision-job-glow.lovable.app";
   let extensionBroken = false;
 
   function extensionRuntime() {

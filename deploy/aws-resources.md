@@ -23,7 +23,8 @@ aws secretsmanager create-secret --name joblens/app --secret-string '{
   "LLM_API_KEY": "sk-or-v1-...",
   "LLM_BASE_URL": "https://openrouter.ai/api/v1",
   "LLM_MODEL": "openai/gpt-oss-20b:free",
-  "USE_REACT_AGENT": "false",
+  "USE_REACT_AGENT": "true",
+  "JWT_SECRET": "long-random-string",
   "LANGSMITH_PROJECT": "joblens-analyze"
 }'
 ```

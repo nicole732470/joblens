@@ -382,7 +382,7 @@ Shortest path after a clean AWS account:
 |--------|---------|
 | `DATABASE_URL` | RDS Postgres connection string |
 | `LLM_API_KEY` | OpenRouter (chat + embeddings) |
-| `USE_REACT_AGENT=false` | Stable `fill_gaps` orchestration in prod |
+| `USE_REACT_AGENT=false` | Legacy; prod now uses `true` via `deploy/ec2-redeploy.sh` |
 | `LANGCHAIN_API_KEY` | Optional LangSmith |
 
 Estimated cost: RDS + EC2 ≈ **$30–50/mo** (micro/small). Eval regression:  

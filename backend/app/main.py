@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="JobLens API", version="3.1.0", lifespan=lifespan)
+app = FastAPI(title="JobLens API", version="3.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -154,8 +154,10 @@ def health() -> dict:
         "llm": "configured" if llm_available() else "missing_key",
         "resume_fit_method": settings.resume_fit_method,
         "orchestration": "langgraph-react",
+        "agent_mode": "react" if settings.use_react_agent else "fill_gaps",
         "langsmith": bool(settings.langsmith_api_key),
         "trace_dir": settings.trace_dir,
+        "api_version": "3.2.0",
     }
 
 
