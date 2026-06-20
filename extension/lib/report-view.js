@@ -262,23 +262,55 @@ function hasFitSignals(rec) {
   );
 }
 
-function shortClaimText(raw, maxLen = 72) {
+function shortClaimText(raw, maxLen = 88) {
   let text = stripClaimPrefix(raw?.claim || raw || "")
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return "";
+  if (isResumeNoise(text)) return "";
   text = text
     .replace(/^As an?\s+[^,]+,\s*(?:you will\s+(?:be\s+)?)?/i, "")
     .replace(/^You will (?:be )?/i, "")
     .replace(/^The ideal candidate\s+/i, "")
     .replace(/^We are (?:seeking|looking for)\s+/i, "")
+    .replace(/^Job Responsibilities\s+/i, "")
+    .replace(/^Key responsibilities\s+/i, "")
     .trim();
   const first = (text.split(/(?<=[.;])\s+/)[0] || text).trim();
   if (first.length <= maxLen) return first;
   const cut = first.slice(0, maxLen);
   const soft = Math.max(cut.lastIndexOf(","), cut.lastIndexOf(" — "));
-  if (soft > 24) return cut.slice(0, soft).trim();
+  if (soft > 28) return cut.slice(0, soft).trim();
   return `${cut.trim()}…`;
+}
+
+function isResumeNoise(text) {
+  const t = String(text || "").toLowerCase();
+  return (
+    /salary range|actual pay range|commensurate with candidate|equal opportunity employer|EOE\b|benefits package|401\s*\(\s*k\s*\)/i.test(
+      t
+    ) || t.length < 8
+  );
+}
+
+function usableClaims(items) {
+  return (items || []).filter((c) => shortClaimText(c?.claim || c));
+}
+
+function parseLinkedInStyleTitle(title, company, jobLocation) {
+  let t = String(title || "")
+    .replace(/\s*\|\s*LinkedIn\s*$/i, "")
+    .trim();
+  let c = String(company || "").trim();
+  let loc = String(jobLocation || "").trim();
+  let jobTitle = t;
+  const m = t.match(/^(.+?)\s+hiring\s+(.+?)\s+in\s+(.+)$/i);
+  if (m) {
+    if (!c) c = m[1].trim();
+    jobTitle = m[2].trim();
+    if (!loc) loc = m[3].trim();
+  }
+  return { company: c, title: jobTitle || null, jobLocation: loc || null };
 }
 
 function renderHighlightCard(pillHtml, note, tone) {
@@ -324,7 +356,9 @@ function renderCompanyHeadBlock(displayName, legalName, jobTitle, pillHtml, jobL
   const companyLine = primary
     ? `<div class="lca-company-line"><div class="lca-company-text"><span class="lca-company">${escapeHtml(primary)}</span>${sub}</div></div>`
     : "";
-  const titleLine = jobTitle ? `<div class="lca-job-title">${escapeHtml(jobTitle)}</div>` : "";
+  const titleLine = jobTitle
+    ? `<div class="lca-job-title${primary ? "" : " lca-job-title--solo"}">${escapeHtml(jobTitle)}</div>`
+    : "";
   const locLine =
     jobLocation && jobLocation.trim()
       ? `<div class="lca-job-location">${escapeHtml(jobLocation.trim())}</div>`
@@ -370,7 +404,7 @@ function renderRiskSection(risk) {
   return "";
 }
 
-function renderResumeClaimList(items, emptyLabel) {
+function renderResumeClaimList(items, emptyLabel, { ordered = false } = {}) {
   const rows = (items || [])
     .map((c) => {
       const text = shortClaimText(c?.claim || c);
@@ -379,15 +413,17 @@ function renderResumeClaimList(items, emptyLabel) {
     .filter(Boolean)
     .join("");
   if (!rows) return `<p class="lca-resume-empty">${escapeHtml(emptyLabel)}</p>`;
-  return `<ul class="lca-resume-list">${rows}</ul>`;
+  const cls = ordered ? "lca-resume-list lca-resume-list--ordered" : "lca-resume-list";
+  const tag = ordered ? "ol" : "ul";
+  return `<${tag} class="${cls}">${rows}</${tag}>`;
 }
 
-function renderResumeCol(title, count, items, emptyLabel, mod = "") {
+function renderResumeCol(title, count, items, emptyLabel, mod = "", ordered = false) {
   return `
     <div class="lca-resume-col${mod ? ` lca-resume-col--${mod}` : ""}">
       <div class="lca-resume-col-hd">${escapeHtml(title)} (${count})</div>
       <div class="lca-resume-col-body">
-        ${renderResumeClaimList(items, emptyLabel)}
+        ${renderResumeClaimList(items, emptyLabel, { ordered })}
       </div>
     </div>`;
 }
@@ -398,17 +434,17 @@ function renderResumeDetailSection(rf, received, options = {}) {
   void options;
   if (!rf?.available) return "";
 
-  const strong = rf.strong_matches || [];
-  const partial = rf.partial_matches || [];
-  const missing = rf.missing || [];
+  const strong = usableClaims(rf.strong_matches || []);
+  const partial = usableClaims(rf.partial_matches || []);
+  const missing = usableClaims(rf.missing || []);
 
   return `
     <div class="lca-section-card lca-section-card--resume lca-resume-role">
       ${sectionLabel("Resume vs this role")}
       <div class="lca-resume-cols">
-        ${renderResumeCol("Strong", strong.length, strong, "None flagged.", "strong")}
-        ${renderResumeCol("Partial", partial.length, partial, "None flagged.", "partial")}
-        ${renderResumeCol("Gaps", missing.length, missing, "None flagged.", "gaps")}
+        ${renderResumeCol("Strong", strong.length, strong, "None flagged.", "strong", false)}
+        ${renderResumeCol("Partial", partial.length, partial, "None flagged.", "partial", false)}
+        ${renderResumeCol("Gaps", missing.length, missing, "None flagged.", "gaps", true)}
       </div>
     </div>`;
 }
@@ -454,16 +490,15 @@ function renderH1bBlock(data, currentJobTitle = null) {
   const rolesBlock = jobRows.length ? `<div class="lca-h1b-roles">${jobRows.join("")}</div>` : "";
   const isEmpty = filings <= 0 && data.showWhenEmpty;
   const isNoRecord = isEmpty || data.noRecord;
-  const cardMod = isNoRecord ? " lca-section-card--h1b-none" : "";
   const pill =
     data.pillHtml || (isNoRecord ? statusPill("No H-1B record", "no-record") : statusPill("H-1B sponsor", "ok"));
-  const tone = isNoRecord ? "no-record" : filings > 0 ? "ok" : "consider";
+  const tone = isNoRecord ? "skip" : filings > 0 ? "ok" : "consider";
   const note = isNoRecord
     ? humanizeSponsorshipReason(data.subline) || "Not found in U.S. DOL database"
     : data.subline || "";
   const highlight = renderHighlightCard(pill, note, tone);
 
-  return `<div class="lca-section-card lca-section-card--h1b${cardMod}">${sectionLabel("Visa sponsorship")}${highlight}${grid}${rolesBlock}</div>`;
+  return `<div class="lca-section-card lca-section-card--fit">${sectionLabel("Visa sponsorship")}${highlight}${grid}${rolesBlock}</div>`;
 }
 
 function renderSponsorshipFromApi(sp, currentJobTitle = null) {
@@ -496,10 +531,14 @@ function renderSponsorshipFromApi(sp, currentJobTitle = null) {
 /** Web + extension: unified layout (company → H-1B → fit). */
 function renderUnifiedReport(report, options = {}) {
   const sections = options.sections || ["head", "h1b", "fit", "resume_detail"];
-  const title = options.title || report.received?.title || null;
-  const jobLocation = options.jobLocation || report.received?.job_location || null;
-  const company =
-    options.company || report.received?.company || report.sponsorship?.company?.name || "";
+  const parsed = parseLinkedInStyleTitle(
+    options.title || report.received?.title || null,
+    options.company || report.received?.company || report.sponsorship?.company?.name || "",
+    options.jobLocation || report.received?.job_location || null
+  );
+  const title = parsed.title;
+  const jobLocation = parsed.jobLocation;
+  const company = parsed.company;
   const legal =
     report.sponsorship?.company?.name && report.sponsorship.company.name !== company
       ? report.sponsorship.company.name

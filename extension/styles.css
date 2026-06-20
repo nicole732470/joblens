@@ -755,10 +755,10 @@ body > .lca-metric-tip.lca-tip-visible,
   gap: 8px;
 }
 #joblens-panel .lca-resume-col {
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(42, 36, 24, 0.08);
+  padding: 12px;
+}
+#joblens-panel .lca-section-card--resume {
+  padding: 12px 12px 14px;
 }
 #joblens-panel .lca-h1b-subline,
 #joblens-panel .lca-resume-list,

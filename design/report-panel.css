@@ -6,7 +6,8 @@
 .jl-report-results {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  overflow: visible;
   --lca-fs-sm: 12px;
   --lca-fs-xs: 11px;
   --jn-bg: #fdfaf3;
@@ -121,6 +122,14 @@
   padding-top: 8px;
   border-top: 1px dashed rgba(55, 53, 47, 0.12);
 }
+.lca-job-title--solo {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--jn-text);
+}
 .lca-job-location {
   font-size: var(--lca-fs-xs);
   font-weight: 500;
@@ -130,8 +139,10 @@
 }
 
 .lca-section-card--resume {
-  border-color: rgba(74, 103, 65, 0.16);
-  background: linear-gradient(160deg, rgba(248, 252, 245, 0.95), rgba(255, 255, 255, 0.92));
+  border-color: rgba(196, 101, 74, 0.16);
+  background: linear-gradient(160deg, rgba(255, 248, 242, 0.95), rgba(255, 255, 255, 0.92));
+  padding: 14px 14px 16px;
+  gap: 12px;
 }
 .lca-resume-summary {
   font-size: var(--lca-fs-sm);
@@ -165,16 +176,19 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+  margin: 0;
+  width: 100%;
 }
 .lca-resume-col {
-  padding: 10px 12px;
+  padding: 12px 12px 14px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(42, 36, 24, 0.1);
   box-shadow: 0 1px 2px rgba(42, 36, 24, 0.04);
+  min-width: 0;
 }
 .lca-resume-col-body {
-  margin-top: 2px;
+  margin-top: 4px;
 }
 .lca-resume-col-hd {
   font-size: 11px;
@@ -182,11 +196,11 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--jn-text-secondary);
-  margin-bottom: 8px;
+  margin: 0 0 8px;
 }
 .lca-resume-col--gaps {
-  border-color: rgba(138, 31, 28, 0.18);
-  background: rgba(254, 247, 246, 0.9);
+  border-color: rgba(138, 31, 28, 0.16);
+  background: rgba(255, 255, 255, 0.92);
 }
 .lca-resume-col--gaps .lca-resume-col-hd {
   color: #8a1f1c;
@@ -204,17 +218,31 @@
 }
 .lca-resume-list {
   margin: 0;
-  padding-left: 14px;
+  padding-left: 16px;
   font-size: var(--lca-fs-sm);
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--jn-text-secondary);
+  list-style: disc;
 }
-.lca-resume-list li { margin: 0 0 6px; }
+.lca-resume-list--ordered {
+  padding-left: 22px;
+  list-style: decimal;
+}
+.lca-resume-list li { margin: 0 0 7px; padding-left: 2px; }
 .lca-resume-empty {
   font-size: var(--lca-fs-sm);
   color: var(--jn-text-faint);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.45;
+}
+
+.jl-report-shell {
+  overflow: visible;
+  padding-bottom: 12px;
+}
+.jl-report-wrap {
+  overflow: visible;
+  margin: 4px 0 24px;
 }
 
 .lca-analyze-inner {
