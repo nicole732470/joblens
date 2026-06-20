@@ -1,4 +1,5 @@
 import logging
+import threading
 import uuid
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from app.auth import (
     require_user_id,
     verify_password,
 )
+from app.analyze_jobs import create_job, fail_job, finish_job, get_job, update_job
 from app.config import settings
 from app.db import check_db_connection
 from app.graph.workflow import list_analyze_tools, run_analyze_workflow
@@ -24,7 +26,14 @@ from app.tools.analyze_tools import run_tool_by_name
 from app.tools.entity_resolver import get_resolver
 from app.tools.job_url import parse_job_url
 from app.tools.llm import llm_available
-from app.tools.observability import configure_langsmith, list_recent_traces, load_trace, start_trace
+from app.tools.observability import (
+    bind_run_id,
+    configure_langsmith,
+    get_trace_steps,
+    list_recent_traces,
+    load_trace,
+    start_trace,
+)
 from app.tools.pdf_text import extract_pdf_text
 from app.tools.profile_loader import get_candidate_profile, set_request_profile
 from app.tools.resume_store import index_resume
@@ -85,7 +94,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="JobLens API", version="3.2.0", lifespan=lifespan)
+app = FastAPI(title="JobLens API", version="3.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -157,7 +166,7 @@ def health() -> dict:
         "agent_mode": "react" if settings.use_react_agent else "fill_gaps",
         "langsmith": bool(settings.langsmith_api_key),
         "trace_dir": settings.trace_dir,
-        "api_version": "3.2.0",
+        "api_version": "3.3.0",
     }
 
 
@@ -268,11 +277,7 @@ def resume_index(req: IndexResumeRequest) -> dict:
         return {"indexed": False, "reason": str(e)}
 
 
-@app.post("/analyze", response_model=Report)
-def analyze(
-    req: AnalyzeRequest,
-    user_id: uuid.UUID | None = Depends(get_current_user_id),
-) -> Report:
+def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> dict:
     stored_resume = _apply_user_context(user_id)
 
     jd_text = req.jd_text or ""
@@ -293,18 +298,72 @@ def analyze(
         raise HTTPException(status_code=400, detail="job description too short")
 
     resume_text = req.resume_text or stored_resume
+    return {
+        "jd_text": jd_text,
+        "company_name": company,
+        "title": title,
+        "resume_text": resume_text,
+        "job_url": job_url,
+        "linkedin_followers": req.linkedin_followers,
+        "alumni_hints": req.alumni_hints,
+    }
 
-    start_trace()
+
+def _run_analyze_job(
+    job_id: str,
+    run_id: str,
+    workflow_kwargs: dict,
+    user_id: uuid.UUID | None,
+) -> None:
+    bind_run_id(run_id)
     try:
-        return run_analyze_workflow(
-            jd_text=jd_text,
-            company_name=company,
-            title=title,
-            resume_text=resume_text,
-            job_url=job_url,
-            linkedin_followers=req.linkedin_followers,
-            alumni_hints=req.alumni_hints,
-            build_explain=_build_explain,
-        )
+        _apply_user_context(user_id)
+        update_job(job_id, phase="workflow", message="Analyzing job match…")
+        report = run_analyze_workflow(**workflow_kwargs, build_explain=_build_explain)
+        finish_job(job_id, report=report.model_dump())
+    except Exception as e:  # noqa: BLE001
+        logging.exception("analyze job %s failed", job_id)
+        fail_job(job_id, error=str(e))
     finally:
         set_request_profile(None)
+
+
+@app.post("/analyze", response_model=Report)
+def analyze(
+    req: AnalyzeRequest,
+    user_id: uuid.UUID | None = Depends(get_current_user_id),
+) -> Report:
+    workflow_kwargs = _resolve_analyze_inputs(req, user_id)
+    start_trace()
+    try:
+        return run_analyze_workflow(**workflow_kwargs, build_explain=_build_explain)
+    finally:
+        set_request_profile(None)
+
+
+@app.post("/analyze/async")
+def analyze_async(
+    req: AnalyzeRequest,
+    user_id: uuid.UUID | None = Depends(get_current_user_id),
+) -> dict:
+    """Start analyze in background; poll GET /analyze/jobs/{job_id} for steps + result."""
+    workflow_kwargs = _resolve_analyze_inputs(req, user_id)
+    run_id = start_trace()
+    job_id = create_job(run_id=run_id)
+    threading.Thread(
+        target=_run_analyze_job,
+        args=(job_id, run_id, workflow_kwargs, user_id),
+        daemon=True,
+    ).start()
+    return {"job_id": job_id, "run_id": run_id, "status": "running"}
+
+
+@app.get("/analyze/jobs/{job_id}")
+def analyze_job_poll(job_id: str) -> dict:
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    rid = job.get("run_id")
+    if rid:
+        job["steps"] = get_trace_steps(rid)
+    return job
