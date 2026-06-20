@@ -18,8 +18,18 @@ fi
 
 mkdir -p /etc/caddy
 cat > /etc/caddy/Caddyfile <<EOF
+{
+	# Port 80 may be closed on EC2; obtain cert via TLS-ALPN on 443 only.
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+}
+
 ${HOSTNAME} {
 	encode gzip
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
 	reverse_proxy 127.0.0.1:8000
 }
 EOF
