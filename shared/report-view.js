@@ -262,13 +262,13 @@ function hasFitSignals(rec) {
   );
 }
 
-function shortClaimText(raw, maxLen = 88) {
+function shortClaimText(raw) {
   let text = stripClaimPrefix(raw?.claim || raw || "")
     .replace(/\s+/g, " ")
     .trim();
   if (!text) return "";
   if (isResumeNoise(text)) return "";
-  text = text
+  return text
     .replace(/^As an?\s+[^,]+,\s*(?:you will\s+(?:be\s+)?)?/i, "")
     .replace(/^You will (?:be )?/i, "")
     .replace(/^The ideal candidate\s+/i, "")
@@ -276,12 +276,6 @@ function shortClaimText(raw, maxLen = 88) {
     .replace(/^Job Responsibilities\s+/i, "")
     .replace(/^Key responsibilities\s+/i, "")
     .trim();
-  const first = (text.split(/(?<=[.;])\s+/)[0] || text).trim();
-  if (first.length <= maxLen) return first;
-  const cut = first.slice(0, maxLen);
-  const soft = Math.max(cut.lastIndexOf(","), cut.lastIndexOf(" — "));
-  if (soft > 28) return cut.slice(0, soft).trim();
-  return `${cut.trim()}…`;
 }
 
 function isResumeNoise(text) {
@@ -364,6 +358,7 @@ function renderCompanyHeadBlock(displayName, legalName, jobTitle, pillHtml, jobL
       ? `<div class="lca-job-location">${escapeHtml(jobLocation.trim())}</div>`
       : "";
   const pillBlock = pillHtml ? `<div class="lca-head-pill">${pillHtml}</div>` : "";
+  if (!primary && !titleLine && !locLine && !pillBlock) return "";
   return `<div class="lca-section-card lca-section-card--company"><div class="lca-head-block">${companyLine}${pillBlock}</div>${titleLine}${locLine}</div>`;
 }
 
@@ -419,11 +414,14 @@ function renderResumeClaimList(items, emptyLabel, { ordered = false } = {}) {
 }
 
 function renderResumeCol(title, count, items, emptyLabel, mod = "", ordered = false) {
+  const toneMap = { strong: "ok", partial: "consider", gaps: "skip" };
+  const tone = toneMap[mod] || "neutral";
+  const body = renderResumeClaimList(items, emptyLabel, { ordered });
   return `
-    <div class="lca-resume-col${mod ? ` lca-resume-col--${mod}` : ""}">
-      <div class="lca-resume-col-hd">${escapeHtml(title)} (${count})</div>
-      <div class="lca-resume-col-body">
-        ${renderResumeClaimList(items, emptyLabel, { ordered })}
+    <div class="lca-resume-block${mod ? ` lca-resume-block--${mod}` : ""}">
+      <div class="lca-verdict-card lca-verdict-card--${tone}">
+        <div class="lca-verdict-row">${statusPill(`${title} · ${count}`, tone)}</div>
+        <div class="lca-resume-block-body">${body}</div>
       </div>
     </div>`;
 }
@@ -439,9 +437,9 @@ function renderResumeDetailSection(rf, received, options = {}) {
   const missing = usableClaims(rf.missing || []);
 
   return `
-    <div class="lca-section-card lca-section-card--resume lca-resume-role">
+    <div class="lca-section-card lca-section-card--fit lca-resume-role">
       ${sectionLabel("Resume vs this role")}
-      <div class="lca-resume-cols">
+      <div class="lca-resume-stack">
         ${renderResumeCol("Strong", strong.length, strong, "None flagged.", "strong", false)}
         ${renderResumeCol("Partial", partial.length, partial, "None flagged.", "partial", false)}
         ${renderResumeCol("Gaps", missing.length, missing, "None flagged.", "gaps", true)}
@@ -733,9 +731,10 @@ const JobLensReportView = {
   wireMetricTips,
   hardRequirementFit,
   resolveFitRatio,
+  parseLinkedInStyleTitle,
 };
 
 if (typeof globalThis !== "undefined") {
   globalThis.JobLensReportView = JobLensReportView;
-  globalThis.__JOBLENS_REPORT_VIEW_BUILD__ = "3.3.7-classic";
+  globalThis.__JOBLENS_REPORT_VIEW_BUILD__ = "3.4.2-classic";
 }

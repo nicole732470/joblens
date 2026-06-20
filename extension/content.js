@@ -3,8 +3,11 @@
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
   const BACKEND_URL = "https://3-128-164-130.sslip.io";
-  // Lovable web app — set after Publish (vision-job-glow). Empty = no footer link.
-  const WEB_APP_URL = "https://vision-job-glow.lovable.app";
+  // Official web app (Lovable production URL)
+  const WEB_APP_URL = "https://job-lens-main.lovable.app";
+  const WEB_LOGIN_URL = `${WEB_APP_URL}?from=extension`;
+  const WEB_SIGNUP_URL = `${WEB_APP_URL}?from=extension&panel=register`;
+  const WEB_PROFILE_URL = `${WEB_APP_URL}?from=extension&panel=profile`;
   let extensionBroken = false;
   let extensionStale = false;
 
@@ -67,35 +70,14 @@
   }
 
   const RV = globalThis.JobLensReportView;
-  if (!RV) {
+  const AC = globalThis.JobLensAnalyzeClient;
+  if (!RV || !AC) {
     showExtensionBrokenBanner();
     console.error(
-      "[JobLens] Report UI failed to load. If the console also shows \"Unexpected token export\" at " +
-        "lib/report-view.js:664, Chrome is still running an OLD copy of the plugin.\n" +
-        "Fix: chrome://extensions → remove JobLens → Load unpacked → pick folder …/joblens/extension " +
-        "(not vision-job-glow). Version must be 3.3.6+, then refresh this LinkedIn tab."
+      "[JobLens] Shared UI failed to load (report-view or analyze-client). " +
+        "Reload the extension at chrome://extensions, then refresh this LinkedIn tab."
     );
     return;
-  }
-
-  const CONFIDENCE_META = {
-    high: { title: "H-1B sponsor", status: "found" },
-    medium: { title: "Possible sponsor", status: "caution" },
-    low: { title: "Possible sponsor", status: "caution" },
-  };
-
-  /** One sponsor label for the pill — filing volume can upgrade medium → sponsor. */
-  function resolveSponsorMeta(confidence, employer) {
-    const filings = Number(employer?.lca_count) || 0;
-    const certified = Number(employer?.certified_count) || 0;
-    const approval = filings > 0 ? certified / filings : 0;
-    if (confidence === "high" || (filings >= 100 && approval >= 0.8)) {
-      return { title: "H-1B sponsor", status: "found" };
-    }
-    if (filings >= 25 && approval >= 0.7) {
-      return { title: "Likely H-1B sponsor", status: "ok" };
-    }
-    return CONFIDENCE_META[confidence] || CONFIDENCE_META.medium;
   }
 
   const SOFT_REQUIREMENT_RE =
@@ -107,11 +89,57 @@
     const bits = (parts || []).map((p) => escapeHtml(p)).filter(Boolean);
     if (WEB_APP_URL) {
       bits.push(
-        `<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener" title="Paste job links and edit your profile">Full site</a>`
+        `<span class="lca-foot-site">${brandLogoHtml(14)}<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener">${escapeHtml(WEB_APP_URL)}</a></span>`
       );
     }
     bits.push(`v${extensionVersion()}`);
     return `<div class="lca-foot">${bits.join(" · ")}</div>`;
+  }
+
+  async function readAuthState() {
+    try {
+      const store = chrome.storage?.local;
+      if (!store?.get) return { signedIn: false, email: null };
+      const data = await new Promise((resolve) =>
+        store.get(["joblens_token", "joblens_email"], resolve)
+      );
+      return {
+        signedIn: Boolean(data?.joblens_token),
+        email: data?.joblens_email || null,
+      };
+    } catch (_) {
+      return { signedIn: false, email: null };
+    }
+  }
+
+  function renderAuthBanner(auth) {
+    if (auth.signedIn) {
+      const who = auth.email ? escapeHtml(auth.email) : "signed in";
+      return `<div class="lca-auth-strip lca-auth-strip--ok">
+        <span class="lca-auth-strip-text">${who}</span>
+        <span class="lca-auth-strip-links">
+          <a href="${escapeHtml(WEB_PROFILE_URL)}" target="_blank" rel="noopener">Profile</a>
+        </span>
+      </div>`;
+    }
+    return `<div class="lca-auth-strip">
+      <span class="lca-auth-strip-text">Not signed in — default profile</span>
+      <span class="lca-auth-strip-links">
+        <a href="${escapeHtml(WEB_LOGIN_URL)}" target="_blank" rel="noopener">Log in</a>
+        <span class="lca-auth-sep" aria-hidden="true">·</span>
+        <a href="${escapeHtml(WEB_SIGNUP_URL)}" target="_blank" rel="noopener">Sign up</a>
+      </span>
+    </div>`;
+  }
+
+  async function refreshAuthBanner() {
+    const badge = document.getElementById(BADGE_ID);
+    if (!badge) return;
+    const auth = await readAuthState();
+    const slot = badge.querySelector(".lca-auth-slot");
+    if (slot) slot.innerHTML = renderAuthBanner(auth);
+    const foot = badge.querySelector(".lca-foot");
+    if (foot) foot.outerHTML = renderFoot([]);
   }
 
   function isSoftRequirement(claim) {
@@ -170,54 +198,6 @@
     const s = String(text || "").trim();
     if (s.length <= max) return s;
     return `${s.slice(0, max - 1)}…`;
-  }
-
-  function extractCompanyLogoUrl() {
-    const selectors = [
-      ".job-details-jobs-unified-top-card__company-logo img",
-      ".jobs-unified-top-card__company-logo img",
-      ".job-details-jobs-unified-top-card__company-logo a img",
-      ".jobs-unified-top-card__content--main-company img",
-      "a[data-tracking-control-name='public_jobs_topcard-org-image'] img",
-      "a[href*='/company/'] img[src*='licdn.com']",
-      "img[class*='CompanyLogo']",
-      ".artdeco-entity-lockup__image img",
-    ];
-    for (const sel of selectors) {
-      const img = document.querySelector(sel);
-      if (img?.src && !/ghost|placeholder|data:image|profile-display/i.test(img.src)) {
-        return img.src;
-      }
-    }
-    return null;
-  }
-
-  function renderCompanyLine(name, legalName) {
-    if (!name && !legalName) return "";
-    const logoUrl = extractCompanyLogoUrl();
-    const logo = logoUrl
-      ? `<img class="lca-co-logo" src="${escapeHtml(logoUrl)}" alt="" width="20" height="20" />`
-      : "";
-    const primary = name || legalName || "";
-    const sub =
-      legalName && name && legalName.toLowerCase() !== name.toLowerCase()
-        ? `<span class="lca-legal-name">DOL: ${escapeHtml(legalName)}</span>`
-        : "";
-    return `<div class="lca-company-line">${logo}<div class="lca-company-text"><span class="lca-company">${escapeHtml(primary)}</span>${sub}</div></div>`;
-  }
-
-  function renderJobTitleLine(title) {
-    if (!title) return "";
-    return `<div class="lca-job-title">${escapeHtml(title)}</div>`;
-  }
-
-  function renderHeadBlock(pillHtml, displayName, legalName, jobTitle) {
-    const titleLine = jobTitle ? renderJobTitleLine(jobTitle) : "";
-    return `<div class="lca-section-card lca-section-card--company"><div class="lca-head-block">${renderCompanyLine(displayName, legalName)}${pillHtml ? `<div class="lca-head-pill">${pillHtml}</div>` : ""}</div>${titleLine}</div>`;
-  }
-
-  function statusPill(text, tone) {
-    return RV.statusPill(text, tone);
   }
 
   function extractJobId() {
@@ -479,11 +459,25 @@
     }
   }
 
+  function brandLogoUrl() {
+    try {
+      return extensionRuntime()?.getURL?.("icons/logo.svg") || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function brandLogoHtml(size = 18) {
+    const src = brandLogoUrl();
+    if (!src) return "";
+    return `<img class="lca-logo" src="${escapeHtml(src)}" alt="" width="${size}" height="${size}" />`;
+  }
+
   function renderChrome(showRetry = true) {
     const retryBtn = showRetry
       ? `<button type="button" class="lca-refresh-btn" title="Re-run H-1B + fit analysis for this job">Retry</button>`
       : "";
-    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand">JobLens</span>${retryBtn}<button type="button" class="lca-close" aria-label="Close panel">×</button></div>`;
+    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand-wrap">${brandLogoHtml(18)}<span class="lca-brand">JobLens</span></span>${retryBtn}<button type="button" class="lca-close" aria-label="Close panel">×</button></div>`;
   }
 
   function initDrag(el) {
@@ -534,15 +528,30 @@
     });
   }
 
-  function finishBadge(el, ctx) {
+  function initPanelChrome(el) {
     initDrag(el);
     const close = el.querySelector(".lca-close");
     if (close) close.addEventListener("click", () => el.remove());
     wireRefreshButton(el);
-    RV.wireMetricTips(el);
-    if (ctx) runAutoAnalyze(el, ctx);
   }
 
+  function renderPanelShell(auth) {
+    const el = ensureBadge();
+    el.className = "lca-badge lca-active";
+    el.innerHTML = `
+      ${renderChrome()}
+      <div class="lca-body">
+        <div class="lca-analyze-result"></div>
+        <div class="lca-auth-slot">${renderAuthBanner(auth)}</div>
+        ${renderFoot([])}
+      </div>`;
+    initPanelChrome(el);
+    return el;
+  }
+
+  function renderLoadingInline(message) {
+    return `<div class="lca-analyze-inner"><div class="lca-loading-row"><span class="lca-spinner"></span> ${escapeHtml(message)}</div></div>`;
+  }
   function wireRefreshButton(el) {
     const btn = el.querySelector(".lca-refresh-btn");
     if (!btn || btn.dataset.wired === "1") return;
@@ -551,7 +560,6 @@
       e.preventDefault();
       e.stopPropagation();
       lastFingerprint = null;
-      if (typeof LcaMatcher.clearCache === "function") LcaMatcher.clearCache();
       const out = el.querySelector(".lca-analyze-result");
       if (out) out.dataset.analyzedFor = "";
       await run({ force: true });
@@ -563,86 +571,6 @@
     out.innerHTML = `<div class="lca-section-card lca-section-card--fit">${renderCompanyPageAnalyzeHint()}</div>`;
   }
 
-  async function runAutoAnalyze(el, ctx) {
-    const out = el.querySelector(".lca-analyze-result");
-    if (!out) return;
-    if (!canRunFitAnalysis(ctx)) {
-      showCompanyPageFitHint(out);
-      return;
-    }
-    await runAnalysis(out, ctx);
-  }
-
-  function renderOfflineH1bSection(employer, confidence, jobTitle) {
-    const meta = resolveSponsorMeta(confidence, employer);
-    const filings = Number(employer.lca_count) || 0;
-    let tone = "no-record";
-    if (meta.status === "found" || meta.status === "ok") tone = "ok";
-    else if (meta.status === "caution") tone = "caution";
-    return RV.renderH1bBlock(
-      {
-        filings,
-        certified: employer.certified_count,
-        top_jobs: employer.top_jobs,
-        showWhenEmpty: filings <= 0,
-        noRecord: filings <= 0,
-        pillHtml: statusPill(meta.title, filings > 0 ? tone : "no-record"),
-        subline: filings <= 0 ? "Not found in U.S. DOL database" : undefined,
-      },
-      jobTitle
-    );
-  }
-
-  function renderBadge(result, ctx) {
-    const { employer, confidence } = result;
-    const meta = resolveSponsorMeta(confidence, employer);
-    const el = ensureBadge();
-    const displayName = ctx.displayName || employer.name;
-    const jobTitle = extractJobTitle();
-
-    el.className = `lca-badge lca-${meta.status}`;
-    el.innerHTML = `
-      ${renderChrome()}
-      <div class="lca-body">
-        ${renderHeadBlock(null, displayName, employer.name, jobTitle)}
-        ${renderOfflineH1bSection(employer, confidence, jobTitle)}
-        <div class="lca-analyze-result" data-section="fit"></div>
-        ${renderFoot(["Source: U.S. DOL H-1B"])}
-      </div>`;
-    finishBadge(el, ctx);
-  }
-
-  function renderMiss(ctx) {
-    const el = ensureBadge();
-    el.className = "lca-badge lca-miss";
-    el.innerHTML = `
-      ${renderChrome()}
-      <div class="lca-body">
-        ${renderHeadBlock(null, ctx.displayName || "", null, extractJobTitle())}
-        ${RV.renderH1bBlock({
-          filings: 0,
-          showWhenEmpty: true,
-          noRecord: true,
-          pillHtml: statusPill("No H-1B record", "no-record"),
-          subline: "Not found in U.S. DOL database",
-        })}
-        <div class="lca-analyze-result"></div>
-        ${renderFoot(["May file under a different legal name"])}
-      </div>`;
-    finishBadge(el, ctx);
-  }
-
-  function renderLoading() {
-    const el = ensureBadge();
-    el.className = "lca-badge lca-loading";
-    el.innerHTML = `
-      ${renderChrome()}
-      <div class="lca-body">
-        <div class="lca-loading-row"><span class="lca-spinner"></span> Checking H-1B records…</div>
-      </div>`;
-    finishBadge(el, null);
-  }
-
   function renderWaiting(ctx) {
     const el = ensureBadge();
     el.className = "lca-badge lca-waiting";
@@ -652,7 +580,7 @@
         <div class="lca-title">Waiting for job details…</div>
         <div class="lca-hint">Open a job posting to detect the employer.</div>
       </div>`;
-    finishBadge(el, null);
+    initPanelChrome(el);
   }
 
   function isCompanyProfilePage() {
@@ -666,7 +594,7 @@
   }
 
   function renderCompanyPageAnalyzeHint() {
-    return `<p class="lca-hint">Open a <strong>job posting</strong> (Jobs tab or search) to see Apply / Skip fit. H-1B lookup above still works on this page.</p>`;
+    return `<p class="lca-hint">Open a <strong>job posting</strong> (Jobs tab or search) for visa + role fit analysis.</p>`;
   }
 
   function extractJobTitle() {
@@ -1091,118 +1019,108 @@
   async function gatherJobInputs(ctx) {
     const jd_text = await captureJobDescription();
     const probe = probeJdOnPage();
-    const linkedin = extractLinkedInCompanySignals();
+    const panel = findActiveJobPanel();
+    const domCompany =
+      extractCompanyNameFromDom(false, panel) || extractCompanyNameFromDom(false, null);
+    const rawTitle = extractJobTitle();
+    const job_location = extractJobLocation();
+    let company = domCompany || ctx.displayName || null;
+    let title = rawTitle;
+    let location = job_location;
+    if (typeof RV.parseLinkedInStyleTitle === "function") {
+      const parsed = RV.parseLinkedInStyleTitle(rawTitle, company, job_location);
+      company = parsed.company || company;
+      title = parsed.title || title;
+      location = parsed.jobLocation || location;
+    }
     return {
-      company: ctx.displayName || null,
-      title: extractJobTitle(),
-      job_location: extractJobLocation(),
+      company,
+      title,
+      job_location: location,
       jd_text,
       job_url: window.location.href,
       captureProbe: probe,
-      linkedin_followers: linkedin.followers,
-      alumni_hints: linkedin.alumni_hints,
     };
   }
 
-  function parseFollowerCount(raw) {
-    const s = String(raw || "").replace(/,/g, "").trim();
-    const m = s.match(/^([\d.]+)\s*([KMB])?$/i);
-    if (!m) return null;
-    let n = parseFloat(m[1]);
-    if (Number.isNaN(n)) return null;
-    const u = (m[2] || "").toUpperCase();
-    if (u === "K") n *= 1000;
-    else if (u === "M") n *= 1_000_000;
-    else if (u === "B") n *= 1_000_000_000;
-    return Math.round(n);
+  async function analyzeAuthHeaders() {
+    const headers = { "Content-Type": "application/json" };
+    try {
+      const store = chrome.storage?.local;
+      if (!store?.get) return headers;
+      const data = await new Promise((resolve) => store.get(["joblens_token"], resolve));
+      if (data?.joblens_token) headers.Authorization = `Bearer ${data.joblens_token}`;
+    } catch (_) {
+      /* ignore */
+    }
+    return headers;
   }
 
-  /** Read follower / alumni lines from the open LinkedIn page (no backend crawl). */
-  function extractLinkedInCompanySignals() {
-    const root = findActiveJobPanel() ||
-      document.querySelector(
-        ".jobs-unified-top-card, .job-details-jobs-unified-top-card, .org-top-card"
-      ) ||
-      document.body;
-    const text = root.innerText || "";
-
-    let followers = null;
-    const fm = text.match(/([\d,.]+[KMB]?)\s+followers?\b/i);
-    if (fm) followers = parseFollowerCount(fm[1]);
-
-    const alumni_hints = [];
-    const re = /([\d,.]+)\s+([^\n·|]{3,80}?)\s+alumni\s+work\s+here/gi;
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      alumni_hints.push(`${m[1].trim()} ${m[2].trim()} alumni`.replace(/\s+/g, " "));
-    }
-    if (/people from your (?:school|network)/i.test(text)) {
-      alumni_hints.push("people from your school");
-    }
-
-    return { followers, alumni_hints: [...new Set(alumni_hints)].slice(0, 5) };
-  }
-
-  async function analyzeWithBackend(inputs) {
-    const body = {
-      jd_text: inputs.jd_text || "",
-      company: inputs.company,
-      title: inputs.title,
-      job_location: inputs.job_location || null,
-      job_url: inputs.job_url,
-      linkedin_followers: inputs.linkedin_followers ?? null,
-      alumni_hints: inputs.alumni_hints || [],
-    };
-
-    let viaBackground = null;
+  async function extensionApiJson(path, init = {}) {
     const rt = extensionRuntime();
-    if (rt?.sendMessage) {
-      viaBackground = await new Promise((resolve) => {
+    if (rt?.sendMessage && !extensionBroken) {
+      const viaBackground = await new Promise((resolve) => {
         try {
-          rt.sendMessage({ type: "JOBLENS_ANALYZE", body }, (resp) => {
-            const err = rt.lastError;
-            if (err) {
-              resolve({ ok: false, error: err.message });
-              return;
+          rt.sendMessage(
+            {
+              type: "JOBLENS_API",
+              path,
+              method: init.method || "GET",
+              body: init.body,
+            },
+            (resp) => {
+              const err = rt.lastError;
+              if (err) {
+                resolve({ ok: false, error: err.message });
+                return;
+              }
+              resolve(resp || { ok: false, error: "no response" });
             }
-            resolve(resp || { ok: false, error: "no response" });
-          });
+          );
         } catch (e) {
           resolve({ ok: false, error: e.message || String(e) });
         }
       });
-    }
 
-    if (viaBackground?.ok && viaBackground.data) return viaBackground.data;
+      if (viaBackground?.ok) return viaBackground.data;
 
-    const contextDead = viaBackground?.error && isExtensionContextError({ message: viaBackground.error });
-    if (contextDead) markExtensionStale();
+      const contextDead =
+        viaBackground?.error && isExtensionContextError({ message: viaBackground.error });
+      if (contextDead) markExtensionStale();
 
-    if (viaBackground?.error && !contextDead) {
-      if (viaBackground.status) {
-        throw new Error(
-          `Backend responded ${viaBackground.status}${viaBackground.error ? ` — ${viaBackground.error}` : ""}`
-        );
+      if (viaBackground?.error && !contextDead) {
+        if (viaBackground.status) {
+          throw new Error(
+            `Backend responded ${viaBackground.status}${viaBackground.error ? ` — ${viaBackground.error}` : ""}`
+          );
+        }
+        throw new TypeError(viaBackground.error);
       }
-      throw new TypeError(viaBackground.error);
     }
 
-    // Fallback: direct fetch (dev, or extension reloaded while tab stayed open)
-    const resp = await fetch(`${BACKEND_URL}/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    const resp = await fetch(`${BACKEND_URL}${path}`, {
+      ...init,
+      headers: { ...(await analyzeAuthHeaders()), ...(init.headers || {}) },
     });
+    const text = await resp.text();
     if (!resp.ok) {
-      let detail = "";
-      try {
-        detail = JSON.stringify(await resp.json());
-      } catch (_) {
-        /* ignore */
-      }
-      throw new Error(`Backend responded ${resp.status}${detail ? ` — ${detail}` : ""}`);
+      throw new Error(
+        text.trim().length > 200 ? `Backend responded ${resp.status}` : text.trim() || `HTTP ${resp.status}`
+      );
     }
-    return resp.json();
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      return text;
+    }
+  }
+
+  async function runUnifiedAnalyze(inputs, onProgress) {
+    const body = AC.buildAnalyzeBody(inputs);
+    return AC.runAnalyzeAsync(BACKEND_URL, body, {
+      fetchJson: extensionApiJson,
+      onProgress,
+    });
   }
 
   function likelihoodClass(likelihood) {
@@ -1284,18 +1202,67 @@
   }
 
   function enrichReport(report, inputs) {
+    const parse = RV.parseLinkedInStyleTitle;
+    const parsed =
+      typeof parse === "function"
+        ? parse(
+            inputs?.title || report.received?.title,
+            inputs?.company || report.received?.company,
+            inputs?.job_location || report.received?.job_location
+          )
+        : {};
     return {
       ...report,
       received: {
         ...(report.received || {}),
-        title: inputs?.title || report.received?.title || extractJobTitle() || null,
-        company: inputs?.company || report.received?.company || null,
-        job_location: inputs?.job_location || report.received?.job_location || extractJobLocation() || null,
+        title:
+          parsed.title ||
+          inputs?.title ||
+          report.received?.title ||
+          extractJobTitle() ||
+          null,
+        company: parsed.company || inputs?.company || report.received?.company || null,
+        job_location:
+          parsed.jobLocation ||
+          inputs?.job_location ||
+          report.received?.job_location ||
+          extractJobLocation() ||
+          null,
       },
     };
   }
 
-  function renderAnalysisInline(report, captureProbe, inputs) {
+  function renderFitPendingBlock(message) {
+    return `<div class="lca-section-card lca-section-card--fit lca-fit-pending">
+      <div class="lca-section-label lca-section-label--pillar">Role fit</div>
+      <div class="lca-loading-row"><span class="lca-spinner"></span> ${escapeHtml(message)}</div>
+    </div>`;
+  }
+
+  function renderProgressiveReport(headH1bHtml, fitMessage) {
+    const fitBlock = renderFitPendingBlock(fitMessage);
+    const trimmed = String(headH1bHtml || "").trim();
+    const inner = trimmed.replace(/^<div class="jl-report-results">/, "").replace(/<\/div>\s*$/, "");
+    return `<div class="jl-report-results">${inner}${fitBlock}</div>`;
+  }
+
+  async function lookupSponsorshipQuick(company) {
+    try {
+      return await extensionApiJson("/sponsorship/lookup", {
+        method: "POST",
+        body: JSON.stringify({ company: company || null }),
+      });
+    } catch (_) {
+      return { matched: false, reason: "no company provided" };
+    }
+  }
+
+  function renderHeadAndH1b(inputs, sponsorship) {
+    const enriched = enrichReport({ sponsorship, received: {} }, inputs);
+    return RV.renderUnifiedReport(enriched, { sections: ["head", "h1b"] });
+  }
+
+  function renderFullReport(report, captureProbe, inputs) {
     const chars = report.received?.jd_chars ?? 0;
     const jd = report.jd;
 
@@ -1305,11 +1272,7 @@
 
     const enriched = enrichReport(report, inputs);
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    const fitBlock = RV.renderUnifiedReport(enriched, {
-      sections: ["fit", "resume_detail"],
-      compactResume: true,
-    });
-    return `<div class="lca-analyze-inner">${errLine}${fitBlock}</div>`;
+    return `<div class="lca-analyze-inner lca-fadein">${errLine}${RV.renderUnifiedReport(enriched)}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -1324,7 +1287,7 @@
         : isServer
         ? "Our analysis server hit an error (500) — this is on our side, not LinkedIn. Wait a minute and click <strong>Retry</strong>. If it keeps failing, tell us which job URL."
         : isAbort
-        ? "Analysis timed out after 2 minutes — the server may be busy. Click <strong>Retry</strong>."
+        ? "Analysis timed out — the server may be busy. Click <strong>Retry</strong>."
         : isNetwork
         ? `Can't reach the analysis server. Check your network, then Retry.`
         : escapeHtml(msg)
@@ -1333,7 +1296,7 @@
 
   let analysisSeq = 0;
 
-  async function runAnalysis(out, ctx) {
+  async function runFullAnalysis(out, ctx) {
     if (!out) return;
     const seq = ++analysisSeq;
     const stillCurrent = () => seq === analysisSeq;
@@ -1345,14 +1308,14 @@
       return;
     }
 
-    out.innerHTML = `<div class="lca-section-card lca-section-card--fit"><div class="lca-section-label lca-section-label--pillar">Role fit</div><div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing fit… usually 30–60s</div></div>`;
+    out.innerHTML = renderLoadingInline("Starting analysis…");
 
     try {
       let inputs = await gatherJobInputs(ctx);
       let jdWait = 0;
       while ((inputs.jd_text || "").length < 80 && jdWait < 6) {
         if (!stillCurrent()) return;
-        out.innerHTML = `<div class="lca-section-card lca-section-card--fit"><div class="lca-section-label lca-section-label--pillar">Role fit</div><div class="lca-loading-row"><span class="lca-spinner"></span> Loading job description…</div></div>`;
+        out.innerHTML = renderLoadingInline("Loading job description…");
         await sleep(900);
         inputs = await gatherJobInputs(ctx);
         jdWait += 1;
@@ -1366,12 +1329,24 @@
         return;
       }
 
-      const report = await analyzeWithBackend(inputs);
+      out.innerHTML = renderLoadingInline("Checking visa sponsorship…");
+      const sponsorship = await lookupSponsorshipQuick(inputs.company);
+      if (!stillCurrent()) return;
+
+      const headH1b = renderHeadAndH1b(inputs, sponsorship);
+      let fitMessage = "Analyzing role & resume match… usually 30–60s";
+      out.innerHTML = `<div class="lca-analyze-inner">${renderProgressiveReport(headH1b, fitMessage)}</div>`;
+
+      const report = await runUnifiedAnalyze(inputs, (job) => {
+        if (!stillCurrent()) return;
+        fitMessage = job?.message || "Analyzing role & resume match… usually 30–60s";
+        out.innerHTML = `<div class="lca-analyze-inner">${renderProgressiveReport(headH1b, fitMessage)}</div>`;
+      });
       if (!stillCurrent()) return;
 
       window.__jobLensLastReport = report;
       console.debug("[JobLens] explain:", report.explain);
-      out.innerHTML = renderAnalysisInline(report, inputs.captureProbe, inputs);
+      out.innerHTML = renderFullReport(report, inputs.captureProbe, inputs);
       if (extensionStale) {
         out.innerHTML =
           `<p class="lca-err-mini">Extension was reloaded — refresh this tab (F5) before the next job.</p>` +
@@ -1408,35 +1383,13 @@
     if (!options.force && fp === lastFingerprint) return;
     lastFingerprint = fp;
 
-    renderLoading();
-
-    try {
-      await LcaMatcher.load();
-      const result = await LcaMatcher.lookup(ctx.slug, ctx.displayName);
-      if (result) renderBadge(result, ctx);
-      else renderMiss(ctx);
-    } catch (err) {
-      console.error("[JobLens]", err);
-      if (isExtensionContextError(err)) {
-        markExtensionStale();
-        showExtensionBrokenBanner();
-      }
-      const el = ensureBadge();
-      el.className = "lca-badge lca-miss";
-      const hint =
-        isExtensionContextError(err) || /extension disconnected|extension was updated|getURL/i.test(String(err.message))
-          ? `<div class="lca-hint">JobLens was reloaded — <strong>refresh this LinkedIn tab (F5)</strong>, then open the job again.</div>`
-          : `<div class="lca-foot">${escapeHtml(err.message)}</div>`;
-      el.innerHTML = `
-        ${renderChrome()}
-        <div class="lca-body">
-          <div class="lca-title">H-1B lookup failed</div>
-          ${hint}
-          <button type="button" class="lca-refresh-btn">Retry</button>
-          <div class="lca-analyze-result"></div>
-        </div>`;
-      finishBadge(el, ctx);
+    const el = renderPanelShell(await readAuthState());
+    const out = el.querySelector(".lca-analyze-result");
+    if (!canRunFitAnalysis(ctx)) {
+      showCompanyPageFitHint(out);
+      return;
     }
+    await runFullAnalysis(out, ctx);
   }
 
   let lastNavKey = navigationKey();
@@ -1450,6 +1403,17 @@
   }
 
   run();
+
+  try {
+    chrome.storage?.onChanged?.addListener((changes, area) => {
+      if (area === "local" && (changes.joblens_token || changes.joblens_email)) {
+        refreshAuthBanner();
+      }
+    });
+  } catch (_) {
+    /* ignore */
+  }
+  window.addEventListener("focus", () => refreshAuthBanner());
 
   let debounceTimer = null;
   function scheduleRun() {

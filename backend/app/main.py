@@ -22,6 +22,7 @@ from app.db import check_db_connection
 from app.graph.workflow import run_analyze_workflow
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import Report
+from app.tools.sponsorship import search_h1b_company
 from app.tools.entity_resolver import get_resolver
 from app.tools.job_url import parse_job_url
 from app.tools.llm import llm_available
@@ -137,6 +138,10 @@ class AnalyzeRequest(BaseModel):
     job_location: str | None = None
     linkedin_followers: int | None = None
     alumni_hints: list[str] = []
+
+
+class SponsorshipLookupRequest(BaseModel):
+    company: str | None = None
 
 
 class IndexResumeRequest(BaseModel):
@@ -363,6 +368,12 @@ def analyze(
         return run_analyze_workflow(**workflow_kwargs, build_explain=_build_explain)
     finally:
         set_request_profile(None)
+
+
+@app.post("/sponsorship/lookup")
+def sponsorship_lookup(req: SponsorshipLookupRequest) -> dict:
+    """Fast H-1B DB lookup — same resolver as full analyze."""
+    return search_h1b_company(req.company or "")
 
 
 @app.post("/analyze/async")

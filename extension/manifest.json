@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobLens",
-  "version": "3.4.1",
+  "version": "3.6.0",
   "description": "JobLens — visa sponsorship + role match on LinkedIn before you apply.",
   "permissions": ["storage"],
   "host_permissions": [
@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*", "https://linkedin.com/*"],
-      "js": ["lib/matcher.js", "lib/report-view.js", "content.js"],
+      "js": ["lib/analyze-client.js", "lib/report-view.js", "content.js"],
       "css": ["styles.css"],
       "run_at": "document_idle"
     },

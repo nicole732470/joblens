@@ -163,7 +163,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   background: var(--lca-body-bg);
   scrollbar-width: thin;
   scrollbar-color: rgba(42, 36, 24, 0.2) transparent;
@@ -297,12 +297,12 @@
 .lca-section-card {
   border-radius: 14px;
   border: 1px solid rgba(42, 36, 24, 0.08);
-  padding: 12px 14px;
+  padding: 14px 14px 16px;
   background: rgba(255, 255, 255, 0.72);
   box-shadow: 0 1px 2px rgba(42, 36, 24, 0.04);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .lca-section-card--company {
   background: rgba(255, 255, 255, 0.85);
@@ -373,7 +373,7 @@
 .lca-analyze-inner {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   padding-top: 0;
   border-top: none;
 }
@@ -747,25 +747,146 @@ body > .lca-metric-tip.lca-tip-visible,
   line-height: 1.45;
 }
 
-/* Extension panel: stacked resume match cards + tighter gaps */
+#joblens-panel .lca-chrome .lca-brand-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+#joblens-panel .lca-logo {
+  display: block;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+#joblens-panel .lca-foot-site {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+#joblens-panel .lca-foot-site a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Extension panel: report section spacing */
 #joblens-panel .jl-report-results {
-  gap: 12px;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+  padding-bottom: 2px;
 }
-#joblens-panel .lca-resume-cols {
-  gap: 8px;
+#joblens-panel .lca-analyze-inner {
+  padding-bottom: 4px;
 }
-#joblens-panel .lca-resume-col {
-  padding: 12px;
+#joblens-panel .lca-analyze-result {
+  margin-top: 0;
 }
-#joblens-panel .lca-section-card--resume {
-  padding: 12px 12px 14px;
+#joblens-panel .lca-fit-pending {
+  margin-top: 0;
+}
+#joblens-panel .lca-section-card {
+  padding: 14px 14px 16px;
+  gap: 10px;
+}
+#joblens-panel .lca-resume-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+#joblens-panel .lca-resume-block .lca-verdict-card {
+  gap: 6px;
+  padding: 10px 12px;
+}
+#joblens-panel .lca-resume-block-body {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--jn-text-secondary);
+}
+#joblens-panel .lca-resume-block-body .lca-resume-list {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+#joblens-panel .lca-resume-block-body .lca-resume-list--ordered {
+  padding-left: 22px;
+  list-style: decimal;
+}
+#joblens-panel .lca-resume-block-body .lca-resume-list li {
+  margin: 0 0 8px;
+  padding-left: 2px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+#joblens-panel .lca-resume-block-body .lca-resume-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--jn-text-faint);
 }
 #joblens-panel .lca-h1b-subline,
-#joblens-panel .lca-resume-list,
 #joblens-panel .lca-verdict-note {
   font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+#joblens-panel .lca-foot {
+  margin-top: 6px;
+  padding-top: 8px;
+  word-break: break-all;
 }
 #joblens-panel .lca-foot a {
   text-decoration: underline;
   text-underline-offset: 2px;
+  font-size: 11px;
+}
+
+/* Auth strip — bottom of panel, one line (web handles login/signup) */
+#joblens-panel .lca-auth-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(196, 101, 74, 0.2);
+  background: rgba(255, 248, 242, 0.92);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--jn-text-secondary);
+}
+#joblens-panel .lca-auth-strip--ok {
+  border-color: rgba(74, 103, 65, 0.22);
+  background: rgba(238, 245, 232, 0.85);
+}
+#joblens-panel .lca-auth-strip-text {
+  min-width: 0;
+  flex: 1;
+  font-weight: 500;
+}
+#joblens-panel .lca-auth-strip-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+#joblens-panel .lca-auth-strip-links a {
+  color: var(--jn-cta);
+  font-weight: 700;
+  font-size: 12px;
+  text-decoration: none;
+  padding: 2px 0;
+}
+#joblens-panel .lca-auth-strip-links a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#joblens-panel .lca-auth-sep {
+  color: var(--jn-text-faint);
+  user-select: none;
 }
