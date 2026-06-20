@@ -891,10 +891,19 @@ body > .lca-metric-tip.lca-tip-visible,
   overflow: visible !important;
   overflow-wrap: break-word;
   word-break: break-word;
-  hyphens: auto;
+  hyphens: none;
   max-height: none !important;
   text-overflow: clip !important;
   -webkit-line-clamp: unset !important;
+}
+#joblens-panel .lca-pill-no-record {
+  display: inline-flex !important;
+  width: fit-content;
+  padding: 5px 12px !important;
+  border-radius: 999px !important;
+  background: #fde1df !important;
+  color: #8a1f1c !important;
+  box-shadow: 0 0 0 1px #f3c8c5 !important;
 }
 #joblens-panel .lca-resume-block-body,
 #joblens-panel .lca-resume-block-body .lca-resume-list,

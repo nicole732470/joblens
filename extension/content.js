@@ -857,8 +857,13 @@
 
   function stripHtml(html) {
     const tmp = document.createElement("div");
-    tmp.innerHTML = html;
-    return (tmp.innerText || tmp.textContent || "").replace(/\s+\n/g, "\n").trim();
+    // textContent concatenates adjacent <li> nodes ("degree10+ years12+ years").
+    // Materialize block boundaries before parsing so detached DOM and Voyager
+    // HTML both preserve one requirement per line.
+    tmp.innerHTML = String(html || "")
+      .replace(/<br\s*\/?\s*>/gi, "\n")
+      .replace(/<\/(?:li|p|div|section|ul|ol|h[1-6])\s*>/gi, "\n");
+    return normalizeJdText(tmp.innerText || tmp.textContent || "");
   }
 
   function extractJobDescriptionFromJsonLd() {
@@ -885,13 +890,15 @@
   function normalizeJdText(text) {
     return String(text || "")
       .replace(/\u00a0/g, " ")
-      .replace(/\s+\n/g, "\n")
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
       .trim();
   }
 
   function elementPlainText(el) {
     if (!el) return "";
-    return normalizeJdText(el.textContent || el.innerText || "");
+    return normalizeJdText(el.innerText || el.textContent || "");
   }
 
   function extractFromJobPanelHeuristic() {
@@ -1096,7 +1103,18 @@
       typeof parse === "function"
         ? parse(inputs?.title, inputs?.company || ctx?.displayName, inputs?.job_location)
         : {};
-    return parsed.company || inputs?.company || ctx?.displayName || null;
+    const panel = findActiveJobPanel();
+    const linkedCompany = extractCompanySlugFromLinks(panel || document);
+    return (
+      parsed.company ||
+      inputs?.company ||
+      extractCompanyNameFromDom(false, panel) ||
+      linkedCompany.name ||
+      extractCompanyFromJsonLd() ||
+      extractCompanyFromPageMeta() ||
+      ctx?.displayName ||
+      null
+    );
   }
 
   async function gatherJobInputs(ctx) {
@@ -1105,11 +1123,13 @@
     const panel = findActiveJobPanel();
     const domCompany =
       extractCompanyNameFromDom(false, panel) || extractCompanyNameFromDom(false, null);
+    const linkedCompany = extractCompanySlugFromLinks(panel || document);
     const jsonLdCompany = extractCompanyFromJsonLd();
     const metaCompany = extractCompanyFromPageMeta();
     const rawTitle = extractJobTitle() || pageTitleForParse();
     const job_location = extractJobLocation();
-    let company = domCompany || jsonLdCompany || metaCompany || ctx.displayName || null;
+    let company =
+      domCompany || linkedCompany.name || jsonLdCompany || metaCompany || ctx.displayName || null;
     let title = rawTitle;
     let location = job_location;
     if (typeof RV.parseLinkedInStyleTitle === "function") {
