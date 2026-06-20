@@ -28,6 +28,7 @@ class AnalyzeState(TypedDict, total=False):
     company: str | None
     title: str | None
     resume_text: str | None
+    resume_filename: str | None
     job_url: str | None
     job_location: str | None
     linkedin_followers: int | None
@@ -116,6 +117,7 @@ def run_analyze_workflow(
     company_name: str | None,
     title: str | None,
     resume_text: str | None,
+    resume_filename: str | None = None,
     job_url: str | None,
     job_location: str | None,
     linkedin_followers: int | None,
@@ -128,6 +130,7 @@ def run_analyze_workflow(
             "company": company_name,
             "title": title,
             "resume_text": resume_text,
+            "resume_filename": resume_filename,
             "job_url": job_url,
             "job_location": job_location,
             "linkedin_followers": linkedin_followers,
@@ -142,6 +145,7 @@ def run_analyze_workflow(
         "company": company_name,
         "title": title,
         "resume_text": resume_text,
+        "resume_filename": resume_filename,
         "job_url": job_url,
         "job_location": job_location,
         "linkedin_followers": linkedin_followers,

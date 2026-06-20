@@ -595,6 +595,7 @@
 
   function renderBadge(result, ctx) {
     const { employer, confidence } = result;
+    const meta = resolveSponsorMeta(confidence, employer);
     const el = ensureBadge();
     const displayName = ctx.displayName || employer.name;
     const jobTitle = extractJobTitle();
@@ -1316,13 +1317,16 @@
     const isAbort = /abort/i.test(msg);
     const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(msg);
     const isStale = isExtensionContextError(err);
+    const isServer = /Backend responded 5\d\d/i.test(msg);
     return `<div class="lca-analyze-inner lca-analyze-err">${
       isStale
-        ? "JobLens was just reloaded in the background — <strong>refresh this LinkedIn tab (F5)</strong>, then click Retry. (Analysis could not finish on the old page session.)"
+        ? "JobLens was just reloaded in the background — <strong>refresh this LinkedIn tab (F5)</strong>, then click Retry."
+        : isServer
+        ? "Our analysis server hit an error (500) — this is on our side, not LinkedIn. Wait a minute and click <strong>Retry</strong>. If it keeps failing, tell us which job URL."
         : isAbort
         ? "Analysis timed out after 2 minutes — the server may be busy. Click <strong>Retry</strong>."
         : isNetwork
-        ? `Can't reach the analysis server at <code>${escapeHtml(BACKEND_URL)}</code>. Reload the extension at chrome://extensions, then Retry.`
+        ? `Can't reach the analysis server. Check your network, then Retry.`
         : escapeHtml(msg)
     }</div>`;
   }
