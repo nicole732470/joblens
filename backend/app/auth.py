@@ -60,7 +60,9 @@ def ensure_auth_schema() -> None:
 
     import psycopg
 
-    sql_path = Path(__file__).resolve().parents[2] / "db" / "auth_schema.sql"
+    sql_path = Path(__file__).resolve().parents[1] / "db" / "auth_schema.sql"
+    if not sql_path.exists():
+        return
     with psycopg.connect(settings.database_url) as conn:
         conn.execute(sql_path.read_text(encoding="utf-8"))
         conn.commit()
