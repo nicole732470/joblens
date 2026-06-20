@@ -553,7 +553,7 @@
     const fp = contextFingerprint(ctx);
     if (out.dataset.analyzedFor === fp) return;
     out.dataset.analyzedFor = fp;
-    await runAnalysis(out, ctx);
+    await runAnalysis(out, ctx, { expand: false });
   }
 
   function renderWarnings(warnings) {
@@ -893,20 +893,7 @@
     return "";
   }
 
-  function expandAllShowMoreOnPage() {
-    let clicked = false;
-    document.querySelectorAll("button, span, a").forEach((el) => {
-      if (isInsideBadge(el)) return;
-      const t = (el.textContent || "").trim().toLowerCase();
-      if (t !== "show more" && t !== "…more" && t !== "...more" && t !== "see more") return;
-      if (!el.closest("main, [class*='job'], [class*='jobs'], section, article")) return;
-      simulateClick(el);
-      clicked = true;
-    });
-    return clicked;
-  }
-
-  function extractJobDescriptionByMetadataAnchor() {
+  function simulateClick(el) {
     const anchorTexts = new Set(["Seniority level", "Employment type", "Job function", "Industries"]);
     let best = "";
 
@@ -997,11 +984,6 @@
     );
   }
 
-  function scrollJobPanelIntoView(root) {
-    if (!root) return;
-    root.scrollIntoView({ block: "nearest", behavior: "instant" });
-  }
-
   function simulateClick(el) {
     if (!(el instanceof HTMLElement)) return;
     el.click();
@@ -1034,22 +1016,16 @@
     return clicked;
   }
 
-  /** Expand LinkedIn's collapsed JD ("Show more") before we scrape text. */
+  /** Expand LinkedIn's collapsed JD ("Show more") — only when user explicitly retries analyze. */
   async function expandJobDescription() {
     const root = findJobDetailsRoot();
     if (root) {
-      scrollJobPanelIntoView(root);
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 2; i++) {
         clickShowMoreIn(root);
-        await sleep(160);
-      }
-    } else {
-      for (let i = 0; i < 4; i++) {
-        expandAllShowMoreOnPage();
-        await sleep(160);
+        await sleep(120);
       }
     }
-    await sleep(250);
+    await sleep(150);
   }
 
   function stripHtml(html) {
@@ -1187,20 +1163,23 @@
     return dom.length >= jsonLd.length ? dom : jsonLd;
   }
 
-  async function captureJobDescription() {
+  async function captureJobDescription(options = {}) {
+    const { expand = false, maxAttempts = 3 } = options;
     if (isCompanyProfilePage()) return "";
 
+    let best = extractJobDescription();
+    if (!expand && best.length >= 120) return best;
+
     const isDirectJobView = /\/jobs\/view\/\d+/i.test(window.location.pathname);
-    const maxAttempts = isDirectJobView ? 28 : 24;
-    let best = "";
+    const attempts = expand ? Math.min(maxAttempts, isDirectJobView ? 4 : 3) : 1;
     let source = "dom";
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await expandJobDescription();
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      if (expand) await expandJobDescription();
       const text = extractJobDescription();
       if (text.length > best.length) best = text;
       if (best.length > 200) break;
-      await sleep(isDirectJobView ? 350 : 300);
+      if (expand) await sleep(isDirectJobView ? 250 : 200);
     }
 
     if (best.length < 200) {
@@ -1217,12 +1196,12 @@
       }
     }
 
-    console.info("[JobLens] JD capture:", best.length, "chars via", source);
+    console.info("[JobLens] JD capture:", best.length, "chars via", source, expand ? "(expand)" : "(passive)");
     return best;
   }
 
-  async function gatherJobInputs(ctx) {
-    const jd_text = await captureJobDescription();
+  async function gatherJobInputs(ctx, options = {}) {
+    const jd_text = await captureJobDescription(options);
     const probe = probeJdOnPage();
     const linkedin = extractLinkedInCompanySignals();
     return {
@@ -1603,7 +1582,7 @@
     }</div>`;
   }
 
-  async function runAnalysis(out, ctx) {
+  async function runAnalysis(out, ctx, options = {}) {
     if (!out) return;
     const fresh = extractPageContext();
     if (fresh.pageKey) ctx = fresh;
@@ -1613,7 +1592,7 @@
     }
     out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing fit… usually 30–60s</div>`;
     try {
-      const inputs = await gatherJobInputs(ctx);
+      const inputs = await gatherJobInputs(ctx, { expand: Boolean(options.expand) });
       if ((inputs.jd_text || "").length < 80) {
         out.innerHTML = `<div class="lca-analyze-inner">${renderCaptureMeta(inputs.jd_text?.length || 0, inputs.captureProbe)}<p class="lca-err-mini">Job description not loaded yet — expand it on LinkedIn, wait 2–3 seconds, then click <strong>Refresh</strong>.</p></div>`;
         out.dataset.analyzedFor = "";
@@ -1690,7 +1669,7 @@
   let debounceTimer = null;
   function scheduleRun() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(run, 350);
+    debounceTimer = setTimeout(run, 900);
   }
 
   const wrapHistory = (fn) =>
@@ -1707,10 +1686,9 @@
       lastHref = location.href;
       onNavigate();
     }
-  }, 400);
-
-  const obs = new MutationObserver(scheduleRun);
-  obs.observe(document.body, { childList: true, subtree: true });
+  }, 800);
 
   window.addEventListener("popstate", onNavigate);
+  // Do not observe document.body — LinkedIn's SPA mutates constantly and retriggers
+  // H-1B lookup + JD capture, which scrolls/clicks the page and feels like jumping.
 })();
