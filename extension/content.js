@@ -1511,8 +1511,12 @@
 
   try {
     chrome.storage?.onChanged?.addListener((changes, area) => {
-      if (area === "local" && (changes.joblens_token || changes.joblens_email)) {
-        refreshAuthBanner();
+      if (area !== "local" || (!changes.joblens_token && !changes.joblens_email)) return;
+      refreshAuthBanner();
+      // Web login synced token → re-analyze current job with user profile (no manual Retry).
+      if (changes.joblens_token?.newValue && document.getElementById(BADGE_ID)) {
+        lastFingerprint = null;
+        run({ force: true });
       }
     });
   } catch (_) {
