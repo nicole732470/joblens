@@ -1031,6 +1031,50 @@
     return null;
   }
 
+  function extractCompanyFromJsonLd() {
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const parsed = JSON.parse(script.textContent || "");
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of items) {
+          if (!item) continue;
+          const org = item.hiringOrganization || item.employer;
+          const name =
+            (typeof org === "string" ? org : org?.name) ||
+            item.organization?.name ||
+            null;
+          const cleaned = cleanDisplayName(name);
+          if (cleaned) return cleaned;
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    return null;
+  }
+
+  function extractCompanyFromPageMeta() {
+    const sources = [
+      document.querySelector('meta[property="og:title"]')?.content,
+      document.title,
+    ].filter(Boolean);
+    for (const raw of sources) {
+      const bit = String(raw).split("|")[0].trim();
+      if (typeof RV.parseLinkedInStyleTitle !== "function") continue;
+      const parsed = RV.parseLinkedInStyleTitle(bit, null, null);
+      if (parsed.company) return parsed.company;
+    }
+    return null;
+  }
+
+  function pageTitleForParse() {
+    return (
+      document.querySelector('meta[property="og:title"]')?.content?.split("|")[0]?.trim() ||
+      document.title?.split("|")[0]?.trim() ||
+      null
+    );
+  }
+
   function resolvedCompanyForInputs(ctx, inputs) {
     const parse = RV.parseLinkedInStyleTitle;
     const parsed =
@@ -1046,9 +1090,11 @@
     const panel = findActiveJobPanel();
     const domCompany =
       extractCompanyNameFromDom(false, panel) || extractCompanyNameFromDom(false, null);
-    const rawTitle = extractJobTitle();
+    const jsonLdCompany = extractCompanyFromJsonLd();
+    const metaCompany = extractCompanyFromPageMeta();
+    const rawTitle = extractJobTitle() || pageTitleForParse();
     const job_location = extractJobLocation();
-    let company = domCompany || ctx.displayName || null;
+    let company = domCompany || jsonLdCompany || metaCompany || ctx.displayName || null;
     let title = rawTitle;
     let location = job_location;
     if (typeof RV.parseLinkedInStyleTitle === "function") {
@@ -1273,14 +1319,25 @@
     return `<div class="jl-report-results">${inner}${fitBlock}</div>`;
   }
 
-  async function lookupSponsorshipQuick(company) {
+  async function lookupSponsorshipQuick(inputs, ctx) {
+    const company = resolvedCompanyForInputs(ctx, inputs);
+    if (!company) {
+      return { matched: false, reason: "no company name provided" };
+    }
     try {
       return await extensionApiJson("/sponsorship/lookup", {
         method: "POST",
-        body: JSON.stringify({ company: company || null }),
+        body: JSON.stringify({
+          company,
+          title: inputs?.title || null,
+          job_location: inputs?.job_location || null,
+        }),
       });
-    } catch (_) {
-      return { matched: false, reason: "no company provided" };
+    } catch (err) {
+      return {
+        matched: false,
+        reason: `H-1B lookup failed: ${err?.message || "network error"}`,
+      };
     }
   }
 
@@ -1357,8 +1414,7 @@
       }
 
       out.innerHTML = renderLoadingInline("Checking visa sponsorship…");
-      const lookupCompany = resolvedCompanyForInputs(ctx, inputs);
-      const sponsorship = await lookupSponsorshipQuick(lookupCompany);
+      const sponsorship = await lookupSponsorshipQuick(inputs, ctx);
       if (!stillCurrent()) return;
 
       const headH1b = renderHeadAndH1b(inputs, sponsorship);

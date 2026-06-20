@@ -318,7 +318,12 @@ function sectionLabel(text) {
 
 function humanizeSponsorshipReason(reason) {
   const r = String(reason || "").trim();
-  if (!r || r === "no company provided") return "No company name to look up";
+  if (!r || r === "no company provided" || r === "no company name provided") {
+    return "No company name to look up";
+  }
+  if (/lookup failed|network error|failed to fetch/i.test(r)) {
+    return "H-1B lookup failed — Retry in a moment";
+  }
   if (/no reliable match/i.test(r)) return "Not found in U.S. DOL database";
   return r;
 }

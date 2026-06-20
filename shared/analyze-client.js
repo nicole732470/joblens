@@ -12,12 +12,24 @@ function sleep(ms) {
 
 /** Same request body shape as vision-job-glow runAnalyzeCore. */
 function buildAnalyzeBody(inputs) {
+  let company = inputs.company || null;
+  let title = inputs.title || null;
+  let job_location = inputs.job_location || null;
+  const normalize =
+    (typeof JobLensReportView !== "undefined" && JobLensReportView.parseLinkedInStyleTitle) ||
+    globalThis.JobLensReportView?.parseLinkedInStyleTitle;
+  if (typeof normalize === "function") {
+    const parsed = normalize(title, company, job_location);
+    company = parsed.company || company;
+    title = parsed.title || title;
+    job_location = parsed.jobLocation || job_location;
+  }
   return {
     jd_text: inputs.jd_text || "",
-    company: inputs.company || null,
-    title: inputs.title || null,
+    company,
+    title,
     job_url: inputs.job_url || null,
-    job_location: inputs.job_location || null,
+    job_location,
   };
 }
 

@@ -24,7 +24,8 @@ from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import Report
 from app.tools.sponsorship import search_h1b_company
 from app.tools.entity_resolver import get_resolver
-from app.tools.job_url import parse_job_url
+from app.tools.job_fields import normalize_job_fields
+from app.tools.job_url import looks_like_job_posting, parse_job_url
 from app.tools.llm import llm_available
 from app.tools.observability import (
     bind_run_id,
@@ -142,6 +143,8 @@ class AnalyzeRequest(BaseModel):
 
 class SponsorshipLookupRequest(BaseModel):
     company: str | None = None
+    title: str | None = None
+    job_location: str | None = None
 
 
 class IndexResumeRequest(BaseModel):
@@ -310,7 +313,7 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
     if len(jd_text.strip()) < 40:
         raise HTTPException(status_code=400, detail="job description too short")
 
-    from app.tools.job_url import looks_like_job_posting
+    company, title, job_location = normalize_job_fields(company, title, job_location)
 
     jd_ok, jd_reason = looks_like_job_posting(jd_text, title or "")
     if not jd_ok:
@@ -373,7 +376,8 @@ def analyze(
 @app.post("/sponsorship/lookup")
 def sponsorship_lookup(req: SponsorshipLookupRequest) -> dict:
     """Fast H-1B DB lookup — same resolver as full analyze."""
-    return search_h1b_company(req.company or "")
+    company, _, _ = normalize_job_fields(req.company, req.title, req.job_location)
+    return search_h1b_company(company or req.company or "")
 
 
 @app.post("/analyze/async")

@@ -6,6 +6,8 @@ import re
 
 import httpx
 
+from app.tools.job_fields import normalize_job_fields
+
 # Known job-board URL patterns (not exhaustive — paired with content heuristics).
 _JOB_URL_HINTS = re.compile(
     r"(?:"
@@ -111,6 +113,7 @@ def parse_job_url(url: str) -> dict:
 
     title = _meta(html, "og:title") or _title_tag(html) or ""
     company = _meta(html, "og:site_name") or ""
+    company, title, job_location = normalize_job_fields(company, title, None)
     text = _visible_text(html)
     text = re.sub(r"\s+", " ", text).strip()
 
@@ -121,17 +124,19 @@ def parse_job_url(url: str) -> dict:
             "url": url,
             "title": title or None,
             "company": company or None,
+            "job_location": job_location,
         }
 
     content_ok, content_reason = looks_like_job_posting(text, title)
     if not content_ok:
-        return {"ok": False, "reason": content_reason, "url": url, "title": title or None}
+        return {"ok": False, "reason": content_reason, "url": url, "title": title or None, "company": company or None}
 
     return {
         "ok": True,
         "url": url,
         "title": title or None,
         "company": company or None,
+        "job_location": job_location,
         "jd_text": text[:12000],
     }
 
