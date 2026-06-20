@@ -262,6 +262,23 @@
   font-weight: 650;
 }
 
+.lca-h1b-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--jn-border);
+}
+
+.lca-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--jn-text-faint);
+  line-height: 1.2;
+}
+
 .lca-analyze-result {
   margin-top: 10px;
 }
@@ -269,12 +286,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 14px;
-  background: var(--jn-bg);
-  border: 1px solid var(--jn-border);
-  border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.04);
-  animation: lca-fadein 0.35s ease both;
+  padding-top: 10px;
+  border-top: 1px solid var(--jn-border);
 }
 .lca-fadein {
   animation: lca-fadein 0.35s ease both;
@@ -320,22 +333,26 @@
 
 .lca-metrics {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 .lca-metric {
   position: relative;
   text-align: center;
-  padding: 8px 4px;
-  background: var(--jn-bg);
+  padding: 7px 4px;
+  background: var(--jn-bg-subtle);
   border-radius: 8px;
   border: 1px solid var(--jn-border);
   cursor: default;
   outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+.lca-metric.lca-has-tip {
+  cursor: help;
 }
 .lca-metric.lca-has-tip:hover,
 .lca-metric.lca-has-tip:focus-visible {
-  border-color: #cfc9bd;
+  border-color: var(--jn-accent);
+  background: #fff;
   box-shadow: 0 1px 2px rgba(15, 15, 15, 0.06);
   z-index: 2;
 }
@@ -418,7 +435,11 @@
   gap: 10px;
   font-size: var(--lca-fs-sm);
   line-height: 1.35;
-  padding: 2px 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--jn-border);
+}
+.lca-signal-row:last-child {
+  border-bottom: none;
 }
 .lca-signal-lbl {
   color: var(--jn-text-faint);

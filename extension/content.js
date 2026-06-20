@@ -520,6 +520,7 @@
     const close = el.querySelector(".lca-close");
     if (close) close.addEventListener("click", () => el.remove());
     wireRefreshButton(el);
+    wireMetricTips(el.querySelector(".lca-body"));
     if (ctx) runAutoAnalyze(el, ctx);
   }
 
@@ -669,8 +670,18 @@
 
     const approvedPct = Math.round((employer.certified_count / filings) * 100);
     const grid = renderMetricGrid([
-      { val: `${approvedPct}%`, lbl: "Approved", hint: "Certified LCA share" },
-      { val: filings.toLocaleString(), lbl: "Filings", hint: "Total H-1B filings on record" },
+      {
+        val: `${approvedPct}%`,
+        lbl: "Approved",
+        tipTitle: "LCA approval rate",
+        tip: [{ k: "Certified", v: `${employer.certified_count ?? 0} of ${filings}` }],
+      },
+      {
+        val: filings.toLocaleString(),
+        lbl: "Filings",
+        tipTitle: "H-1B filings",
+        tip: [{ k: "Total LCAs", v: filings.toLocaleString() }],
+      },
     ]);
 
     const jobRows = (employer.top_jobs || [])
@@ -683,13 +694,16 @@
         return `<div class="lca-h1b-role" title="${escapeHtml(j.title)}${wage ? ` · ${wage}` : ""}">${title}${wageHtml}</div>`;
       });
 
-    if (!jobRows.length) return grid;
-    return `${grid}<div class="lca-h1b-roles">${jobRows.join("")}</div>`;
+    const rolesBlock = jobRows.length ? `<div class="lca-h1b-roles">${jobRows.join("")}</div>` : "";
+    return `<div class="lca-h1b-block"><div class="lca-section-label">H-1B sponsorship</div>${grid}${rolesBlock}</div>`;
   }
 
   function buildVerdictNote(rec) {
     if (!rec?.available) return "";
-    if (rec.track_label) return rec.track_label;
+    if (rec.track_label) {
+      const pri = rec.track_priority != null ? ` · P${rec.track_priority}` : "";
+      return `${rec.track_label}${pri}`;
+    }
     const decision = rec.decision || "";
     if (decision === "Skip") return "Not a strong fit";
     return "";
@@ -709,7 +723,7 @@
         ${renderHeadBlock(statusPill(meta.title, meta.status === "found" || meta.status === "ok" ? "ok" : "caution"), displayName, employer.name)}
         ${renderJobTitleLine(jobTitle)}
         ${renderH1bSummary(employer, jobTitle)}
-        <div class="lca-analyze-result"></div>
+        <div class="lca-analyze-result" data-section="fit"></div>
         ${renderFoot(["Source: U.S. DOL H-1B"])}
       </div>`;
     finishBadge(el, ctx);
@@ -771,10 +785,15 @@
       ".job-details-jobs-unified-top-card__job-title",
       ".jobs-unified-top-card__job-title",
       ".job-details-jobs-unified-top-card__job-title h1",
+      ".job-details-jobs-unified-top-card__job-title a",
       "h1.jobs-unified-top-card__job-title",
+      ".jobs-unified-top-card__job-title h1",
+      ".jobs-unified-top-card__job-title a",
       ".top-card-layout__title",
       ".jobs-details-top-card__job-title",
+      "[data-test-job-title]",
       "h1.t-24",
+      "main h1",
     ];
     const panel = findActiveJobPanel();
     for (const scope of [panel, document]) {
@@ -1480,7 +1499,8 @@
       const note = buildVerdictNote(rec);
 
       return `
-      <div class="lca-analysis">
+      <div class="lca-analysis lca-fadein">
+        <div class="lca-section-label">Fit analysis</div>
         <div class="lca-verdict-card">
           <div class="lca-verdict-row">
             ${statusPill(meta.text, meta.tone)}
@@ -1603,6 +1623,7 @@
       window.__jobLensLastReport = report;
       console.debug("[JobLens] explain:", report.explain);
       out.innerHTML = renderAnalysisInline(report, inputs.captureProbe);
+      wireMetricTips(out.closest(".lca-body") || out);
       wireMetricTips(out);
     } catch (err) {
       console.error("[JobLens]", err);

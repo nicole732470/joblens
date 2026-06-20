@@ -222,6 +222,11 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
             return fb
         return {"available": False, "reason": "LLM not configured (set LLM_API_KEY)"}
 
+    # Fast path: structured LinkedIn JDs parse reliably without LLM (~0ms vs 30–90s).
+    fb_quick = _fallback_parse(text)
+    if fb_quick and len(fb_quick.get("requirements") or []) >= 2:
+        return fb_quick
+
     user_base = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n"
     last_reason = "unknown error"
     data = None

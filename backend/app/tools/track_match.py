@@ -249,6 +249,13 @@ def resolve_job_title(title: str | None, jd_text: str | None) -> str:
     if not raw:
         return t
 
+    # LinkedIn JD body often omits the h1 — sniff known title families in the header.
+    header = raw[:800]
+    for pattern, _track_id in _TITLE_KEYWORD_RULES:
+        m = re.search(pattern, header, re.I)
+        if m:
+            return m.group(0).strip()
+
     skip_prefix = (
         "work environment",
         "we collaborate",
