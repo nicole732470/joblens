@@ -1,7 +1,4 @@
-import hashlib
-import json
 import logging
-import re
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -19,7 +16,7 @@ from app.auth import (
     require_user_id,
     verify_password,
 )
-from app.analyze_jobs import create_or_get_job, fail_job, finish_job, get_job, update_job
+from app.analyze_jobs import create_job, fail_job, finish_job, get_job, update_job
 from app.config import settings
 from app.db import check_db_connection
 from app.graph.workflow import run_analyze_workflow
@@ -304,16 +301,10 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
     job_url = req.job_url
     job_location = req.job_location
 
-    # The browser DOM/Voyager and the public LinkedIn page can differ subtly.
-    # Canonicalize LinkedIn jobs on the server so both surfaces score one JD.
-    is_linkedin_job = bool(
-        job_url and re.search(r"linkedin\.com/jobs/|currentJobId=", job_url, re.I)
-    )
-    if job_url and (is_linkedin_job or len(jd_text.strip()) < 80):
+    if job_url and len(jd_text.strip()) < 80:
         parsed = parse_job_url(job_url)
         if parsed.get("ok"):
-            if is_linkedin_job or len(jd_text.strip()) < 80:
-                jd_text = parsed.get("jd_text") or jd_text
+            jd_text = parsed.get("jd_text") or jd_text
             company = company or parsed.get("company")
             title = title or parsed.get("title")
         elif not jd_text.strip():
@@ -363,26 +354,6 @@ def _run_analyze_job(
         set_request_profile(None)
 
 
-def _analysis_cache_key(workflow_kwargs: dict, user_id: uuid.UUID | None) -> str:
-    """Stable key for one job + candidate context across Web and extension."""
-    inputs = dict(workflow_kwargs)
-    job_url = str(inputs.get("job_url") or "")
-    linkedin_id = re.search(r"linkedin\.com/jobs/view/(\d+)", job_url, re.I)
-    if linkedin_id:
-        inputs["job_url"] = f"https://www.linkedin.com/jobs/view/{linkedin_id.group(1)}/"
-
-    profile = None
-    if user_id:
-        try:
-            loaded = get_user_profile(user_id)
-            profile = loaded.model_dump() if hasattr(loaded, "model_dump") else loaded
-        except Exception:  # noqa: BLE001
-            profile = None
-    payload = {"user_id": str(user_id or "guest"), "profile": profile, "inputs": inputs}
-    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 @app.post("/analyze", response_model=Report)
 def analyze(
     req: AnalyzeRequest,
@@ -411,21 +382,13 @@ def analyze_async(
     """Start analyze in background; poll GET /analyze/jobs/{job_id} for steps + result."""
     workflow_kwargs = _resolve_analyze_inputs(req, user_id)
     run_id = start_trace()
-    cache_key = _analysis_cache_key(workflow_kwargs, user_id)
-    job_id, created = create_or_get_job(run_id=run_id, cache_key=cache_key)
-    if created:
-        threading.Thread(
-            target=_run_analyze_job,
-            args=(job_id, run_id, workflow_kwargs, user_id),
-            daemon=True,
-        ).start()
-    job = get_job(job_id) or {}
-    return {
-        "job_id": job_id,
-        "run_id": job.get("run_id", run_id),
-        "status": job.get("status", "running"),
-        "reused": not created,
-    }
+    job_id = create_job(run_id=run_id)
+    threading.Thread(
+        target=_run_analyze_job,
+        args=(job_id, run_id, workflow_kwargs, user_id),
+        daemon=True,
+    ).start()
+    return {"job_id": job_id, "run_id": run_id, "status": "running"}
 
 
 @app.get("/analyze/jobs/{job_id}")
