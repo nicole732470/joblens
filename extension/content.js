@@ -86,14 +86,13 @@
   let lastFingerprint = null;
 
   function renderFoot(parts) {
-    const bits = (parts || []).map((p) => escapeHtml(p)).filter(Boolean);
-    if (WEB_APP_URL) {
-      bits.push(
-        `<span class="lca-foot-site">${brandLogoHtml(14)}<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener">${escapeHtml(WEB_APP_URL)}</a></span>`
-      );
-    }
-    bits.push(`v${extensionVersion()}`);
-    return `<div class="lca-foot">${bits.join(" · ")}</div>`;
+    const meta = (parts || []).map((p) => escapeHtml(p)).filter(Boolean);
+    const metaHtml = meta.length ? `<span class="lca-foot-meta">${meta.join(" · ")}</span>` : "";
+    const site = WEB_APP_URL
+      ? `<span class="lca-foot-site">${brandLogoHtml(14)}<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener">${escapeHtml(WEB_APP_URL)}</a></span>`
+      : "";
+    const ver = `<span class="lca-foot-ver">v${extensionVersion()}</span>`;
+    return `<div class="lca-foot">${metaHtml}${site}${ver}</div>`;
   }
 
   async function readAuthState() {
@@ -459,25 +458,16 @@
     }
   }
 
-  function brandLogoUrl() {
-    try {
-      return extensionRuntime()?.getURL?.("icons/logo.svg") || "";
-    } catch (_) {
-      return "";
-    }
-  }
-
   function brandLogoHtml(size = 18) {
-    const src = brandLogoUrl();
-    if (!src) return "";
-    return `<img class="lca-logo" src="${escapeHtml(src)}" alt="" width="${size}" height="${size}" />`;
+    const s = Number(size) || 18;
+    return `<svg class="lca-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="${s}" height="${s}" fill="none" aria-hidden="true"><circle cx="13.5" cy="13.5" r="8.5" stroke="#c4654a" stroke-width="2.4"/><circle cx="13.5" cy="13.5" r="3.2" fill="#4a6741"/><path d="M19.8 19.8L27 27" stroke="#c4654a" stroke-width="2.4" stroke-linecap="round"/></svg>`;
   }
 
   function renderChrome(showRetry = true) {
     const retryBtn = showRetry
-      ? `<button type="button" class="lca-refresh-btn" title="Re-run H-1B + fit analysis for this job">Retry</button>`
+      ? `<button type="button" class="lca-refresh-btn" title="Re-run analysis for this job">Retry</button>`
       : "";
-    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand-wrap">${brandLogoHtml(18)}<span class="lca-brand">JobLens</span></span>${retryBtn}<button type="button" class="lca-close" aria-label="Close panel">×</button></div>`;
+    return `<div class="lca-chrome"><span class="lca-drag-handle" title="Drag to move">⋮⋮</span><span class="lca-brand-wrap">${brandLogoHtml(18)}<span class="lca-brand">JobLens</span></span><div class="lca-chrome-actions">${retryBtn}<button type="button" class="lca-close" aria-label="Hide panel" title="Hide panel">&#x2715;</button></div></div>`;
   }
 
   function initDrag(el) {
@@ -541,9 +531,13 @@
     el.innerHTML = `
       ${renderChrome()}
       <div class="lca-body">
-        <div class="lca-analyze-result"></div>
-        <div class="lca-auth-slot">${renderAuthBanner(auth)}</div>
-        ${renderFoot([])}
+        <div class="lca-scroll">
+          <div class="lca-analyze-result"></div>
+        </div>
+        <div class="lca-panel-bottom">
+          <div class="lca-auth-slot">${renderAuthBanner(auth)}</div>
+          ${renderFoot([])}
+        </div>
       </div>`;
     initPanelChrome(el);
     return el;
@@ -1016,6 +1010,36 @@
     return best;
   }
 
+  function extractCompanyLogoUrl() {
+    const selectors = [
+      ".job-details-jobs-unified-top-card__company-logo img",
+      ".jobs-unified-top-card__company-logo img",
+      ".job-details-jobs-unified-top-card__company-logo a img",
+      "a[data-tracking-control-name='public_jobs_topcard-org-name'] img",
+      "a[href*='/company/'] img[src*='licdn.com']",
+    ];
+    const panel = findActiveJobPanel();
+    for (const scope of [panel, document]) {
+      if (!scope) continue;
+      for (const sel of selectors) {
+        const img = scope.querySelector?.(sel) || (scope === document ? document.querySelector(sel) : null);
+        if (img?.src && !/ghost|placeholder|data:image|profile-display/i.test(img.src)) {
+          return img.src;
+        }
+      }
+    }
+    return null;
+  }
+
+  function resolvedCompanyForInputs(ctx, inputs) {
+    const parse = RV.parseLinkedInStyleTitle;
+    const parsed =
+      typeof parse === "function"
+        ? parse(inputs?.title, inputs?.company || ctx?.displayName, inputs?.job_location)
+        : {};
+    return parsed.company || inputs?.company || ctx?.displayName || null;
+  }
+
   async function gatherJobInputs(ctx) {
     const jd_text = await captureJobDescription();
     const probe = probeJdOnPage();
@@ -1040,6 +1064,7 @@
       jd_text,
       job_url: window.location.href,
       captureProbe: probe,
+      company_logo_url: extractCompanyLogoUrl(),
     };
   }
 
@@ -1228,6 +1253,8 @@
           report.received?.job_location ||
           extractJobLocation() ||
           null,
+        company_logo_url:
+          inputs?.company_logo_url || report.received?.company_logo_url || extractCompanyLogoUrl() || null,
       },
     };
   }
@@ -1330,7 +1357,8 @@
       }
 
       out.innerHTML = renderLoadingInline("Checking visa sponsorship…");
-      const sponsorship = await lookupSponsorshipQuick(inputs.company);
+      const lookupCompany = resolvedCompanyForInputs(ctx, inputs);
+      const sponsorship = await lookupSponsorshipQuick(lookupCompany);
       if (!stillCurrent()) return;
 
       const headH1b = renderHeadAndH1b(inputs, sponsorship);

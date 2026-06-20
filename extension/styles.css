@@ -25,7 +25,7 @@
   z-index: 99999;
   width: 360px;
   max-width: calc(100vw - 24px);
-  max-height: min(82vh, 580px);
+  max-height: min(88vh, 680px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -76,6 +76,34 @@
   z-index: 2;
   backdrop-filter: blur(12px);
 }
+#joblens-panel .lca-brand-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+#joblens-panel .lca-chrome-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+#joblens-panel .lca-brand {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--jn-font-mono);
+  color: #2a2418;
+  letter-spacing: -0.02em;
+  pointer-events: none;
+  line-height: 1.2;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+#joblens-panel .lca-logo {
+  display: block;
+  flex-shrink: 0;
+}
 #joblens-panel.lca-badge.lca-dragging .lca-chrome {
   cursor: grabbing;
 }
@@ -86,22 +114,7 @@
   letter-spacing: -2px;
   pointer-events: none;
   opacity: 0.85;
-}
-#joblens-panel .lca-brand {
-  flex: 1;
-  font-size: 15px;
-  font-weight: 700;
-  font-family: var(--jn-font-mono);
-  color: #2a2418;
-  letter-spacing: -0.02em;
-  pointer-events: none;
-  line-height: 1.2;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
-}
-#joblens-panel .lca-brand::before {
-  content: "◐ ";
-  color: #4a6741;
-  margin-right: 2px;
+  flex-shrink: 0;
 }
 #joblens-panel .lca-refresh-btn,
 #joblens-panel .lca-analyze-btn {
@@ -140,40 +153,61 @@
 }
 #joblens-panel .lca-close {
   border: none;
-  background: rgba(42, 36, 24, 0.06) !important;
-  border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  font-size: 18px;
+  background: transparent !important;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+  font-weight: 400;
   line-height: 1;
   cursor: pointer;
-  color: #5b5240 !important;
+  color: #857a64 !important;
   padding: 0;
   flex-shrink: 0;
-  transition: background 120ms ease, color 120ms ease;
+  opacity: 0.75;
+  transition: opacity 120ms ease, color 120ms ease;
 }
 #joblens-panel .lca-close:hover {
-  background: rgba(42, 36, 24, 0.12) !important;
-  color: #2a2418 !important;
+  background: transparent !important;
+  opacity: 1;
+  color: #5b5240 !important;
 }
 
 #joblens-panel .lca-body {
-  padding: 12px 14px 14px;
-  overflow-y: auto;
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--lca-body-bg);
+}
+#joblens-panel .lca-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px 14px 10px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: var(--lca-body-bg);
   scrollbar-width: thin;
   scrollbar-color: rgba(42, 36, 24, 0.2) transparent;
 }
-#joblens-panel .lca-body::-webkit-scrollbar {
+#joblens-panel .lca-scroll::-webkit-scrollbar {
   width: 4px;
 }
-#joblens-panel .lca-body::-webkit-scrollbar-thumb {
+#joblens-panel .lca-scroll::-webkit-scrollbar-thumb {
   background: rgba(42, 36, 24, 0.2);
   border-radius: 99px;
+}
+#joblens-panel .lca-panel-bottom {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--lca-chrome-border);
+  background: var(--lca-body-bg);
 }
 
 .lca-pill {
@@ -747,29 +781,50 @@ body > .lca-metric-tip.lca-tip-visible,
   line-height: 1.45;
 }
 
-#joblens-panel .lca-chrome .lca-brand-wrap {
-  display: inline-flex;
+#joblens-panel .lca-foot {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  min-width: 0;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--jn-text-faint);
 }
-#joblens-panel .lca-logo {
-  display: block;
-  flex-shrink: 0;
-  border-radius: 4px;
+#joblens-panel .lca-foot-meta {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 #joblens-panel .lca-foot-site {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 100%;
+  min-width: 0;
+  flex: 1 1 160px;
 }
 #joblens-panel .lca-foot-site a {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-
-/* Extension panel: report section spacing */
+#joblens-panel .lca-foot-ver {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--jn-text-faint);
+  white-space: nowrap;
+}
+#joblens-panel .lca-foot a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 11px;
+}
 #joblens-panel .jl-report-results {
   display: flex !important;
   flex-direction: column !important;
@@ -806,10 +861,24 @@ body > .lca-metric-tip.lca-tip-visible,
   line-height: 1.45;
   color: var(--jn-text-secondary);
 }
+#joblens-panel .lca-scroll .jl-report-results,
+#joblens-panel .lca-scroll .lca-analyze-inner,
+#joblens-panel .lca-scroll .lca-section-card,
+#joblens-panel .lca-resume-stack,
+#joblens-panel .lca-resume-block,
+#joblens-panel .lca-resume-block .lca-verdict-card,
+#joblens-panel .lca-resume-block-body {
+  min-width: 0;
+  max-width: 100%;
+}
+#joblens-panel .lca-resume-block .lca-verdict-card {
+  overflow: visible;
+}
 #joblens-panel .lca-resume-block-body .lca-resume-list {
   margin: 0;
   padding-left: 18px;
   list-style: disc;
+  overflow: visible;
 }
 #joblens-panel .lca-resume-block-body .lca-resume-list--ordered {
   padding-left: 22px;
@@ -818,8 +887,11 @@ body > .lca-metric-tip.lca-tip-visible,
 #joblens-panel .lca-resume-block-body .lca-resume-list li {
   margin: 0 0 8px;
   padding-left: 2px;
-  overflow-wrap: anywhere;
+  white-space: normal !important;
+  overflow: visible !important;
+  overflow-wrap: break-word;
   word-break: break-word;
+  hyphens: auto;
 }
 #joblens-panel .lca-resume-block-body .lca-resume-empty {
   margin: 0;
@@ -832,25 +904,15 @@ body > .lca-metric-tip.lca-tip-visible,
   font-weight: 500;
   line-height: 1.35;
 }
-#joblens-panel .lca-foot {
-  margin-top: 6px;
-  padding-top: 8px;
-  word-break: break-all;
-}
-#joblens-panel .lca-foot a {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  font-size: 11px;
-}
 
-/* Auth strip — bottom of panel, one line (web handles login/signup) */
+/* Extension panel: report section spacing */
 #joblens-panel .lca-auth-strip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 6px 12px;
-  margin-top: 10px;
+  margin-top: 0;
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid rgba(196, 101, 74, 0.2);

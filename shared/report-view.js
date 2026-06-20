@@ -341,14 +341,18 @@ function sponsorHeadPillFromApi(sp) {
   return statusPill("H-1B sponsor", "ok");
 }
 
-function renderCompanyHeadBlock(displayName, legalName, jobTitle, pillHtml, jobLocation) {
+function renderCompanyHeadBlock(displayName, legalName, jobTitle, pillHtml, jobLocation, companyLogoUrl) {
   const primary = displayName || legalName || "";
   const sub =
     legalName && displayName && legalName.toLowerCase() !== displayName.toLowerCase()
       ? `<span class="lca-legal-name">DOL: ${escapeHtml(legalName)}</span>`
       : "";
+  const logo =
+    companyLogoUrl && String(companyLogoUrl).startsWith("http")
+      ? `<img class="lca-co-logo" src="${escapeHtml(companyLogoUrl)}" alt="" width="22" height="22" referrerpolicy="no-referrer" />`
+      : "";
   const companyLine = primary
-    ? `<div class="lca-company-line"><div class="lca-company-text"><span class="lca-company">${escapeHtml(primary)}</span>${sub}</div></div>`
+    ? `<div class="lca-company-line">${logo}<div class="lca-company-text"><span class="lca-company">${escapeHtml(primary)}</span>${sub}</div></div>`
     : "";
   const titleLine = jobTitle
     ? `<div class="lca-job-title${primary ? "" : " lca-job-title--solo"}">${escapeHtml(jobTitle)}</div>`
@@ -546,7 +550,16 @@ function renderUnifiedReport(report, options = {}) {
   const parts = ['<div class="jl-report-results">'];
 
   if (sections.includes("head") && (company || title || pill || jobLocation)) {
-    parts.push(renderCompanyHeadBlock(company, legal, title, pill, jobLocation));
+    parts.push(
+      renderCompanyHeadBlock(
+        company,
+        legal,
+        title,
+        pill,
+        jobLocation,
+        report.received?.company_logo_url || options.companyLogoUrl || null
+      )
+    );
   }
 
   if (sections.includes("h1b")) {
