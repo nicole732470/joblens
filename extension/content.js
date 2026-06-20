@@ -42,7 +42,13 @@
 
   const RV = globalThis.JobLensReportView;
   if (!RV) {
-    console.error("[JobLens] lib/report-view.js not loaded — reload extension at chrome://extensions");
+    showExtensionBrokenBanner();
+    console.error(
+      "[JobLens] Report UI failed to load. If the console also shows \"Unexpected token export\" at " +
+        "lib/report-view.js:664, Chrome is still running an OLD copy of the plugin.\n" +
+        "Fix: chrome://extensions → remove JobLens → Load unpacked → pick folder …/joblens/extension " +
+        "(not vision-job-glow). Version must be 3.3.6+, then refresh this LinkedIn tab."
+    );
     return;
   }
 

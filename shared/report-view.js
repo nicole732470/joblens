@@ -1,5 +1,6 @@
 /**
  * JobLens report UI — single source of truth for extension + web.
+ * Extension build: classic script only (no export/import). Build id: 3.3.6-classic
  * Same /analyze JSON → same HTML. Sync: ./scripts/sync-shared-ui.sh
  */
 
@@ -659,4 +660,5 @@ const JobLensReportView = {
 
 if (typeof globalThis !== "undefined") {
   globalThis.JobLensReportView = JobLensReportView;
+  globalThis.__JOBLENS_REPORT_VIEW_BUILD__ = "3.3.6-classic";
 }
