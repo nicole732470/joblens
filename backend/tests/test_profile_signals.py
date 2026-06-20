@@ -2,7 +2,12 @@
 
 from app.schemas.candidate_profile import CandidateProfile, Locations
 from app.schemas.report import JDParse
-from app.tools.profile_signals import _is_onsite_job, _mentions_remote_policy, score_location
+from app.tools.profile_signals import (
+    _is_fully_remote_job,
+    _is_onsite_job,
+    _mentions_remote_policy,
+    score_location,
+)
 
 
 def _profile(**kwargs) -> CandidateProfile:
@@ -34,11 +39,46 @@ def test_clearwater_onsite_not_remote():
     assert "Clearwater" in (loc["location_label"] or "")
 
 
-def test_fully_remote_still_p2():
+def test_fully_remote_is_p1():
     jd = JDParse(available=True, location="Fully remote within the US")
     loc = score_location(jd, "This role is fully remote.", _profile())
+    assert loc["location_tier"] == 1
+    assert "Fully remote" in (loc["location_label"] or "")
+
+
+def test_remote_location_is_p1():
+    loc = score_location(
+        JDParse(available=False),
+        "Build production systems.",
+        _profile(),
+        job_location="Remote",
+    )
+    assert loc["location_tier"] == 1
+
+
+def test_fully_remote_beats_geographic_tier():
+    jd = JDParse(available=True, location="Austin, TX — fully remote")
+    loc = score_location(
+        jd,
+        "This is a fully remote role available throughout the US.",
+        _profile(),
+        job_location="Austin, TX · Remote",
+    )
+    assert loc["location_tier"] == 1
+    assert "Fully remote" in (loc["location_label"] or "")
+
+
+def test_hybrid_uses_geographic_tier():
+    jd = JDParse(available=True, location="Austin, TX (Hybrid)")
+    loc = score_location(
+        jd,
+        "Hybrid role with three days per week in the Austin office.",
+        _profile(),
+        job_location="Austin, TX · Hybrid",
+    )
+    assert not _is_fully_remote_job("Hybrid role with remote flexibility")
     assert loc["location_tier"] == 2
-    assert "Remote" in (loc["location_label"] or "")
+    assert "Texas" in (loc["location_label"] or "")
 
 
 def test_chicago_jd_location_is_p1():

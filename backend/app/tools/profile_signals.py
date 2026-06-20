@@ -269,6 +269,12 @@ _REMOTE_POLICY_RE = re.compile(
     r")\b",
     re.I,
 )
+_FULLY_REMOTE_RE = re.compile(
+    r"\b(fully remote|100\s*%\s*remote|100 percent remote|remote[- ]only|"
+    r"work from anywhere|anywhere in (?:the )?(?:u\.?s\.?|united states)|"
+    r"(?:u\.?s\.?|united states)[- ]remote)\b",
+    re.I,
+)
 _REMOTE_NEG_RE = re.compile(
     r"\b(not|no)\s+(a\s+)?remote\b|\bnon[- ]remote\b|\bisn['']t remote\b|\bcannot work remote\b",
     re.I,
@@ -320,6 +326,18 @@ def _mentions_remote_policy(text: str) -> bool:
     return False
 
 
+def _is_fully_remote_job(text: str, job_location: str | None = None) -> bool:
+    """True only when no regular office attendance is implied."""
+    blob = f"{job_location or ''}\n{text or ''}".strip()
+    if _REMOTE_NEG_RE.search(blob) or re.search(r"\bhybrid\b", blob, re.I):
+        return False
+    if _is_onsite_job(blob) or re.search(r"\b\d+\s+days?\s+(?:a|per)\s+week\s+(?:in|at)\s+(?:the\s+)?office\b", blob, re.I):
+        return False
+    if (job_location or "").strip().lower() in {"remote", "remote, us", "united states (remote)"}:
+        return True
+    return bool(_FULLY_REMOTE_RE.search(blob))
+
+
 def score_location(
     jd: JDParse,
     jd_text: str,
@@ -328,6 +346,10 @@ def score_location(
     job_location: str | None = None,
 ) -> dict:
     """Return location_score, location_label, location_tier (P1–P3) for UI."""
+    initial_policy = _primary_location_blob(jd, jd_text, job_title, job_location)
+    if profile.locations.remote_ok and _is_fully_remote_job(initial_policy, job_location):
+        return {"location_score": 1.0, "location_label": "P1 · Fully remote", "location_tier": 1}
+
     # LinkedIn location line (under title) — trust before JD HQ noise.
     if job_location and job_location.strip():
         loc_line = job_location.strip().lower()
@@ -376,9 +398,6 @@ def score_location(
                 "location_label": f"P{tier_num} · {hit}",
                 "location_tier": tier_num,
             }
-
-    if profile.locations.remote_ok and _mentions_remote_policy(policy_text):
-        return {"location_score": 0.75, "location_label": "P2 · Remote", "location_tier": 2}
 
     if _tier3_semantic_hit(profile, tier_text):
         suffix = place or "rural / avoid area"
