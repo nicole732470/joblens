@@ -58,7 +58,58 @@ def merge_profile_with_yaml_defaults(profile: CandidateProfile) -> CandidateProf
         data["dealbreakers"] = base_data["dealbreakers"]
     if not data.get("constraints") and base_data.get("constraints"):
         data["constraints"] = base_data["constraints"]
+    if not data.get("trajectory") and base_data.get("trajectory"):
+        data["trajectory"] = base_data["trajectory"]
+    if not data.get("technical_penalties") and base_data.get("technical_penalties"):
+        data["technical_penalties"] = base_data["technical_penalties"]
+    if not data.get("alumni_schools") and base_data.get("alumni_schools"):
+        data["alumni_schools"] = base_data["alumni_schools"]
+    if loc.get("relocation_ok") is None and base_loc.get("relocation_ok") is not None:
+        loc["relocation_ok"] = base_loc["relocation_ok"]
     return CandidateProfile.model_validate(data)
+
+
+def is_owner_email(email: str | None) -> bool:
+    if not email or not settings.owner_email:
+        return False
+    return email.strip().lower() == settings.owner_email.strip().lower()
+
+
+def sync_user_from_golden_defaults(user_id: uuid.UUID) -> dict:
+    """Overwrite user profile + primary resume from repo golden set (extension parity)."""
+    profile = _yaml_default_profile()
+    if profile is None:
+        raise FileNotFoundError("golden candidate_profile.yaml not found")
+    save_user_profile(user_id, profile)
+
+    from app.tools.resume_loader import load_default_resume
+    from app.tools.resume_store import index_resume
+
+    resume_text = load_default_resume()
+    rid = save_user_resume(user_id, "resume.md", resume_text)
+    indexed = index_resume(resume_text, resume_key=f"user_{user_id}", force=True)
+    return {
+        "profile": "synced",
+        "resume_id": str(rid),
+        "resume_chars": len(resume_text),
+        "resume_indexed": indexed.get("indexed", False),
+    }
+
+
+def sync_owner_from_golden(email: str | None = None) -> dict:
+    """Sync owner account by email (CLI / login hook)."""
+    target = (email or settings.owner_email or "").strip().lower()
+    if not target:
+        raise ValueError("owner email not configured")
+    from app.auth import fetch_user_by_email
+
+    row = fetch_user_by_email(target)
+    if not row:
+        raise ValueError(f"no user registered for {target}")
+    out = sync_user_from_golden_defaults(row["id"])
+    out["email"] = target
+    out["user_id"] = str(row["id"])
+    return out
 
 
 def get_user_profile(user_id: uuid.UUID) -> CandidateProfile:

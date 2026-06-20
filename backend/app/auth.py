@@ -73,6 +73,11 @@ def fetch_user_by_email(email: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def fetch_user_email(user_id: uuid.UUID) -> str | None:
+    row = fetch_one("SELECT email FROM users WHERE id = %s", (user_id,))
+    return row["email"] if row else None
+
+
 def create_user(email: str, password: str) -> uuid.UUID:
     ensure_auth_schema()
     import psycopg

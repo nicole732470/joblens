@@ -22,6 +22,10 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("LLM_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"),
     )
 
+    # Owner test account — web login stays in sync with extension YAML + golden resume.
+    owner_email: str = "nicole732470@gmail.com"
+    owner_sync_golden_on_login: bool = True
+
     # Candidate intent (tracks, locations, …) — separate from resume text.
     candidate_profile_path: str = "evals/golden_set/candidate_profile.yaml"
 

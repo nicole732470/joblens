@@ -39,8 +39,10 @@ from app.tools.resume_store import index_resume
 from app.user_store import (
     get_primary_resume_text,
     get_user_profile,
+    is_owner_email,
     save_user_profile,
     save_user_resume,
+    sync_owner_from_golden,
 )
 
 
@@ -181,7 +183,10 @@ def auth_register(req: AuthRegisterRequest) -> dict:
         raise HTTPException(status_code=409, detail="email already registered")
     user_id = create_user(req.email, req.password)
     try:
-        save_user_profile(user_id, load_candidate_profile())
+        if is_owner_email(req.email) and settings.owner_sync_golden_on_login:
+            sync_owner_from_golden(req.email)
+        else:
+            save_user_profile(user_id, load_candidate_profile())
     except FileNotFoundError:
         pass
     token = create_access_token(user_id, req.email)
@@ -193,6 +198,11 @@ def auth_login(req: AuthLoginRequest) -> dict:
     row = fetch_user_by_email(req.email)
     if not row or not verify_password(req.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="invalid email or password")
+    if is_owner_email(row["email"]) and settings.owner_sync_golden_on_login:
+        try:
+            sync_owner_from_golden(row["email"])
+        except FileNotFoundError:
+            pass
     token = create_access_token(row["id"], row["email"])
     return {"token": token, "user_id": str(row["id"]), "email": row["email"]}
 
