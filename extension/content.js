@@ -1272,6 +1272,18 @@
     return reason.length > 72 ? `${reason.slice(0, 70)}…` : reason;
   }
 
+  function reportRenderOptions(inputs, ctx) {
+    const panel = findActiveJobPanel();
+    const domCo =
+      extractCompanyNameFromDom(false, panel) || extractCompanyNameFromDom(false, null);
+    return {
+      company: inputs?.company || domCo || ctx?.displayName || null,
+      title: inputs?.title || null,
+      jobLocation: inputs?.job_location || null,
+      companyLogoUrl: inputs?.company_logo_url || extractCompanyLogoUrl() || null,
+    };
+  }
+
   function enrichReport(report, inputs) {
     const parse = RV.parseLinkedInStyleTitle;
     const parsed =
@@ -1292,7 +1304,13 @@
           report.received?.title ||
           extractJobTitle() ||
           null,
-        company: parsed.company || inputs?.company || report.received?.company || null,
+        company:
+          parsed.company ||
+          inputs?.company ||
+          report.received?.company ||
+          extractCompanyNameFromDom(false, findActiveJobPanel()) ||
+          extractCompanyNameFromDom(false, null) ||
+          null,
         job_location:
           parsed.jobLocation ||
           inputs?.job_location ||
@@ -1341,12 +1359,15 @@
     }
   }
 
-  function renderHeadAndH1b(inputs, sponsorship) {
+  function renderHeadAndH1b(inputs, ctx, sponsorship) {
     const enriched = enrichReport({ sponsorship, received: {} }, inputs);
-    return RV.renderUnifiedReport(enriched, { sections: ["head", "h1b"] });
+    return RV.renderUnifiedReport(enriched, {
+      sections: ["head", "h1b"],
+      ...reportRenderOptions(inputs, ctx),
+    });
   }
 
-  function renderFullReport(report, captureProbe, inputs) {
+  function renderFullReport(report, captureProbe, inputs, ctx) {
     const chars = report.received?.jd_chars ?? 0;
     const jd = report.jd;
 
@@ -1356,7 +1377,7 @@
 
     const enriched = enrichReport(report, inputs);
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    return `<div class="lca-analyze-inner lca-fadein">${errLine}${RV.renderUnifiedReport(enriched)}</div>`;
+    return `<div class="lca-analyze-inner lca-fadein">${errLine}${RV.renderUnifiedReport(enriched, reportRenderOptions(inputs, ctx))}</div>`;
   }
 
   function renderAnalysisErrorInline(err) {
@@ -1417,7 +1438,7 @@
       const sponsorship = await lookupSponsorshipQuick(inputs, ctx);
       if (!stillCurrent()) return;
 
-      const headH1b = renderHeadAndH1b(inputs, sponsorship);
+      const headH1b = renderHeadAndH1b(inputs, ctx, sponsorship);
       let fitMessage = "Analyzing role & resume match… usually 30–60s";
       out.innerHTML = `<div class="lca-analyze-inner">${renderProgressiveReport(headH1b, fitMessage)}</div>`;
 
@@ -1430,7 +1451,7 @@
 
       window.__jobLensLastReport = report;
       console.debug("[JobLens] explain:", report.explain);
-      out.innerHTML = renderFullReport(report, inputs.captureProbe, inputs);
+      out.innerHTML = renderFullReport(report, inputs.captureProbe, inputs, ctx);
       if (extensionStale) {
         out.innerHTML =
           `<p class="lca-err-mini">Extension was reloaded — refresh this tab (F5) before the next job.</p>` +
