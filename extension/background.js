@@ -1,6 +1,7 @@
 /** MV3 background — proxy analyze API (avoids mixed-content blocks on LinkedIn HTTPS). */
 
-const BACKEND_URL = "http://3.128.164.130:8000";
+const BACKEND_URL = "https://3-128-164-130.sslip.io";
+const ANALYZE_TIMEOUT_MS = 120_000;
 
 chrome.runtime.onInstalled.addListener(() => {
   console.info("[JobLens] extension installed/updated");
@@ -20,10 +21,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
   if (msg?.type === "JOBLENS_ANALYZE" && msg.body) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
     fetch(`${BACKEND_URL}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(msg.body),
+      signal: controller.signal,
     })
       .then(async (resp) => {
         const text = await resp.text();
@@ -37,7 +41,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           sendResponse({ ok: false, error: String(e) });
         }
       })
-      .catch((err) => sendResponse({ ok: false, error: String(err) }));
+      .catch((err) => sendResponse({ ok: false, error: String(err) }))
+      .finally(() => clearTimeout(timer));
     return true; // async sendResponse
   }
   return false;

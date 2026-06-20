@@ -3,7 +3,7 @@
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
-  const BACKEND_URL = "http://3.128.164.130:8000";
+  const BACKEND_URL = "https://3-128-164-130.sslip.io";
   // Lovable web app — set after Publish (vision-job-glow). Empty = no footer link.
   const WEB_APP_URL = "https://vision-job-glow.lovable.app";
   let extensionBroken = false;
@@ -1571,11 +1571,15 @@
   }
 
   function renderAnalysisErrorInline(err) {
-    const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(err.message);
+    const msg = err?.message || String(err);
+    const isAbort = /abort/i.test(msg);
+    const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(msg);
     return `<div class="lca-analyze-inner lca-analyze-err">${
-      isNetwork
+      isAbort
+        ? "Analysis timed out after 2 minutes — the server may be busy. Click <strong>Refresh</strong> to retry."
+        : isNetwork
         ? `Can't reach the analysis server at <code>${escapeHtml(BACKEND_URL)}</code>. Reload the extension at chrome://extensions, then Retry.`
-        : escapeHtml(err.message)
+        : escapeHtml(msg)
     }</div>`;
   }
 
@@ -1587,7 +1591,7 @@
       out.innerHTML = renderCompanyPageAnalyzeHint();
       return;
     }
-    out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Checking fit…</div>`;
+    out.innerHTML = `<div class="lca-loading-row"><span class="lca-spinner"></span> Analyzing fit… usually 30–60s</div>`;
     try {
       const inputs = await gatherJobInputs(ctx);
       if ((inputs.jd_text || "").length < 80) {

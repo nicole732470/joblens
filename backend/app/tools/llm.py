@@ -26,7 +26,7 @@ def get_client():
     return OpenAI(
         base_url=settings.llm_base_url,
         api_key=settings.llm_api_key,
-        timeout=45.0,
+        timeout=30.0,
         max_retries=1,
     )
 

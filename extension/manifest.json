@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "JobLens",
-  "version": "3.2.2",
+  "version": "3.2.3",
   "description": "JobLens — visa sponsorship + role match on LinkedIn before you apply.",
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://linkedin.com/*",
+    "https://3-128-164-130.sslip.io/*",
     "http://3.128.164.130:8000/*",
     "http://ec2-3-128-164-130.us-east-2.compute.amazonaws.com:8000/*",
     "http://localhost:8000/*",

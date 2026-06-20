@@ -27,8 +27,13 @@ psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f db/auth_schema.sql
 
 JWT_SECRET=$(echo "$APP_JSON" | jq -r '.JWT_SECRET // empty')
 if [[ -z "$JWT_SECRET" || "$JWT_SECRET" == "null" ]]; then
-  JWT_SECRET=$(openssl rand -hex 32)
-  echo "WARN: JWT_SECRET missing in joblens/app — using ephemeral .env value (add JWT_SECRET to secret for persistence)"
+  echo "ERROR: JWT_SECRET missing in joblens/app — run deploy/ensure-app-secrets.sh locally first"
+  exit 1
+fi
+LANGCHAIN_API_KEY=$(echo "$APP_JSON" | jq -r '.LANGCHAIN_API_KEY // .LANGSMITH_API_KEY // empty')
+LANGSMITH_PROJECT=$(echo "$APP_JSON" | jq -r '.LANGSMITH_PROJECT // "joblens-analyze"')
+if [[ -z "$LANGCHAIN_API_KEY" || "$LANGCHAIN_API_KEY" == "null" ]]; then
+  echo "INFO: LANGCHAIN_API_KEY not in joblens/app — LangSmith tracing off (run deploy/ensure-app-secrets.sh with key)"
 fi
 
 cat > .env <<EOF
@@ -36,10 +41,10 @@ DATABASE_URL=postgresql://${RDS_USER}:${RDS_PASS}@${RDS_HOST}:5432/${RDS_DB}
 LLM_API_KEY=$(echo "$APP_JSON" | jq -r .LLM_API_KEY)
 LLM_BASE_URL=$(echo "$APP_JSON" | jq -r .LLM_BASE_URL)
 LLM_MODEL=$(echo "$APP_JSON" | jq -r .LLM_MODEL)
-USE_REACT_AGENT=true
+USE_REACT_AGENT=false
 JWT_SECRET=${JWT_SECRET}
-LANGCHAIN_API_KEY=$(echo "$APP_JSON" | jq -r '.LANGCHAIN_API_KEY // .LANGSMITH_API_KEY // empty')
-LANGSMITH_PROJECT=$(echo "$APP_JSON" | jq -r .LANGSMITH_PROJECT)
+LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
 BACKEND_BIND=0.0.0.0:8000
 EOF
 

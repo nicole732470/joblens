@@ -225,12 +225,12 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
     user_base = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n"
     last_reason = "unknown error"
     data = None
-    char_limits = (12000, 7000, 4000)
+    char_limits = (6000, 12000)
     for i, limit in enumerate(char_limits):
         user = user_base + text[:limit]
         try:
             data = complete_json_with_retry(
-                _SYSTEM, user, max_attempts=2 if i == 0 else 1, base_delay_sec=0.8, max_tokens=3000
+                _SYSTEM, user, max_attempts=1, base_delay_sec=0.5, max_tokens=2000
             )
             break
         except Exception as e:  # noqa: BLE001
