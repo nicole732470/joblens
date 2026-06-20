@@ -35,8 +35,10 @@ class Settings(BaseSettings):
     # Resume fit: auto tries LLM after RAG retrieval, falls back to vector thresholds.
     resume_fit_method: str = "auto"  # auto | llm | vector
 
-    # ReAct tool-calling agent adds latency and can loop on free models; fill_gaps is reliable.
-    use_react_agent: bool = False
+    # ReAct tool-calling agent removed — deterministic pipeline only.
+
+    # Final verdict: llm (JD + resume + profile) | rules (fit_ratio thresholds) | auto
+    recommendation_method: str = "llm"  # llm | rules | auto
 
     # Observability
     trace_dir: str = "logs/traces"

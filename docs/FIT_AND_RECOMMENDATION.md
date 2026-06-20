@@ -97,34 +97,28 @@ reference) per the citation contract.
 
 ---
 
-## 4. Multi-factor recommendation (transparent, per-track)
+## 4. Multi-factor signals (display + eval + LLM context)
 
-The apply decision is a **weighted combination of evidence-backed factors**, not
-a black-box number. Each factor produces a sub-signal *plus* its evidence.
+The apply decision is primarily an **LLM synthesis** of JD + resume + profile
+YAML (`recommendation_llm.py`). The UI still shows **transparent sub-signals** —
+each tuned against the golden set on its own column:
 
+| Factor | Source | Golden column | Final verdict |
+| ------ | ------ | ------------- | ------------- |
+| **Role-type fit** | Title/JD vs profile `tracks` | `expected_priority`, `expected_track_id` | LLM + display |
+| **Resume/requirement fit** | RAG + per-requirement classify | `expected_fit_band` | **Display/eval only** |
+| **Location fit** | JD location vs profile | `expected_location_tier` | Display/eval; LLM context |
+| **Company fit** | company_signals | `expected_company_tier` | Display/eval; not H-1B DB |
+| **JD visa policy** | JD parser | — | Hard constraint in LLM + rules |
+| **Network / alumni** | *future, manual* | — | — |
 
-| Factor                     | Source                                   | Notes                                                 |
-| -------------------------- | ---------------------------------------- | ----------------------------------------------------- |
-| **Role-type fit**          | JD title/role vs. profile `tracks`       | which track(s) does this job serve?                   |
-| **Resume/requirement fit** | resume evidence vs. JD requirements (§3) | uses gap classification                               |
-| **Location fit**           | JD location vs. profile `locations`      | can be a hard veto (`no_go`)                          |
-| **Company fit**            | company research/signals                 | quality of the company — **NOT** the H-1B DB (see §6) |
-| **JD visa policy**         | JD parser `visa` / `visa_language`       | veto factor (see §6)                                  |
-| **Network / alumni**       | *future, manual/opt-in only*             | see §7 — no auto-scraping                             |
+**Per-track intent:** Profile `priority` 1–2 tracks are primary targets; the LLM
+uses YAML as durable intent, not as rigid `if fit_ratio > 0.5` rules.
 
+**Rules fallback** (`RECOMMENDATION_METHOD=rules`): legacy `fit_ratio`
+thresholds in `recommendation.py` — see `docs/FIT_THRESHOLDS.md`.
 
-Two important properties:
-
-- **Per-track output.** A single job can be *"Apply"* for the `data_analyst`
-fallback track but *"Low priority"* for the `ai_ml_eng` primary track. The
-report should say which track(s) it's recommending for, not give one global
-verdict divorced from intent.
-- **Transparent weights.** Weights are explicit and tunable, and every factor's
-contribution is explainable with evidence. No fake composite "match %" based
-on keyword overlap.
-
-`TODO(weights)`: default factor weights to be tuned against the golden set.
-Start simple (equal-ish weights), validate, then adjust.
+Golden set labeling: `evals/golden_set/README.md`.
 
 ---
 
@@ -194,6 +188,7 @@ Before RAG/chunking, lock the above. Then:
 2. Resume chunking + pgvector retrieval (DESIGN §7 `retrieve_resume_evidence`)
   — retrieval now serves **gap classification (§3)**, not a raw score.
 3. `analyze_resume_fit` emits Claims with the gap classes from §3.
-4. `generate_recommendation` implements the **multi-factor, per-track** logic
-  (§4–§6) with transparent weights and citation rule 4.
+4. `generate_recommendation` — **LLM verdict** (`recommendation_llm.py`) with
+   profile YAML as intent; **rules fallback** (`recommendation.py`). Display
+   metrics (fit_ratio, location, company) optimized via golden set columns (§4).
 

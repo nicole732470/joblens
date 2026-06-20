@@ -35,14 +35,22 @@ cd "$APP_DIR"
 psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f deploy/rds-init.sql
 psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f db/auth_schema.sql
 
+JWT_SECRET=$(echo "$APP_JSON" | jq -r '.JWT_SECRET // empty')
+if [[ -z "$JWT_SECRET" || "$JWT_SECRET" == "null" ]]; then
+  echo "ERROR: JWT_SECRET missing in joblens/app — run deploy/ensure-app-secrets.sh locally first"
+  exit 1
+fi
+LANGCHAIN_API_KEY=$(echo "$APP_JSON" | jq -r '.LANGCHAIN_API_KEY // .LANGSMITH_API_KEY // empty')
+LANGSMITH_PROJECT=$(echo "$APP_JSON" | jq -r '.LANGSMITH_PROJECT // "joblens-analyze"')
+
 cat > .env <<EOF
 DATABASE_URL=postgresql://${RDS_USER}:${RDS_PASS}@${RDS_HOST}:5432/${RDS_DB}
 LLM_API_KEY=$(echo "$APP_JSON" | jq -r .LLM_API_KEY)
 LLM_BASE_URL=$(echo "$APP_JSON" | jq -r .LLM_BASE_URL)
 LLM_MODEL=$(echo "$APP_JSON" | jq -r .LLM_MODEL)
-USE_REACT_AGENT=$(echo "$APP_JSON" | jq -r .USE_REACT_AGENT)
-JWT_SECRET=$(echo "$APP_JSON" | jq -r .JWT_SECRET)
-LANGCHAIN_API_KEY=$(echo "$APP_JSON" | jq -r '.LANGCHAIN_API_KEY // .LANGSMITH_API_KEY // empty')
+JWT_SECRET=${JWT_SECRET}
+LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
 BACKEND_BIND=0.0.0.0:8000
 EOF
 

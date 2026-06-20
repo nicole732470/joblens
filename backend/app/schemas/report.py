@@ -147,6 +147,7 @@ class RecommendationResult(BaseModel):
     track_priority: Optional[int] = None
     track_similarity: Optional[float] = None
     fit_ratio: Optional[float] = None
+    recommendation_method: Optional[str] = None  # llm | rules
     technical_penalty_hits: list[str] = []
     location_score: Optional[float] = None
     location_label: Optional[str] = None

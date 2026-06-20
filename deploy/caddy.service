@@ -1,0 +1,14 @@
+[Unit]
+Description=Caddy reverse proxy for JobLens API
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+Restart=on-abnormal
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

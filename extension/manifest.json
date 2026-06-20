@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "JobLens",
-  "version": "3.2.5",
+  "version": "3.3.5",
   "description": "JobLens — visa sponsorship + role match on LinkedIn before you apply.",
+  "permissions": ["storage"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://linkedin.com/*",
@@ -10,7 +11,10 @@
     "http://3.128.164.130:8000/*",
     "http://ec2-3-128-164-130.us-east-2.compute.amazonaws.com:8000/*",
     "http://localhost:8000/*",
-    "http://127.0.0.1:8000/*"
+    "http://127.0.0.1:8000/*",
+    "https://job-lens-main.lovable.app/*",
+    "https://vision-job-glow.lovable.app/*",
+    "https://*.lovable.app/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -18,8 +22,16 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*", "https://linkedin.com/*"],
-      "js": ["lib/matcher.js", "content.js"],
+      "js": ["lib/matcher.js", "lib/report-view.js", "content.js"],
       "css": ["styles.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://job-lens-main.lovable.app/*",
+        "https://vision-job-glow.lovable.app/*"
+      ],
+      "js": ["sync-auth.js"],
       "run_at": "document_idle"
     }
   ],

@@ -19,10 +19,9 @@ from app.auth import (
 from app.analyze_jobs import create_job, fail_job, finish_job, get_job, update_job
 from app.config import settings
 from app.db import check_db_connection
-from app.graph.workflow import list_analyze_tools, run_analyze_workflow
+from app.graph.workflow import run_analyze_workflow
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import Report
-from app.tools.analyze_tools import run_tool_by_name
 from app.tools.entity_resolver import get_resolver
 from app.tools.job_url import parse_job_url
 from app.tools.llm import llm_available
@@ -35,7 +34,7 @@ from app.tools.observability import (
     start_trace,
 )
 from app.tools.pdf_text import extract_pdf_text
-from app.tools.profile_loader import get_candidate_profile, set_request_profile
+from app.tools.profile_loader import get_candidate_profile, load_candidate_profile, set_request_profile
 from app.tools.resume_store import index_resume
 from app.user_store import (
     get_primary_resume_text,
@@ -74,7 +73,14 @@ def _build_explain(recommendation, company) -> dict:
             "priority": rec.track_priority,
             "similarity": rec.track_similarity,
             "fit_ratio": rec.fit_ratio,
+            "recommendation_method": rec.recommendation_method,
             "adjustments": rec.technical_penalty_hits,
+            "note": (
+                "LLM: reads JD + resume + profile YAML for final verdict. "
+                "Rules (fallback): weighted fit_ratio thresholds."
+                if rec.recommendation_method == "llm"
+                else "Deterministic fit_ratio + track priority thresholds."
+            ),
         },
         "debug": "DevTools → Network → POST /analyze → Response JSON → explain",
     }
@@ -125,6 +131,7 @@ class AnalyzeRequest(BaseModel):
     title: str | None = None
     resume_text: str | None = None
     job_url: str | None = None
+    job_location: str | None = None
     linkedin_followers: int | None = None
     alumni_hints: list[str] = []
 
@@ -132,10 +139,6 @@ class AnalyzeRequest(BaseModel):
 class IndexResumeRequest(BaseModel):
     resume_text: str
     resume_key: str | None = None
-
-
-class ToolInvokeRequest(BaseModel):
-    arguments: dict = {}
 
 
 def _apply_user_context(user_id: uuid.UUID | None) -> str | None:
@@ -162,8 +165,8 @@ def health() -> dict:
         "candidate_profile": "loaded" if profile_ok else "unavailable",
         "llm": "configured" if llm_available() else "missing_key",
         "resume_fit_method": settings.resume_fit_method,
-        "orchestration": "langgraph-react",
-        "agent_mode": "react" if settings.use_react_agent else "fill_gaps",
+        "orchestration": "langgraph",
+        "pipeline": "deterministic",
         "langsmith": bool(settings.langsmith_api_key),
         "trace_dir": settings.trace_dir,
         "api_version": "3.3.0",
@@ -177,6 +180,10 @@ def auth_register(req: AuthRegisterRequest) -> dict:
     if fetch_user_by_email(req.email):
         raise HTTPException(status_code=409, detail="email already registered")
     user_id = create_user(req.email, req.password)
+    try:
+        save_user_profile(user_id, load_candidate_profile())
+    except FileNotFoundError:
+        pass
     token = create_access_token(user_id, req.email)
     return {"token": token, "user_id": str(user_id), "email": req.email.lower()}
 
@@ -240,22 +247,6 @@ def candidate_profile(user_id: uuid.UUID | None = Depends(get_current_user_id)) 
     return get_candidate_profile()
 
 
-@app.get("/tools")
-def tools_list() -> dict:
-    return {"tools": list_analyze_tools()}
-
-
-@app.post("/tools/{tool_name}")
-def tools_invoke(tool_name: str, req: ToolInvokeRequest) -> dict:
-    try:
-        result = run_tool_by_name(tool_name, **req.arguments)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"unknown tool: {tool_name}") from None
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"tool": tool_name, "result": result}
-
-
 @app.get("/observability/traces")
 def traces_list(limit: int = 20) -> dict:
     return {"traces": list_recent_traces(limit=limit)}
@@ -284,6 +275,7 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
     company = req.company
     title = req.title
     job_url = req.job_url
+    job_location = req.job_location
 
     if job_url and len(jd_text.strip()) < 80:
         parsed = parse_job_url(job_url)
@@ -297,6 +289,15 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
     if len(jd_text.strip()) < 40:
         raise HTTPException(status_code=400, detail="job description too short")
 
+    from app.tools.job_url import looks_like_job_posting
+
+    jd_ok, jd_reason = looks_like_job_posting(jd_text, title or "")
+    if not jd_ok:
+        raise HTTPException(
+            status_code=400,
+            detail=jd_reason or "text does not look like a job description",
+        )
+
     resume_text = req.resume_text or stored_resume
     return {
         "jd_text": jd_text,
@@ -304,6 +305,7 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
         "title": title,
         "resume_text": resume_text,
         "job_url": job_url,
+        "job_location": job_location,
         "linkedin_followers": req.linkedin_followers,
         "alumni_hints": req.alumni_hints,
     }

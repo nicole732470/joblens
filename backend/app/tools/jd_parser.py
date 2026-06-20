@@ -210,22 +210,32 @@ def _format_llm_result(data: dict) -> dict:
     }
 
 
-def parse_job_description(jd_text: str, title: str | None = None) -> dict:
+def parse_job_description(
+    jd_text: str,
+    title: str | None = None,
+    job_location: str | None = None,
+) -> dict:
     """Parse a JD into the JDParse shape. Never raises; returns available=False on failure."""
     text = (jd_text or "").strip()
     if not text:
         return {"available": False, "reason": "no job description text provided"}
 
+    def _with_location_hint(result: dict) -> dict:
+        loc = (job_location or "").strip()
+        if loc and not (result.get("location") or "").strip():
+            result["location"] = loc
+        return result
+
     if not llm_available():
         fb = _fallback_parse(text)
         if fb:
-            return fb
+            return _with_location_hint(fb)
         return {"available": False, "reason": "LLM not configured (set LLM_API_KEY)"}
 
     # Fast path: structured LinkedIn JDs parse reliably without LLM (~0ms vs 30–90s).
     fb_quick = _fallback_parse(text)
     if fb_quick and len(fb_quick.get("requirements") or []) >= 2:
-        return fb_quick
+        return _with_location_hint(fb_quick)
 
     user_base = f"{_SCHEMA_HINT}\n\nJob title: {title or 'unknown'}\n\nJOB DESCRIPTION:\n"
     last_reason = "unknown error"
@@ -244,7 +254,7 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
     if data is None:
         fb = _fallback_parse(text)
         if fb:
-            return fb
+            return _with_location_hint(fb)
         return {
             "available": False,
             "reason": (
@@ -257,10 +267,10 @@ def parse_job_description(jd_text: str, title: str | None = None) -> dict:
     if not result.get("requirements"):
         fb = _fallback_parse(text)
         if fb:
-            return fb
+            return _with_location_hint(fb)
         return {
             "available": False,
             "reason": "no requirements extracted from JD — click Analyze again",
         }
-    return result
+    return _with_location_hint(result)
 

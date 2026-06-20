@@ -1,4 +1,4 @@
-"""LangGraph workflow: parallel prefetch, conditional retry, ReAct tool agent."""
+"""LangGraph workflow: parallel H-1B + JD prefetch, then deterministic analyze pipeline."""
 
 from __future__ import annotations
 
@@ -7,22 +7,18 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
-from app.graph.agent import run_react_agent
 from app.graph.assemble import assemble_report
 from app.graph.nodes import (
-    node_fill_gaps,
+    node_analyze,
     node_join,
     node_parse_jd,
     node_prepare,
     node_sponsorship,
-    route_after_agent,
     route_after_parse,
-    route_agent_or_fill,
 )
 from app.graph.state_helpers import bind_node
 from app.schemas.report import Report
 from app.tools.analysis_context import begin_analysis, get_agent_meta
-from app.tools.analyze_tools import ANALYZE_TOOLS
 from app.tools.observability import get_run_id, persist_trace, trace_snapshot, trace_step
 
 
@@ -33,6 +29,7 @@ class AnalyzeState(TypedDict, total=False):
     title: str | None
     resume_text: str | None
     job_url: str | None
+    job_location: str | None
     linkedin_followers: int | None
     alumni_hints: list[str]
     resolved_resume: str | None
@@ -41,10 +38,7 @@ class AnalyzeState(TypedDict, total=False):
     parse_attempts: int
     sponsorship: dict
     jd: dict
-    gap_fill: bool
-    agent_mode: str
-    agent_reason: str
-    agent_messages: list
+    pipeline_complete: bool
     report: Any
     observability: dict
 
@@ -56,23 +50,14 @@ def _fan_out_prefetch(state: dict) -> list[Send]:
     ]
 
 
-def _node_react(state: dict) -> dict:
-    bind_node(state)
-    return run_react_agent(state)
-
-
 def _node_assemble(state: dict, *, build_explain) -> dict:
     bind_node(state)
     run_id = state.get("run_id")
-    agent_meta = {
-        **get_agent_meta(),
-        "mode": state.get("agent_mode", "deterministic"),
-        "messages": state.get("agent_messages", []),
-    }
-    obs = trace_snapshot(run_id=run_id, agent_meta=agent_meta)
+    pipeline_meta = {**get_agent_meta(), "mode": "deterministic"}
+    obs = trace_snapshot(run_id=run_id, agent_meta=pipeline_meta)
     report = assemble_report(
         build_explain=build_explain,
-        agent_meta=agent_meta,
+        agent_meta=pipeline_meta,
         observability=obs,
     )
     payload = report.model_dump()
@@ -94,8 +79,7 @@ def _build_graph(build_explain):
     graph.add_node("sponsorship", node_sponsorship)
     graph.add_node("parse_jd", node_parse_jd)
     graph.add_node("join", node_join)
-    graph.add_node("react_agent", _node_react)
-    graph.add_node("fill_gaps", node_fill_gaps)
+    graph.add_node("analyze", node_analyze)
     graph.add_node("assemble", assemble_node)
 
     graph.add_edge(START, "prepare")
@@ -106,26 +90,9 @@ def _build_graph(build_explain):
     graph.add_conditional_edges(
         "join",
         route_after_parse,
-        {"retry_parse": "parse_jd", "continue": "agent_router"},
+        {"retry_parse": "parse_jd", "continue": "analyze"},
     )
-
-    def agent_router(state: dict) -> dict:
-        bind_node(state)
-        return {}
-
-    graph.add_node("agent_router", agent_router)
-    graph.add_conditional_edges(
-        "agent_router",
-        route_agent_or_fill,
-        {"react_agent": "react_agent", "fill_gaps": "fill_gaps"},
-    )
-
-    graph.add_conditional_edges(
-        "react_agent",
-        route_after_agent,
-        {"fill_gaps": "fill_gaps", "assemble": "assemble"},
-    )
-    graph.add_edge("fill_gaps", "assemble")
+    graph.add_edge("analyze", "assemble")
     graph.add_edge("assemble", END)
 
     return graph.compile()
@@ -150,6 +117,7 @@ def run_analyze_workflow(
     title: str | None,
     resume_text: str | None,
     job_url: str | None,
+    job_location: str | None,
     linkedin_followers: int | None,
     alumni_hints: list[str],
     build_explain,
@@ -161,6 +129,7 @@ def run_analyze_workflow(
             "title": title,
             "resume_text": resume_text,
             "job_url": job_url,
+            "job_location": job_location,
             "linkedin_followers": linkedin_followers,
             "alumni_hints": alumni_hints,
         }
@@ -174,6 +143,7 @@ def run_analyze_workflow(
         "title": title,
         "resume_text": resume_text,
         "job_url": job_url,
+        "job_location": job_location,
         "linkedin_followers": linkedin_followers,
         "alumni_hints": alumni_hints,
         "parse_attempts": 0,
@@ -188,7 +158,3 @@ def run_analyze_workflow(
     if isinstance(report, dict):
         return Report(**report)
     raise RuntimeError("analyze workflow did not produce a report")
-
-
-def list_analyze_tools() -> list[dict[str, str]]:
-    return [{"name": t.name, "description": t.description or ""} for t in ANALYZE_TOOLS]

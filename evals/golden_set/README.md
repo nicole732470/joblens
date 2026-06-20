@@ -1,89 +1,150 @@
 # Golden Set
 
 The labeled evaluation set. **You fill in `samples.csv`** (one row per job
-posting); the harness (`evals/run_eval.py`) scores the system against your
-labels.
+posting); the harness (`evals/run_eval.py`) scores each **product dimension**
+against your labels.
 
-Target: **30–50 real job postings**. Two example rows ship in `samples.csv` —
-replace or delete them.
+Target: **30–50 real job postings**. Example rows ship in `samples.csv` —
+replace or extend them.
+
+## What we optimize
+
+The product shows several independent signals. The golden set tracks **accuracy
+of each**, not only the final Apply/Skip pill:
+
+| UI signal | Golden column | Compared to |
+|-----------|---------------|-------------|
+| H-1B sponsor match | `expected_sponsors` | `sponsorship.matched` |
+| Role track + P-tier | `expected_priority`, `expected_track_id` | `recommendation.track_priority`, `track_id` |
+| Location tier | `expected_location_tier` | `recommendation.location_tier` |
+| Company tier | `expected_company_tier` | `company.company_tier` |
+| Resume ↔ JD fit (display) | `expected_fit_band` | `fit_ratio` band from `resume_fit` |
+| Final verdict | `expected_decision` | `recommendation.decision` (LLM by default) |
+
+**Important:** Resume fit (`fit_ratio`, strong/partial/missing) is still
+**computed and shown** in the UI. It is a **display + eval dimension** — not
+the primary decision function when `RECOMMENDATION_METHOD=llm`. The LLM reads
+full JD + resume + profile YAML for the final verdict; we tune fit scoring
+separately against `expected_fit_band`.
 
 ## How to fill it
 
-Open `samples.csv` in Excel / Numbers / Google Sheets (it's a normal
-spreadsheet). One row = one job posting you want to evaluate.
+Open `samples.csv` in Excel / Numbers / Google Sheets. One row = one job posting.
 
 | Column | Fill with | Allowed values |
 |--------|-----------|----------------|
-| `id` | A short unique id | e.g. `job_001` |
-| `company` | Company name from the posting | free text |
+| `id` | Short unique id | e.g. `ex1`, `job_001` |
+| `company` | Company name | free text |
 | `title` | Job title | free text |
-| `job_url` | Link to the posting (optional) | URL or blank |
-| `jd_text` | The full job description text | free text (paste it in) |
+| `job_url` | Posting link (optional) | URL or blank |
+| `jd_text` | Full job description | paste full text |
 | `expected_sponsors` | In U.S. H-1B data? | `yes` / `no` / `unknown` / blank |
-| `expected_priority` | Role track tier (P1–P5) | `1`–`5` / `skip` / `unknown` / blank |
-| `expected_decision` | Apply verdict | `apply` / `near_apply` / `consider` / `skip` / `unknown` / blank |
+| `expected_priority` | Role P-tier after title **+ JD** | `1`–`5` / `skip` / `unknown` / blank |
+| `expected_track_id` | Profile track id | e.g. `ai_eng`, `pm_eng` / `unknown` / blank |
+| `expected_location_tier` | Location fit | `1` / `2` / `3` / `unknown` / blank |
+| `expected_company_tier` | Company quality tier | `1` / `2` / `3` / `unknown` / blank |
+| `expected_fit_band` | Resume–JD overlap (display metric) | `high` / `medium` / `low` / `unknown` / blank |
+| `expected_decision` | Final verdict | `apply` / `near_apply` / `consider` / `skip` / `unknown` / blank |
 | `notes` | Anything useful | free text |
 
-**`expected_sponsors`:** `yes` = in H-1B data; `no` = not found; **`unknown`** = not
-verified yet (eval skips).
+Leave any column **blank** until you've judged it; the harness skips scoring
+that dimension for that row.
 
-**`expected_priority`:** the **Role P-tier** the UI should show (`1`–`5` on the
-report) after reading **title + JD together**. Same scale as
-`candidate_profile.yaml` track priorities (1 = strongest fit tier, higher = weaker).
+### `expected_sponsors`
 
-This is **not** how much you “want” the job. It is **fit you can actually do**:
+`yes` = employer in DOL H-1B data; `no` = not found; `unknown` = not verified.
 
-- **Role family** — e.g. Customer Success is not Product or AI; Research Engineer
-  is not the same as a builder AI role if the JD expects a PhD research path.
-- **JD hardness** — even when the title family fits, a very hardware / HPC / GPU-heavy
-  posting can **downgrade** the tier (e.g. Analyst-shaped title at P3 in the abstract,
-  but P4 for this specific JD).
+### `expected_priority` (Role P-tier)
 
-Examples from the sample set:
+The **Role P** the UI should show (`1`–`5`) after reading **title + JD
+together** — same scale as `candidate_profile.yaml` track priorities.
 
-| Job | P | Why |
-|-----|---|-----|
-| MTS @ a16z startup | 1 | Core AI/builder track, JD matches |
-| Technical CSM @ HERE | 3 | Doable, not Product/AI; moderate tech bar |
-| Applied Research Engineer @ Salesforce | 4 | Research track; PhD-style path you don’t have |
-| Technical Business Analyst (HPC/Linux) | 4 | Analyst family, but JD too hardware-core |
+This is **fit you can actually do**, not “how much you want the job”:
 
-`run_eval.py` compares this to the system’s `track_priority`. Mismatches usually
-mean the backend still weights **title-only track match** and not JD penalties yet —
-not that your label is wrong.
+- **Role family** — Customer Success ≠ Product/AI; Research Engineer ≠ builder AI if JD expects PhD research.
+- **JD hardness** — hardware/HPC-heavy posting can downgrade tier (e.g. analyst title P3 in abstract → P4 for this JD).
 
-**`expected_decision`:** rule-based verdict — `apply` / `near_apply` / `consider` / `skip`.
-Compared to the report `decision` field (`Apply`, `Consider`, or `Skip`). Separate
-from Role P-tier.
+`run_eval.py` compares to `recommendation.track_priority`.
 
-Sample ids: `ex1`, `ex2`, `ex3`, … — short row keys only.
+### `expected_track_id`
 
-See **`docs/FIT_THRESHOLDS.md`** for resume strong/partial/gap scoring.
+Optional check on **which profile track** matched (e.g. `ai_eng`, `pm_eng`,
+`customer_success`). Use when title is ambiguous.
 
-Tips:
-- Leave `expected_sponsors` blank if you haven't judged it yet; the harness just
-  skips scoring that row.
-- Avoid stray commas in `notes` unless the cell is quoted (commas split
-  columns); a spreadsheet handles the quoting for you.
+### `expected_location_tier`
+
+Your judgment of location fit vs profile `locations`:
+
+| Tier | Meaning |
+|------|---------|
+| `1` | Preferred (`tier_1` or strong remote fit) |
+| `2` | Acceptable |
+| `3` | Avoid / no-go / poor remote fit |
+
+Compared to `recommendation.location_tier` from `profile_signals.py`.
+
+### `expected_company_tier`
+
+Company quality vs your preferences (not H-1B odds):
+
+| Tier | Typical system rule |
+|------|---------------------|
+| `1` | `company_score ≥ 0.52` |
+| `2` | `≥ 0.38` |
+| `3` | below that or dealbreaker industry |
+
+Compared to `company.company_tier` from `company_signals.py`.
+
+### `expected_fit_band`
+
+Resume–requirement overlap **as shown in the UI** (RAG + per-requirement
+classification). Bands used by `run_eval.py`:
+
+| Band | `fit_ratio` (weighted) |
+|------|-------------------------|
+| `high` | ≥ **50%** |
+| `medium` | **28% – 49%** |
+| `low` | **< 28%** |
+
+Formula: `effective = strong + partial×0.5 + weak×0.3`, divided by total
+requirements. See `docs/FIT_THRESHOLDS.md`.
+
+This does **not** have to match `expected_decision` — e.g. right track (Near
+apply) with `medium` fit is valid.
+
+### `expected_decision`
+
+Final **Apply / Near apply / Consider / Skip** — your holistic judgment for
+this posting + your resume. Compared to `recommendation.decision`.
+
+With `RECOMMENDATION_METHOD=llm` (default), the backend uses an LLM reading
+JD + resume + profile YAML. Tune prompts and profile until **decision acc**
+improves on labeled rows.
+
+Legacy `RECOMMENDATION_METHOD=rules` uses `fit_ratio` thresholds instead — only
+for fallback / regression.
 
 ## Resume
 
-`resume.md` — **dev/eval default only.** The backend reads this file when
-`/analyze` gets no `resume_text`. Later, the Chrome extension sends each user's
-own upload in the request, which overrides this file. Do not assume every user
-shares one repo-bundled resume in production.
+`resume.md` — **dev/eval default only.** `/analyze` uses it when no
+`resume_text` is sent. Extension/web uploads override per user.
 
 ## Running the evaluation
-
-Make sure the backend is up (`docker compose up -d`), then:
 
 ```bash
 cd evals
 python3 run_eval.py
+# BASE_URL=https://3-128-164-130.sslip.io python3 run_eval.py
 ```
 
-It prints per-sample results and a summary:
+Summary lines:
 
-- **sponsors acc** — H-1B employer match vs `expected_sponsors`
-- **priority acc** — Role P-tier vs `expected_priority`
-- **decision acc** — Apply / Near apply / Consider / Skip vs `expected_decision` (when filled in)
+- **sponsors acc** — H-1B entity match
+- **priority acc** — Role P-tier
+- **track_id acc** — Matched profile track
+- **location tier acc** — Location P1–P3
+- **company tier acc** — Company P1–P3
+- **resume fit band acc** — high / medium / low
+- **decision acc** — LLM (or rules fallback) verdict
+
+See **`docs/FIT_THRESHOLDS.md`** for all numeric constants.

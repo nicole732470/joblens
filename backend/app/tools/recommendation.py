@@ -204,12 +204,59 @@ def generate_recommendation(
     profile: CandidateProfile,
     job_title: str | None,
     jd_text: str | None = None,
+    *,
+    resume_text: str | None = None,
+    job_location: str | None = None,
+    method: str | None = None,
 ) -> dict:
-    """Return RecommendationResult shape. Does not use H-1B database signals."""
+    """Route to LLM verdict (default) or deterministic rules fallback."""
+    from app.config import settings
+    from app.tools.llm import llm_available
+
+    mode = (method or settings.recommendation_method or "auto").lower()
+    if mode == "auto":
+        mode = "llm" if llm_available() else "rules"
+
+    if mode == "llm":
+        from app.tools.recommendation_llm import generate_recommendation_llm
+
+        try:
+            return generate_recommendation_llm(
+                jd,
+                resume_fit,
+                profile,
+                job_title,
+                jd_text,
+                resume_text=resume_text,
+                job_location=job_location,
+            )
+        except Exception as e:  # noqa: BLE001
+            if (method or settings.recommendation_method or "auto").lower() == "llm":
+                return {
+                    "available": False,
+                    "reason": f"LLM recommendation failed: {e}",
+                }
+            # auto → rules fallback
+            pass
+
+    out = _generate_recommendation_rules(jd, resume_fit, profile, job_title, jd_text, job_location)
+    out["recommendation_method"] = "rules"
+    return out
+
+
+def _generate_recommendation_rules(
+    jd: JDParse,
+    resume_fit: ResumeFitAnalysis,
+    profile: CandidateProfile,
+    job_title: str | None,
+    jd_text: str | None = None,
+    job_location: str | None = None,
+) -> dict:
+    """Deterministic Apply / Skip from fit_ratio + track priority (legacy / fallback)."""
     title = resolve_job_title(job_title, jd_text)
     raw_jd = jd_text or ""
 
-    signals = evaluate_profile_signals(jd, raw_jd, profile, title)
+    signals = evaluate_profile_signals(jd, raw_jd, profile, title, job_location)
     tm = match_job_to_profile(title, raw_jd, jd, profile)
     track: Track | None = tm["matched_track"]
     track_sim: float = tm["similarity"]

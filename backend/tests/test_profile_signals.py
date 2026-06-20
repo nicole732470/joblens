@@ -39,3 +39,43 @@ def test_fully_remote_still_p2():
     loc = score_location(jd, "This role is fully remote.", _profile())
     assert loc["location_tier"] == 2
     assert "Remote" in (loc["location_label"] or "")
+
+
+def test_chicago_jd_location_is_p1():
+    jd = JDParse(available=True, location="Chicago, IL")
+    loc = score_location(jd, "Join our downtown Chicago office.", _profile())
+    assert loc["location_tier"] == 1
+    assert "Chicago" in (loc["location_label"] or "")
+
+
+def test_chicago_in_title_is_p1():
+    title = "Software Engineer (Chicago, IL)"
+    jd = JDParse(available=False)
+    loc = score_location(jd, "Build production systems.", _profile(), title)
+    assert loc["location_tier"] == 1
+    assert "P1" in (loc["location_label"] or "")
+
+
+def test_chicago_in_full_jd_when_hq_elsewhere():
+    jd = JDParse(available=True, location="Chicago, IL")
+    text = (
+        "HQ: San Francisco. This role is based in Chicago, IL. "
+        "Responsibilities include building APIs."
+    )
+    loc = score_location(jd, text, _profile())
+    assert loc["location_tier"] == 1
+    assert "Chicago" in (loc["location_label"] or "")
+
+
+def test_chicago_linkedin_location_line_only():
+    """City under the title (not in title) should still score P1."""
+    jd = JDParse(available=False)
+    loc = score_location(
+        jd,
+        "HQ: San Francisco. Remote workers welcome.",
+        _profile(),
+        "Software Engineer",
+        "Chicago, IL · On-site",
+    )
+    assert loc["location_tier"] == 1
+    assert "Chicago" in (loc["location_label"] or "")

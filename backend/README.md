@@ -1,6 +1,8 @@
 # Backend — JobLens API
 
-FastAPI + LangGraph service for `/analyze`: JD parsing, RAG + LLM resume fit, role/location/company scoring, and Apply / Near apply / Consider / Skip.
+FastAPI + LangGraph service for `/analyze`: JD parsing, RAG + LLM resume fit,
+role/location/company scoring (display + eval), and LLM Apply / Skip with rules
+fallback.
 
 H-1B **entity resolution** runs in the Chrome extension (`extension/lib/matcher.js`). The backend uses Postgres + pgvector for resume chunks and optional employer index.
 
@@ -17,12 +19,11 @@ curl http://localhost:8000/health
 
 | Route | Purpose |
 |-------|---------|
-| `GET /health` | DB, profile, LLM, orchestration status |
-| `POST /analyze` | Full report (LangGraph + ReAct agent) |
+| `GET /health` | DB, profile, LLM, pipeline status |
+| `POST /analyze` | Full report (LangGraph pipeline) |
+| `POST /analyze/async` | Background analyze + job poll |
 | `GET /candidate-profile` | Loaded YAML profile |
 | `POST /resume/index` | Chunk + embed resume into pgvector |
-| `GET /tools` | List analyze tools |
-| `POST /tools/{name}` | Invoke one tool (debug) |
 | `GET /observability/traces` | List analyze traces |
 | `GET /observability/traces/{run_id}` | One trace JSON |
 
@@ -33,21 +34,18 @@ backend/app/
 ├── main.py                 # FastAPI routes
 ├── graph/
 │   ├── workflow.py         # LangGraph compile + invoke
-│   ├── agent.py            # ReAct agent
-│   ├── nodes.py            # prepare, parse, fill_gaps, …
-│   └── assemble.py           # Report from artifacts
+│   ├── nodes.py            # prepare, prefetch, analyze pipeline
+│   └── assemble.py         # Report from artifacts
 ├── tools/
-│   ├── analyze_tools.py    # 6 LangChain tools
+│   ├── analyze_tools.py    # Pipeline step functions
 │   ├── jd_parser.py        # LLM JD → requirements
 │   ├── resume_fit.py       # RAG + LLM classify (vector fallback)
-│   ├── resume_fit_llm.py   # LLM batch classifier
+│   ├── recommendation_llm.py
+│   ├── recommendation.py   # Verdict router + rules fallback
 │   ├── track_match.py      # Title ↔ profile tracks
-│   ├── role_priority.py    # P-tier adjustments
-│   ├── recommendation.py   # Verdict rules
 │   ├── profile_signals.py  # Location, dealbreakers
 │   ├── company_signals.py
-│   ├── observability.py    # Traces + optional LangSmith
-│   └── analysis_context.py # Per-run artifacts cache
+│   └── observability.py    # Traces + optional LangSmith
 └── schemas/                # Report, CandidateProfile
 ```
 

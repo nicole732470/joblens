@@ -1,9 +1,8 @@
-"""Deterministic graph nodes + gap-fill fallback."""
+"""LangGraph nodes — parallel prefetch + deterministic analyze pipeline."""
 
 from __future__ import annotations
 
-import json
-
+from app.config import settings
 from app.graph.state_helpers import bind_node, request_fields
 from app.tools.analysis_context import get_artifacts, get_input, patch_input, record_tool_call, set_artifact
 from app.tools.analyze_tools import (
@@ -15,6 +14,7 @@ from app.tools.analyze_tools import (
     score_resume_against_jd,
 )
 from app.tools.jd_parser import parse_job_description
+from app.tools.llm import llm_available
 from app.tools.observability import trace_step
 from app.tools.profile_loader import get_candidate_profile
 from app.tools.resume_loader import resolve_resume_text
@@ -58,7 +58,11 @@ def node_parse_jd(state: dict) -> dict:
     req = request_fields(state)
     attempts = int(state.get("parse_attempts") or 0) + 1
     with trace_step("parse_jd", attempt=attempts, title=req.get("title")):
-        result = parse_job_description(req.get("jd_text") or "", req.get("title"))
+        result = parse_job_description(
+            req.get("jd_text") or "",
+            req.get("title"),
+            req.get("job_location"),
+        )
     set_artifact("jd", result)
     record_tool_call("parse_jd_structured", ok=bool(result.get("available")))
     return {"jd": result, "parse_attempts": attempts}
@@ -85,9 +89,9 @@ def node_join(state: dict) -> dict:
     return {}
 
 
-def node_fill_gaps(state: dict) -> dict:
+def node_analyze(state: dict) -> dict:
+    """Run remaining pipeline steps in fixed order."""
     bind_node(state)
-    """Deterministic completion when ReAct agent skipped or missed tools."""
     inp = get_input()
     arts = get_artifacts()
     company = inp.get("company") or ""
@@ -95,57 +99,45 @@ def node_fill_gaps(state: dict) -> dict:
     jd_text = inp.get("jd_text") or ""
     resume = inp.get("resolved_resume") or ""
 
-    with trace_step("fill_gaps"):
+    with trace_step("analyze_pipeline"):
         if "sponsorship" not in arts and company:
-            lookup_h1b_sponsorship.invoke({"company": company})
+            lookup_h1b_sponsorship(company)
         elif "sponsorship" not in arts:
             set_artifact("sponsorship", {"matched": False, "reason": "no company"})
 
         jd_art = arts.get("jd") or {}
         if not jd_art.get("available") or not (jd_art.get("requirements") or []):
-            parse_jd_structured.invoke({"jd_text": jd_text, "title": title})
+            parse_jd_structured(jd_text, title)
 
         if resume and ("resume_fit" not in arts or not arts.get("resume_fit", {}).get("available")):
-            score_resume_against_jd.invoke({"resume_text": resume})
+            score_resume_against_jd(resume)
 
         arts = get_artifacts()
 
         if "company_analysis" not in arts or not arts.get("company_analysis", {}).get("available"):
-            score_company_fit.invoke(
-                {
-                    "company_name": company,
-                    "jd_text": jd_text,
-                    "linkedin_followers": int(inp.get("linkedin_followers") or 0),
-                    "alumni_hints_json": json.dumps(inp.get("alumni_hints") or []),
-                }
+            score_company_fit(
+                company_name=company,
+                jd_text=jd_text,
+                linkedin_followers=int(inp.get("linkedin_followers") or 0),
+                alumni_hints=inp.get("alumni_hints") or None,
             )
 
         arts = get_artifacts()
 
         if "risk" not in arts or not arts.get("risk", {}).get("available"):
             if arts.get("resume_fit", {}).get("available"):
-                assess_job_risks.invoke({})
+                assess_job_risks()
 
         arts = get_artifacts()
 
         if "recommendation" not in arts or not arts.get("recommendation", {}).get("available"):
-            if arts.get("resume_fit", {}).get("available") and arts.get("jd", {}).get("available"):
-                recommend_apply_skip.invoke({"job_title": title, "jd_text": jd_text})
+            jd_ok = arts.get("jd", {}).get("available")
+            rf_ok = arts.get("resume_fit", {}).get("available")
+            mode = (settings.recommendation_method or "auto").lower()
+            if mode == "auto":
+                mode = "llm" if llm_available() else "rules"
+            can_recommend = jd_ok and (rf_ok or (mode == "llm" and bool(resume)))
+            if can_recommend:
+                recommend_apply_skip(job_title=title, jd_text=jd_text)
 
-    return {"gap_fill": True}
-
-
-def route_after_agent(state: dict) -> str:
-    rec = get_artifacts().get("recommendation") or {}
-    if not rec.get("available"):
-        return "fill_gaps"
-    return "assemble"
-
-
-def route_agent_or_fill(state: dict) -> str:
-    from app.config import settings
-    from app.tools.llm import llm_available
-
-    if settings.use_react_agent and llm_available():
-        return "react_agent"
-    return "fill_gaps"
+    return {"pipeline_complete": True}

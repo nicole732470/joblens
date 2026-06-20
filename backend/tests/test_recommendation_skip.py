@@ -2,7 +2,7 @@
 
 from app.schemas.candidate_profile import CandidateProfile, Constraints, Track
 from app.schemas.report import Claim, JDParse, Recommendation, ResumeFitAnalysis
-from app.tools.recommendation import generate_recommendation
+from app.tools.recommendation import _generate_recommendation_rules as generate_recommendation
 
 
 def _profile() -> CandidateProfile:

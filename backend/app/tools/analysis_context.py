@@ -1,4 +1,4 @@
-"""Per-request analysis context: artifacts from tool calls + agent metadata."""
+"""Per-request analysis context: pipeline artifacts + step trace."""
 
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ def begin_analysis(request: dict[str, Any]) -> None:
     if rid:
         _ARTIFACTS[rid] = {}
         _INPUTS[rid] = dict(request)
-        _AGENT_META[rid] = {"tool_calls": [], "llm_turns": 0}
-    _agent_meta.set({"tool_calls": [], "llm_turns": 0})
+        _AGENT_META[rid] = {"tool_calls": []}
+    _agent_meta.set({"tool_calls": []})
 
 
 def patch_input(**kwargs: Any) -> None:
@@ -64,7 +64,7 @@ def record_tool_call(name: str, *, args: dict | None = None, ok: bool = True, er
     rid = _rid()
     if not rid:
         return
-    meta = _AGENT_META.setdefault(rid, {"tool_calls": [], "llm_turns": 0})
+    meta = _AGENT_META.setdefault(rid, {"tool_calls": []})
     entry: dict[str, Any] = {"tool": name, "ok": ok}
     if args is not None:
         entry["args_keys"] = list(args.keys())
@@ -73,16 +73,8 @@ def record_tool_call(name: str, *, args: dict | None = None, ok: bool = True, er
     meta["tool_calls"].append(entry)
 
 
-def record_llm_turn() -> None:
-    rid = _rid()
-    if not rid:
-        return
-    meta = _AGENT_META.setdefault(rid, {"tool_calls": [], "llm_turns": 0})
-    meta["llm_turns"] = int(meta.get("llm_turns", 0)) + 1
-
-
 def get_agent_meta() -> dict[str, Any]:
     rid = _rid()
     if rid and rid in _AGENT_META:
         return dict(_AGENT_META[rid])
-    return {"tool_calls": [], "llm_turns": 0}
+    return {"tool_calls": []}

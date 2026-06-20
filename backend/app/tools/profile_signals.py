@@ -63,9 +63,16 @@ _WORK_ENV_RE = re.compile(
 )
 
 
-def _primary_location_blob(jd: JDParse, jd_text: str, job_title: str | None = None) -> str:
+def _primary_location_blob(
+    jd: JDParse,
+    jd_text: str,
+    job_title: str | None = None,
+    job_location: str | None = None,
+) -> str:
     """Text that describes where *this* job is based — not HQ mentions elsewhere in the JD."""
     parts: list[str] = []
+    if job_location and job_location.strip():
+        parts.append(job_location.strip())
     if job_title:
         parts.append(job_title.strip())
     raw = jd_text or ""
@@ -313,10 +320,32 @@ def _mentions_remote_policy(text: str) -> bool:
     return False
 
 
-def score_location(jd: JDParse, jd_text: str, profile: CandidateProfile, job_title: str | None = None) -> dict:
+def score_location(
+    jd: JDParse,
+    jd_text: str,
+    profile: CandidateProfile,
+    job_title: str | None = None,
+    job_location: str | None = None,
+) -> dict:
     """Return location_score, location_label, location_tier (P1–P3) for UI."""
+    # LinkedIn location line (under title) — trust before JD HQ noise.
+    if job_location and job_location.strip():
+        loc_line = job_location.strip().lower()
+        for tier_num, places, score in (
+            (1, profile.locations.tier_1, 1.0),
+            (2, profile.locations.tier_2, 0.75),
+            (3, profile.locations.tier_3, 0.25),
+        ):
+            hit = _match_tier_places(places, loc_line)
+            if hit:
+                return {
+                    "location_score": score,
+                    "location_label": f"P{tier_num} · {hit}",
+                    "location_tier": tier_num,
+                }
+
     full_raw = _jd_scan_blob(jd, jd_text)
-    primary_raw = _primary_location_blob(jd, jd_text, job_title)
+    primary_raw = _primary_location_blob(jd, jd_text, job_title, job_location)
     place = _extract_place(primary_raw, jd) or _extract_place(full_raw, jd)
     full = full_raw.lower()
     primary = primary_raw.lower()
@@ -326,18 +355,27 @@ def score_location(jd: JDParse, jd_text: str, profile: CandidateProfile, job_tit
 
     tier_text = primary if primary.strip() else full
     policy_text = primary if primary.strip() else full
+    # Match tiers on job-location text AND extracted place (e.g. "Chicago, IL" → P1).
+    loc_blob = f"{tier_text} {place or ''}".lower().strip()
 
-    hit = _match_tier_places(profile.locations.tier_1, tier_text)
-    if hit:
-        return {"location_score": 1.0, "location_label": f"P1 · {hit}", "location_tier": 1}
-
-    hit = _match_tier_places(profile.locations.tier_2, tier_text)
-    if hit:
-        return {"location_score": 0.75, "location_label": f"P2 · {hit}", "location_tier": 2}
-
-    hit = _match_tier_places(profile.locations.tier_3, tier_text)
-    if hit:
-        return {"location_score": 0.25, "location_label": f"P3 · {hit}", "location_tier": 3}
+    for tier_num, places, score in (
+        (1, profile.locations.tier_1, 1.0),
+        (2, profile.locations.tier_2, 0.75),
+        (3, profile.locations.tier_3, 0.25),
+    ):
+        title_blob = (job_title or "").lower()
+        hit = (
+            _match_tier_places(places, loc_blob)
+            or _match_tier_places(places, tier_text)
+            or _match_tier_places(places, full)
+            or (title_blob and _match_tier_places(places, title_blob))
+        )
+        if hit:
+            return {
+                "location_score": score,
+                "location_label": f"P{tier_num} · {hit}",
+                "location_tier": tier_num,
+            }
 
     if profile.locations.remote_ok and _mentions_remote_policy(policy_text):
         return {"location_score": 0.75, "location_label": "P2 · Remote", "location_tier": 2}
@@ -358,9 +396,10 @@ def evaluate_profile_signals(
     jd_text: str,
     profile: CandidateProfile,
     job_title: str | None = None,
+    job_location: str | None = None,
 ) -> dict:
     job_blob = _full_job_blob(jd, jd_text, job_title)
-    loc = score_location(jd, jd_text, profile, job_title)
+    loc = score_location(jd, jd_text, profile, job_title, job_location)
     pref_n, pref_hits = _semantic_phrase_hits(profile.preferences, job_blob)
     deal_n, deal_hits = _dealbreaker_hits(profile.dealbreakers, job_blob)
     return {

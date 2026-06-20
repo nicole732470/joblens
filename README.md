@@ -23,7 +23,7 @@ Use this language everywhere — web meta, extension panel, README, LinkedIn pos
 | **One-liner** | Worth applying? Check in two minutes. |
 | **Value prop** | Skip bad applications — check sponsorship and fit before you apply. |
 | **How it works** | Paste a job link (or open on LinkedIn). We check **visa sponsorship** first, then **role + resume match**. |
-| **Verdicts** | **Apply** · **Near apply** · **Consider** · **Skip** — rule-based, with hover tooltips for evidence. |
+| **Verdicts** | **Apply** · **Near apply** · **Consider** · **Skip** — **LLM** (JD + resume + profile YAML), with rule fallback; hover tooltips for evidence. |
 | **H-1B pill** | Answers “does this company file H-1B?” — **informational only**, never drives Apply/Skip. |
 | **Not** | We do not predict “will they sponsor you personally.” We surface DOL filing history + JD visa language. |
 
@@ -62,16 +62,16 @@ Details: [`docs/MULTI_SURFACE.md`](docs/MULTI_SURFACE.md)
 
 ## What each layer shows
 
-| Layer | Source | Affects verdict? |
-|-------|--------|------------------|
-| **H-1B pill** (extension) | Offline `employers.json.gz` + `matcher.js` | **No** — informational |
-| **H-1B block** (web report) | Backend `search_h1b_company()` — same DOL data in Postgres | **No** |
-| **JD visa language** | LLM parse + regex fallback | **Yes** — hard Skip if you need sponsorship |
-| **Role track (P-tier)** | Embedding title ↔ profile tracks | **Yes** — P4–P5 → Skip |
-| **Resume fit** | RAG + LLM classify per requirement | **Yes** — drives Apply bar |
-| **Dealbreakers** | Profile phrases matched in JD | **Yes** — hard Skip |
-| **Location tier** | Profile location rules | Summary text only |
-| **Company score** | Preferences + industry + followers | Summary text only |
+| Layer | Source | Shown in UI? | Drives final verdict? |
+|-------|--------|--------------|------------------------|
+| **H-1B pill** (extension) | Offline `employers.json.gz` + `matcher.js` | Yes | **No** |
+| **H-1B block** (web report) | Backend `search_h1b_company()` | Yes | **No** |
+| **JD visa language** | LLM parse + regex fallback | Yes | **Yes** — LLM + rules respect profile veto |
+| **Role track (P-tier)** | Title embedding + JD/resume adjustments | Yes | **Informs LLM**; rules fallback uses P4–P5 → Skip |
+| **Resume fit** | RAG + LLM per-requirement classify | Yes (`fit_ratio`, strong/partial) | **Display + eval** — not the primary LLM decision signal |
+| **Location tier** | Profile location rules | Yes | **Eval dimension** — golden `expected_location_tier` |
+| **Company tier** | Preferences + industry + followers | Yes | **Eval dimension** — golden `expected_company_tier` |
+| **Dealbreakers** | Profile phrases in JD | Yes | **Yes** — hard constraint in LLM prompt + rules |
 
 ---
 
@@ -203,14 +203,17 @@ Each requirement gets `id` (`jd_req_01`, …) and `evidence_quote` from the JD.
 | **0.34 – 0.52** | partial |
 | **> 0.52** | weak → counted in `missing` |
 
-**Fit ratio** (feeds verdict):
+**Fit ratio** (display metric + golden-set `expected_fit_band`; rules fallback only):
+
 ```
 effective = strong + partial × 0.5 + weak × 0.3
 fit_ratio = effective / total_requirements
 pure_gap  = missing reqs with no resume evidence at all
 ```
 
-Weights: `_PARTIAL_WEIGHT = 0.5`, `_WEAK_WEIGHT = 0.3` in `recommendation.py`.
+Weights: `_PARTIAL_WEIGHT = 0.5`, `_WEAK_WEIGHT = 0.3`. Bands: **high** ≥ 50%, **medium** ≥ 28%, **low** &lt; 28%.
+
+Still shown in extension/web metrics. **Final Apply/Skip** uses LLM (`recommendation_llm.py`) reading full JD + resume + profile unless `RECOMMENDATION_METHOD=rules`.
 
 ---
 
@@ -225,7 +228,7 @@ Weights: `_PARTIAL_WEIGHT = 0.5`, `_WEAK_WEIGHT = 0.3` in `recommendation.py`.
 | P3 | 0.25–0.35 | `tier_3`, onsite unknown, rural |
 | Unspecified | 0.5 | Default |
 
-**Used in:** recommendation `summary` text only — does **not** change Apply/Skip today.
+**Used in:** UI location row + golden-set `expected_location_tier`. LLM sees location tier as context; not a separate verdict formula.
 
 ---
 
@@ -247,7 +250,7 @@ combined = 0.50×preferences + 0.28×industry + 0.12×followers + 0.10×alumni
 
 **Company tier:** score ≥ **0.52** → P1, ≥ **0.38** → P2, else P3. Dealbreaker industry → forced P3, score **0.25**.
 
-**Used in:** report display + summary — does **not** change Apply/Skip today.
+**Used in:** UI company row + golden-set `expected_company_tier`. Not H-1B sponsor odds.
 
 ---
 
@@ -267,26 +270,24 @@ JD visa veto is a **hard Skip** before fit scoring runs.
 
 ### 9. Final verdict (Apply / Near apply / Consider / Skip)
 
-**File:** `backend/app/tools/recommendation.py` — `generate_recommendation()`
+**Default — LLM:** `backend/app/tools/recommendation_llm.py` via `generate_recommendation()`
 
-**Hard Skip paths** (checked first):
-1. Dealbreakers matched in JD
-2. JD visa veto + `needs_sponsorship: true`
-3. Avoid-track semantic match (sim ≥ 0.38)
-4. `track_priority ≥ 4`
+**Env:** `RECOMMENDATION_METHOD=llm` | `rules` | `auto` (default **llm** when API key set)
 
-**Fit-based verdicts** (after hard skips):
+The model reads **full JD + resume + `candidate_profile.yaml`** (tracks, P1–P2 intent, avoid, dealbreakers, trajectory). Preflight hints (track match, resume_fit counts) are context only — not a substitute for reading the posting.
+
+**Profile hard constraints** in the LLM prompt: dealbreakers, JD explicit no-sponsorship when `needs_sponsorship: true`.
+
+**Fallback — rules:** `backend/app/tools/recommendation.py` → `_generate_recommendation_rules()` when LLM unavailable or `RECOMMENDATION_METHOD=rules`:
 
 | Verdict | Conditions |
 |---------|------------|
 | **Apply** | `strong ≥ 2` AND `fit_ratio ≥ 0.50` |
-| **Near apply** | Track P1–P2, title sim ≥ **0.30**, fit ≥ **0.22**, below Apply bar, no role penalty |
-| **Consider** | fit ≥ **0.28**, OR enough partial/weak touches, OR P1–P2 floor with fit ≥ **0.12** |
-| **Skip** | Below all floors |
+| **Near apply** | Track P1–P2, title sim ≥ **0.30**, fit ≥ **0.22**, below Apply bar |
+| **Consider** | fit ≥ **0.28**, OR enough partial/weak, OR P1–P2 floor ≥ **0.12** |
+| **Skip** | P4–P5, dealbreakers, avoid track, JD visa veto, low fit |
 
-**Priority floor:** P1–P2 title match cannot end as Skip — bumped to at least **Consider**.
-
-**Explain block:** `main.py` → `_build_explain()` adds flags, company breakdown, role priority/similarity/fit_ratio for debugging.
+**Explain block:** `main.py` → `_build_explain()` — flags, company breakdown, role priority, `fit_ratio`, `recommendation_method`.
 
 ---
 
@@ -303,16 +304,12 @@ flowchart TD
   H1B --> JOIN[join]
   JD --> JOIN
   JOIN -->|"parse failed, retry ≤2"| JD
-  JOIN --> ROUTE{{USE_REACT_AGENT?}}
-  ROUTE -->|yes + LLM key| REACT[ReAct agent picks tools]
-  ROUTE -->|no| FILL[fill_gaps deterministic]
-  REACT -->|"missing steps"| FILL
-  REACT --> ASM[assemble Report]
-  FILL --> ASM
+  JOIN --> PIPE[analyze pipeline]
+  PIPE --> ASM[assemble Report]
   ASM --> TRACE[persist trace JSON]
 ```
 
-**Tool order** (agent + fill_gaps fallback):
+**Pipeline order** (`node_analyze`):
 1. `lookup_h1b_sponsorship`
 2. `parse_jd_structured`
 3. `score_resume_against_jd`
@@ -394,9 +391,7 @@ Full schema: [`docs/REPORT_SCHEMA.md`](docs/REPORT_SCHEMA.md)
 
 | Route | Purpose |
 |-------|---------|
-| `GET /health` | DB, LLM, agent mode, LangSmith, trace_dir |
-| `GET /tools` | List 6 analyze tools |
-| `POST /tools/{name}` | Invoke one tool with `{ arguments: {} }` |
+| `GET /health` | DB, LLM, pipeline, LangSmith, trace_dir |
 | `GET /observability/traces` | List recent trace files |
 | `GET /observability/traces/{run_id}` | Full trace JSON |
 
@@ -449,7 +444,7 @@ Extension does not use auth yet — uses guest YAML profile on the server.
 |-------|------------|
 | **Extension** | Chrome MV3, vanilla JS, offline DOL gzip index |
 | **Backend** | Python 3.12, FastAPI, uvicorn |
-| **Orchestration** | LangGraph + LangChain ReAct agent |
+| **Orchestration** | LangGraph deterministic pipeline |
 | **Database** | PostgreSQL 16 + pgvector (RDS on EC2 prod) |
 | **Auth** | bcrypt + PyJWT |
 | **LLM** | OpenRouter-compatible API (chat + embeddings) |
@@ -478,7 +473,7 @@ docker compose up -d --build
 curl http://localhost:8000/health
 ```
 
-Expected: `"database": "connected"`, `"llm": "configured"`, `"orchestration": "langgraph-react"`
+Expected: `"database": "connected"`, `"llm": "configured"`, `"orchestration": "langgraph"`, `"pipeline": "deterministic"`
 
 Reload extension → panel calls `http://localhost:8000/analyze`.
 
@@ -488,7 +483,7 @@ Reload extension → panel calls `http://localhost:8000/analyze`.
 cd evals && python3 run_eval.py
 ```
 
-Compares golden set: `expected_sponsors`, `expected_priority`, `expected_decision`.
+Compares golden set dimensions: `expected_sponsors`, `expected_priority`, `expected_track_id`, `expected_location_tier`, `expected_company_tier`, `expected_fit_band`, `expected_decision`. See [`evals/golden_set/README.md`](evals/golden_set/README.md).
 
 ### Tests
 
@@ -527,10 +522,7 @@ curl https://3-128-164-130.sslip.io/observability/traces/{run_id}
 ### 4. Single-tool isolation
 
 ```bash
-curl https://3-128-164-130.sslip.io/tools
-curl -X POST https://3-128-164-130.sslip.io/tools/parse_jd_structured \
-  -H "Content-Type: application/json" \
-  -d '{"arguments": {"jd_text": "...", "title": "..."}}'
+curl "https://3-128-164-130.sslip.io/observability/traces?limit=5"
 ```
 
 ### 5. LangSmith (optional)
@@ -555,7 +547,7 @@ Set `LANGCHAIN_API_KEY` in Secrets Manager → redeploy. `/health` shows `"langs
 cd /opt/joblens && git pull && bash deploy/ec2-redeploy.sh
 ```
 
-Applies SQL schemas, rebuilds Docker, sets `USE_REACT_AGENT=true`.
+Applies SQL schemas and rebuilds Docker.
 
 ---
 
@@ -587,7 +579,7 @@ Full inventory: [`deploy/aws-resources.md`](deploy/aws-resources.md)
 ├── backend/
 │   └── app/
 │       ├── main.py         # FastAPI routes
-│       ├── graph/          # LangGraph workflow + ReAct agent
+│       ├── graph/          # LangGraph workflow (parallel prefetch + pipeline)
 │       ├── tools/          # Scoring, parse, RAG, recommendation
 │       └── schemas/        # Report + profile Pydantic models
 ├── design/tokens.css       # Shared design tokens
@@ -610,7 +602,7 @@ Full inventory: [`deploy/aws-resources.md`](deploy/aws-resources.md)
 | `LLM_MODEL` | JD parse model | `openai/gpt-oss-20b:free` |
 | `EMBEDDING_MODEL` | Resume/title embeddings | `text-embedding-3-small` |
 | `RESUME_FIT_METHOD` | `auto` \| `llm` \| `vector` | `auto` |
-| `USE_REACT_AGENT` | ReAct vs deterministic fill_gaps | `false` (prod; ReAct adds 2–4 min on free models) |
+| `RECOMMENDATION_METHOD` | LLM vs rules verdict | `llm` |
 | `JWT_SECRET` | Auth signing | Secrets Manager |
 | `TRACE_DIR` | Analyze trace JSON dir | `/app/logs/traces` |
 | `LANGCHAIN_API_KEY` | LangSmith tracing | optional |
@@ -639,7 +631,7 @@ Template: [`.env.example`](.env.example)
 
 - H-1B offline lookup (extension) + backend entity resolution
 - Full analyze pipeline: JD parse → RAG resume fit → role/company/location → verdict
-- LangGraph + ReAct agent + deterministic fill_gaps fallback
+- LangGraph deterministic pipeline (parallel H-1B + JD prefetch)
 - Auth, profile, PDF resume upload (web)
 - Async analyze + step polling (web)
 - EC2 + RDS production deploy with HTTPS (sslip.io)
@@ -657,10 +649,13 @@ Template: [`.env.example`](.env.example)
 | **Extension uses HTTP bare IP** | Works but inconsistent with web HTTPS | Update `BACKEND_URL` to sslip.io + manifest host permission |
 | **Extension has no auth** | Always uses guest YAML profile | Wire JWT from web or add extension login |
 | **`sponsorship_likelihood` unimplemented** | Field always `Unknown` | Build heuristic or remove from UI |
-| **Company/location don't affect verdict** | Shown but not in Apply/Skip math | Wire into `recommendation.py` or document as display-only |
+| **Company/location tiers** | Shown; tuned via golden set | Optimize `profile_signals` / `company_signals`; LLM uses as context |
+| **Resume fit accuracy** | Per-requirement RAG noisy | Tune via `expected_fit_band`; separate from `expected_decision` |
+| **Golden set coverage** | Small sample set | Label all columns in `evals/golden_set/samples.csv`; run `run_eval.py` after changes |
 | **LinkedIn parse-url blocked** | Web can't auto-fetch LinkedIn JDs | Extension or manual paste (already handled in UI) |
 | **Time-aware gap classes** | Designed (`editable` / `fundamental`) but not coded | Future resume coaching feature |
-| **Golden set coverage** | Small sample set | Keep adding rows to `evals/golden_set/samples.csv` |
+| **LinkedIn parse-url blocked** | Web can't auto-fetch LinkedIn JDs | Extension or manual paste (already handled in UI) |
+| **Time-aware gap classes** | Designed (`editable` / `fundamental`) but not coded | Future resume coaching feature |
 | **MCP server** | Deferred by design | Skip unless portfolio needs it |
 
 ### Overall assessment

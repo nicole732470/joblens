@@ -20,28 +20,18 @@ Jan 2019 – Dec 2019
 
 # Project Experience
 
+## JobLens — AI Job-Fit Assistant | Python, FastAPI, LangGraph, pgvector, React, AWS
+
+- Built a three-surface AI job-fit product — Chrome extension, Lovable web app, and FastAPI backend — that helps job seekers check sponsorship history, resume/JD fit, and Apply / Consider / Skip recommendations before applying.
+- Designed an explainable analysis pipeline using LangGraph, LLM-based JD parsing, pgvector resume retrieval, and LLM-driven Apply/Skip recommendations (profile YAML as intent) with per-dimension display scoring for role, location, company, and requirement fit.
+- Solved H-1B employer matching between LinkedIn company names and DOL legal employer records through entity resolution, normalized search keys, confidence scoring, and offline extension lookup.
+- Deployed the production API on AWS EC2 with Docker, PostgreSQL/RDS, HTTPS, JWT auth, PDF resume upload, async job polling, and trace-based observability for debugging analysis runs.
+
 ## Price Tracker | PostgreSQL, Heroku, GitHub Actions, SMTP
 
 - Built a multi-strategy price scraping engine with JSON-LD → Open Graph → HTML microdata fallback and a dedicated Amazon adapter, supporting 30+ retailers.
 - Architected an automated daily refresh pipeline using GitHub Actions, background batch processing, deduplicated writes, and per-product failure isolation, supporting 1,000+ tracked products.
 - Designed price-alert with target-price thresholds, historical-low detection, email notifications, and refresh observability dashboards for monitoring scraper health.
-
-## AutoApply | Workflow Automation, Playwright, SQLite, Notion
-
-- Built a browser automation platform for job applications across Greenhouse, Workday, and custom ATS-style systems.
-- Developed Playwright automation with session persistence, dynamic form detection, captcha fallback, and human checkpoints.
-- Developed configurable workflow pipelines integrating SQLite and Notion for application tracking.
-
-## Voice Wine Explorer | Natural-Language Search, OpenRouter
-
-- Built a schema-constrained LLM query parser that transformed natural-language requests into structured filters for deterministic search.
-
-## PhotoApp Cloud System | AWS, Python, REST APIs, Node.js
-
-- Architected a serverless AI backend on AWS using API Gateway, Lambda, S3, and RDS for image processing.
-- Integrated AWS Rekognition and Amazon Bedrock for image labeling, OCR extraction, and AI-generated summarization.
-- Implemented SHA-256-based deduplication and database indexing strategies to improve storage efficiency.
-- Designed RESTful APIs and structured JSON interfaces supporting asset upload, processing, and retrieval.
 
 # Education
 
@@ -62,8 +52,8 @@ English (Highly proficient), Chinese (Native)
 
 Languages: Python, SQL, JavaScript
 
-AI: Prompt Engineering, RAG Pipelines, LLM Evaluation, AI Search Systems
+AI: Prompt Engineering, RAG Pipelines, LLM Evaluation, MCP
 
-Products: Figma, Mira, PRD, Microsoft Office Suite
+Product: Figma, Mira, PRD, Microsoft Office Suite
 
-Cloud / Backend: AWS, REST APIs, Docker
+Cloud / Backend: AWS, PostgreSQL, Docker, Vector database

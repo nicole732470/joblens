@@ -31,7 +31,28 @@ After editing tokens, sync to extension + Lovable web:
 
 Copies to `extension/tokens.css` and `../vision-job-glow/public/joblens-tokens.css`.
 
-Extension `@import "tokens.css"` in `styles.css`. Web loads `/joblens-tokens.css`.
+Extension `@import "tokens.css"` in `styles.css`. Web loads tokens via `index.css`. Lovable loads `/joblens-tokens.css`.
+
+## Shared report UI (analyze results)
+
+**Problem we fixed:** extension and web used to duplicate render logic (`content.js` vs `ReportPanel.jsx`), so the same job could show different metrics or copy.
+
+**Source of truth:**
+
+| Asset | Path |
+|-------|------|
+| Report HTML builders | `shared/report-view.js` |
+| Report styles | `design/report-panel.css` |
+
+```bash
+./scripts/sync-shared-ui.sh
+```
+
+Copies JS/CSS to `extension/lib/` and (if cloned) `vision-job-glow`. See `shared/README.md`.
+
+**Rule:** Any change to verdict text, metric cells, H-1B block, or tooltips → edit `shared/report-view.js` only, then sync. Do not re-implement in React or extension.
+
+Web `ReportPanel.jsx` is a thin wrapper (`renderReportResults` + `dangerouslySetInnerHTML`). Extension `content.js` calls the same `JobLensReportView` global for fit analysis.
 
 ## API (EC2)
 
@@ -54,7 +75,7 @@ No Lovable Environment panel — API URL is set in code (`vision-job-glow/src/ro
 cd /opt/joblens && git pull && bash deploy/ec2-redeploy.sh
 ```
 
-Applies `db/auth_schema.sql`, sets `USE_REACT_AGENT=true`, rebuilds Docker.
+Applies `db/auth_schema.sql` and rebuilds Docker.
 
 ## After Lovable Publish
 

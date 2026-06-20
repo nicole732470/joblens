@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   analyzeJob,
   API,
@@ -10,440 +10,351 @@ import {
   uploadResumePdf,
 } from "./api";
 import { useAuth } from "./AuthContext";
+import ProfileOnboarding from "./ProfileOnboarding";
+import { profileNeedsOnboarding } from "./profileForm";
+import ReportPanel from "./ReportPanel";
 
-const TRACK_OPTIONS = [
-  { id: "pm_eng", label: "Product / TPM" },
-  { id: "ai_eng", label: "AI Engineer" },
-  { id: "data_eng", label: "Data Engineer" },
-  { id: "swe", label: "Software Engineer" },
-];
-
-const STEPS = ["Account", "Preferences", "Job link", "Resume", "Results"];
-
-function verdictClass(d) {
-  const x = (d || "").toLowerCase();
-  if (x === "apply") return "verdict-apply";
-  if (x.includes("near")) return "verdict-near";
-  if (x === "consider") return "verdict-consider";
-  if (x === "skip") return "verdict-skip";
-  return "";
+function urlLooksLikeJob(url) {
+  const u = (url || "").trim().toLowerCase();
+  if (!u) return { ok: true, reason: "" };
+  if (!u.startsWith("http://") && !u.startsWith("https://")) {
+    return { ok: false, reason: "URL must start with http:// or https://" };
+  }
+  if (/linkedin\.com\/(feed|in\/|company\/|posts\/|pulse\/|learning\/|mynetwork\/)/.test(u)) {
+    return { ok: false, reason: "This is not a job posting — use a /jobs/view/… link or paste the JD" };
+  }
+  if (u.includes("linkedin.com") && !/linkedin\.com\/jobs\/|currentjobid=/.test(u)) {
+    return { ok: false, reason: "LinkedIn URL must be a job posting (/jobs/view/…)" };
+  }
+  if (
+    /linkedin\.com\/jobs\/|greenhouse\.io|lever\.co|workday|ashbyhq|careers\/|\/jobs\/|jobvite|icims/.test(
+      u
+    )
+  ) {
+    return { ok: true, reason: "" };
+  }
+  if (/\/(jobs?|careers|positions|openings)\//.test(u)) {
+    return { ok: true, reason: "" };
+  }
+  return { ok: false, reason: "URL does not look like a job posting — paste a careers link or the JD text" };
 }
 
 export default function App() {
   const { token, email, isLoggedIn, setSession, logout } = useAuth();
-  const [step, setStep] = useState(0);
-  const [status, setStatus] = useState("");
 
-  // Auth
+  // null = main app | 'auth' | 'onboarding' | 'settings'
+  const [screen, setScreen] = useState(null);
+  const [authMode, setAuthMode] = useState("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
 
-  // Profile
-  const [selectedTracks, setSelectedTracks] = useState([]);
-  const [dealbreakers, setDealbreakers] = useState("");
-  const [locations, setLocations] = useState("");
-
-  // Job
   const [jobUrl, setJobUrl] = useState("");
   const [jdText, setJdText] = useState("");
   const [company, setCompany] = useState("");
   const [title, setTitle] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Resume
   const [resumeFile, setResumeFile] = useState(null);
-  const [resumeUploaded, setResumeUploaded] = useState(false);
-
-  // Result
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
 
-  function err(msg) {
-    setStatus(msg);
-  }
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    getProfile(token)
+      .then((p) => {
+        if (profileNeedsOnboarding(p)) setScreen("onboarding");
+      })
+      .catch(() => {});
+  }, [isLoggedIn, token]);
 
-  async function handleRegister() {
-    try {
-      const data = await register(authEmail, authPassword);
-      setSession(data.token, data.email);
-      setStatus("");
-      setStep(1);
-    } catch (e) {
-      err(String(e.message));
-    }
-  }
-
-  async function handleLogin() {
-    try {
-      const data = await login(authEmail, authPassword);
-      setSession(data.token, data.email);
-      setStatus("");
-      setStep(1);
-    } catch (e) {
-      err(String(e.message));
-    }
-  }
-
-  function continueAsGuest() {
-    setStep(1);
+  async function handleAuthSubmit(e) {
+    e.preventDefault();
     setStatus("");
-  }
-
-  async function savePreferences() {
-    if (!isLoggedIn) {
-      setStep(2);
-      return;
-    }
     try {
-      let profile = {};
-      try {
-        profile = await getProfile(token);
-      } catch {
-        profile = { tracks: [], dealbreakers: [], locations: { summary: "" } };
+      const fn = authMode === "register" ? register : login;
+      const data = await fn(authEmail, authPassword);
+      setSession(data.token, data.email);
+      if (authMode === "register") {
+        setScreen("onboarding");
+      } else {
+        const p = await getProfile(data.token);
+        setScreen(profileNeedsOnboarding(p) ? "onboarding" : null);
       }
-      profile.tracks = selectedTracks.map((id) => {
-        const t = TRACK_OPTIONS.find((o) => o.id === id);
-        return { id, label: t?.label || id, priority: 1, example_titles: [] };
-      });
-      profile.dealbreakers = dealbreakers
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      profile.locations = { ...(profile.locations || {}), summary: locations };
-      await saveProfile(token, profile);
-      setStatus("");
-      setStep(2);
-    } catch (e) {
-      err(String(e.message));
-    }
-  }
-
-  async function fetchJob() {
-    setLoading(true);
-    setStatus("Fetching job page…");
-    try {
-      const data = await parseJobUrl(jobUrl);
-      if (!data.ok) {
-        err(data.reason || "Could not parse URL");
-        setLoading(false);
-        return;
-      }
-      setJdText(data.jd_text || "");
-      setCompany(data.company || "");
-      setTitle(data.title || "");
-      setStatus("Job details loaded.");
-      setStep(3);
-    } catch (e) {
-      err(String(e.message));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function uploadResume() {
-    if (!resumeFile) {
-      err("Select a PDF resume");
-      return;
-    }
-    if (!isLoggedIn) {
-      err("Sign in to upload resume, or continue as guest with server default resume");
-      setStep(4);
-      return;
-    }
-    setLoading(true);
-    setStatus("Uploading resume…");
-    try {
-      await uploadResumePdf(token, resumeFile);
-      setResumeUploaded(true);
-      setStatus("Resume saved.");
-      setStep(4);
-    } catch (e) {
-      err(String(e.message));
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      setStatus(String(err.message));
     }
   }
 
   async function runAnalyze() {
     setLoading(true);
-    setStatus("Analyzing… (20–90s on free LLM)");
+    setStatus("");
     setReport(null);
     const t0 = performance.now();
     try {
+      if (jobUrl.trim()) {
+        const urlCheck = urlLooksLikeJob(jobUrl);
+        if (!urlCheck.ok && jdText.trim().length < 80) {
+          throw new Error(urlCheck.reason);
+        }
+      }
+
+      if (jobUrl.trim() && jdText.trim().length < 80) {
+        setStatus("Fetching job page…");
+        const parsed = await parseJobUrl(jobUrl.trim());
+        if (parsed.ok) {
+          setJdText(parsed.jd_text || "");
+          setCompany(parsed.company || company);
+          setTitle(parsed.title || title);
+        } else if (!jdText.trim()) {
+          throw new Error(parsed.reason || "Could not parse URL");
+        }
+      }
+
       const body = {
         jd_text: jdText,
         company: company || null,
         title: title || null,
         job_url: jobUrl || null,
       };
+
+      if (isLoggedIn && resumeFile) {
+        await uploadResumePdf(token, resumeFile);
+      }
+
+      setStatus("Analyzing…");
       const data = await analyzeJob(body, token);
       setReport(data);
       setStatus(`Done in ${((performance.now() - t0) / 1000).toFixed(1)}s`);
-    } catch (e) {
-      err(String(e.message));
+    } catch (err) {
+      setStatus(String(err.message));
     } finally {
       setLoading(false);
     }
   }
 
+  if (screen === "onboarding" || screen === "settings") {
+    return (
+      <Shell
+        email={email}
+        isLoggedIn={isLoggedIn}
+        onLogout={logout}
+        onSettings={() => setScreen("settings")}
+        onMain={() => setScreen(null)}
+      >
+        <ProfileScreen
+          token={token}
+          mode={screen}
+          resumeFile={resumeFile}
+          setResumeFile={setResumeFile}
+          onDone={() => setScreen(null)}
+        />
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell
+      email={email}
+      isLoggedIn={isLoggedIn}
+      onLogout={() => {
+        logout();
+        setScreen(null);
+      }}
+      onSignIn={() => {
+        setScreen("auth");
+        setAuthMode("login");
+      }}
+      onSignUp={() => {
+        setScreen("auth");
+        setAuthMode("register");
+      }}
+      onSettings={() => setScreen("settings")}
+    >
+      {screen === "auth" && (
+        <div className="modal-backdrop" onClick={() => setScreen(null)}>
+          <form className="modal-card" onClick={(e) => e.stopPropagation()} onSubmit={handleAuthSubmit}>
+            <h2>{authMode === "register" ? "Create account" : "Sign in"}</h2>
+            <p className="sub">
+              {authMode === "register"
+                ? "Next you’ll customize tracks, locations, and preferences once."
+                : "Returning users go straight to job analysis."}
+            </p>
+            <label className="field">
+              <span className="field-label">Email</span>
+              <input
+                type="email"
+                required
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label">Password</span>
+              <input
+                type="password"
+                required
+                minLength={8}
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+              />
+            </label>
+            <div className="btn-row">
+              <button type="submit" className="btn btn-primary">
+                {authMode === "register" ? "Continue" : "Sign in"}
+              </button>
+              <button
+                type="button"
+                className="btn-text"
+                onClick={() => setAuthMode(authMode === "register" ? "login" : "register")}
+              >
+                {authMode === "register" ? "Already have an account?" : "Create account"}
+              </button>
+            </div>
+            {status ? <p className="status err">{status}</p> : null}
+          </form>
+        </div>
+      )}
+
+      <section className="hero">
+        <h1 className="hero-title">Paste a job link</h1>
+        <p className="hero-sub">We parse the posting and match it to your profile and resume.</p>
+        <div className="hero-input-wrap">
+          <input
+            className="hero-input"
+            type="url"
+            placeholder="https://boards.greenhouse.io/company/jobs/123"
+            value={jobUrl}
+            onChange={(e) => setJobUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !loading && runAnalyze()}
+          />
+          <button type="button" className="btn btn-primary hero-btn" disabled={loading} onClick={runAnalyze}>
+            {loading ? "…" : "Analyze"}
+          </button>
+        </div>
+        <button type="button" className="btn-text" onClick={() => setShowAdvanced(!showAdvanced)}>
+          {showAdvanced ? "Hide manual input" : "Paste JD manually instead"}
+        </button>
+      </section>
+
+      {showAdvanced && (
+        <section className="section-card flow-section">
+          <label className="field">
+            <span className="field-label">Job description</span>
+            <textarea rows={8} value={jdText} onChange={(e) => setJdText(e.target.value)} />
+          </label>
+          <div className="row-2">
+            <label className="field">
+              <span className="field-label">Company</span>
+              <input value={company} onChange={(e) => setCompany(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Title</span>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} />
+            </label>
+          </div>
+        </section>
+      )}
+
+      {isLoggedIn && (
+        <section className="section-card flow-section compact">
+          <label className="field">
+            <span className="field-label">Resume (PDF)</span>
+            <span className="field-hint">Optional — updates your stored resume when you analyze</span>
+            <input type="file" accept="application/pdf" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
+          </label>
+        </section>
+      )}
+
+      {status && !report ? <p className="status flow-status">{status}</p> : null}
+
+      {report && <ReportPanel report={report} status={status} />}
+    </Shell>
+  );
+}
+
+function ProfileScreen({ token, mode, resumeFile, setResumeFile, onDone }) {
+  const [profile, setProfile] = useState(null);
+  const [loadErr, setLoadErr] = useState("");
+
+  useEffect(() => {
+    getProfile(token)
+      .then(setProfile)
+      .catch((e) => setLoadErr(String(e.message)));
+  }, [token]);
+
+  if (loadErr) return <p className="status err">{loadErr}</p>;
+  if (!profile) return <p className="status flow-status">Loading profile…</p>;
+
+  return (
+    <>
+      {mode === "onboarding" && (
+        <section className="section-card flow-section compact">
+          <label className="field">
+            <span className="field-label">Resume (PDF)</span>
+            <span className="field-hint">Optional — upload now or later from the main page</span>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+            />
+          </label>
+        </section>
+      )}
+      <ProfileOnboarding
+        title={mode === "settings" ? "Edit profile" : "Welcome — set up your profile"}
+        initialProfile={profile}
+        onCancel={mode === "settings" ? onDone : undefined}
+        onSave={async (next) => {
+          await saveProfile(token, next);
+          if (resumeFile) await uploadResumePdf(token, resumeFile);
+          onDone();
+        }}
+      />
+    </>
+  );
+}
+
+function Shell({
+  children,
+  email,
+  isLoggedIn,
+  onLogout,
+  onSignIn,
+  onSignUp,
+  onSettings,
+  onMain,
+}) {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <span className="brand">JobLens</span>
-          <span className="tagline">See a company before you apply</span>
-        </div>
-        {isLoggedIn ? (
-          <button type="button" className="btn" onClick={logout}>
-            {email} · Sign out
-          </button>
-        ) : null}
+        <button type="button" className="brand-btn" onClick={onMain}>
+          JobLens
+        </button>
+        <nav className="nav">
+          {isLoggedIn ? (
+            <>
+              <button type="button" className="btn-text" onClick={onSettings}>
+                Profile
+              </button>
+              <button type="button" className="btn-text" onClick={onLogout}>
+                {email} · Out
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn-text" onClick={onSignIn}>
+                Sign in
+              </button>
+              <button type="button" className="btn" onClick={onSignUp}>
+                Sign up
+              </button>
+            </>
+          )}
+        </nav>
       </header>
-
-      <main className="main">
-        <div className="steps">
-          {STEPS.map((s, i) => (
-            <span
-              key={s}
-              className={`step-pill ${i === step ? "active" : ""} ${i < step ? "done" : ""}`}
-            >
-              {i + 1}. {s}
-            </span>
-          ))}
-        </div>
-
-        <div className="card">
-          {step === 0 && (
-            <>
-              <h2>Account</h2>
-              <p className="sub">Save your job preferences and resume across sessions.</p>
-              <label>
-                Email
-                <input
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  autoComplete="email"
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              <div className="btn-row">
-                <button type="button" className="btn btn-primary" onClick={handleRegister}>
-                  Create account
-                </button>
-                <button type="button" className="btn" onClick={handleLogin}>
-                  Sign in
-                </button>
-                <button type="button" className="btn" onClick={continueAsGuest}>
-                  Continue as guest
-                </button>
-              </div>
-            </>
-          )}
-
-          {step === 1 && (
-            <>
-              <h2>Job preferences</h2>
-              <p className="sub">What roles and locations are you targeting?</p>
-              <label>Tracks you want</label>
-              <div className="chip-grid">
-                {TRACK_OPTIONS.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`chip ${selectedTracks.includes(t.id) ? "selected" : ""}`}
-                    onClick={() =>
-                      setSelectedTracks((prev) =>
-                        prev.includes(t.id) ? prev.filter((x) => x !== t.id) : [...prev, t.id]
-                      )
-                    }
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              <label>
-                Locations (summary)
-                <input
-                  value={locations}
-                  onChange={(e) => setLocations(e.target.value)}
-                  placeholder="e.g. Chicago, remote OK"
-                />
-              </label>
-              <label>
-                Dealbreakers (one per line)
-                <textarea
-                  rows={3}
-                  value={dealbreakers}
-                  onChange={(e) => setDealbreakers(e.target.value)}
-                  placeholder="e.g. no sponsorship, onsite only Bay Area"
-                />
-              </label>
-              <div className="btn-row">
-                <button type="button" className="btn" onClick={() => setStep(0)}>
-                  Back
-                </button>
-                <button type="button" className="btn btn-primary" onClick={savePreferences}>
-                  Continue
-                </button>
-              </div>
-            </>
-          )}
-
-          {step === 2 && (
-            <>
-              <h2>Job posting</h2>
-              <p className="sub">Paste the job URL — we fetch title, company, and description.</p>
-              <label>
-                Job URL
-                <input
-                  type="url"
-                  value={jobUrl}
-                  onChange={(e) => setJobUrl(e.target.value)}
-                  placeholder="https://boards.greenhouse.io/…"
-                />
-              </label>
-              <p className="sub" style={{ marginTop: 0 }}>
-                LinkedIn URLs often fail server-side — use the Chrome extension on LinkedIn, or
-                paste JD below.
-              </p>
-              <label>
-                Or paste JD manually
-                <textarea
-                  rows={6}
-                  value={jdText}
-                  onChange={(e) => setJdText(e.target.value)}
-                  placeholder="Full job description…"
-                />
-              </label>
-              <div className="btn-row">
-                <button type="button" className="btn" onClick={() => setStep(1)}>
-                  Back
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={loading}
-                  onClick={() => {
-                    if (jdText.trim().length >= 80) {
-                      setStep(3);
-                      setStatus("");
-                    } else if (jobUrl.trim()) {
-                      fetchJob();
-                    } else {
-                      err("Enter a job URL or paste the JD");
-                    }
-                  }}
-                >
-                  {loading ? "Fetching…" : "Continue"}
-                </button>
-              </div>
-            </>
-          )}
-
-          {step === 3 && (
-            <>
-              <h2>Resume</h2>
-              <p className="sub">Upload PDF for personalized fit analysis.</p>
-              <div className="file-zone">
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-                />
-                {resumeFile ? <p>{resumeFile.name}</p> : <p>PDF only, max 5MB</p>}
-              </div>
-              {!isLoggedIn && (
-                <p className="sub">Guests use the server default resume. Sign in to use your PDF.</p>
-              )}
-              <div className="btn-row">
-                <button type="button" className="btn" onClick={() => setStep(2)}>
-                  Back
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={loading}
-                  onClick={() => {
-                    if (isLoggedIn && resumeFile) uploadResume();
-                    else {
-                      setStep(4);
-                      setStatus(isLoggedIn ? "" : "Using default resume");
-                    }
-                  }}
-                >
-                  {loading ? "Uploading…" : "Continue"}
-                </button>
-              </div>
-            </>
-          )}
-
-          {step === 4 && (
-            <>
-              <h2>Analysis</h2>
-              <p className="sub">
-                {company || "—"} · {title || "—"}
-              </p>
-              {!report && (
-                <div className="btn-row">
-                  <button type="button" className="btn" onClick={() => setStep(3)}>
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={loading}
-                    onClick={runAnalyze}
-                  >
-                    {loading ? "Analyzing…" : "Run analysis"}
-                  </button>
-                </div>
-              )}
-              {report && (
-                <div className="result-block">
-                  <span
-                    className={`verdict ${verdictClass(report.recommendation?.decision)}`}
-                  >
-                    {report.recommendation?.decision || "—"}
-                  </span>
-                  <p>{report.recommendation?.reasoning}</p>
-                  {report.sponsorship && (
-                    <div className="result-block">
-                      <h3>H-1B</h3>
-                      <p>
-                        {report.sponsorship.matched
-                          ? `${report.sponsorship.company?.name || company} · ${report.sponsorship.total_lca_count || 0} LCAs`
-                          : report.sponsorship.reason}
-                      </p>
-                    </div>
-                  )}
-                  {report.resume_fit?.available && (
-                    <div className="result-block">
-                      <h3>Resume</h3>
-                      <p>
-                        {report.resume_fit.strong_matches?.length || 0} strong ·{" "}
-                        {report.resume_fit.partial_matches?.length || 0} partial ·{" "}
-                        {report.resume_fit.missing?.length || 0} gaps
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          <p className={`status ${status.startsWith("Error") ? "err" : ""}`}>{status}</p>
-        </div>
-      </main>
-
-      <footer className="footer">API: {API}</footer>
+      <main className="main flow-main">{children}</main>
+      <footer className="footer">API {API}</footer>
     </div>
   );
 }

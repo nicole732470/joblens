@@ -1,4 +1,4 @@
-id,company,title,job_url,jd_text,expected_sponsors,expected_priority,expected_decision,notes
+id,company,title,job_url,jd_text,expected_sponsors,expected_priority,expected_track_id,expected_location_tier,expected_company_tier,expected_fit_band,expected_decision,notes
 ex1,HERE Technologies,Technical Customer Success Manager,https://www.linkedin.com/jobs/view/4429108869/?alternateChannel=search&trackingId=6s1VnhqjRkePgjCgtWdcfw%3D%3D,"About the job
 What's the role? 
 

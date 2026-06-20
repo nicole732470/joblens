@@ -16,15 +16,37 @@ Created during initial deploy. **Do not commit secrets.**
 | IAM role | `joblens-ec2` |
 | API (HTTP debug) | `http://3.128.164.130:8000/health` |
 
-## Before launching EC2
+## App secrets (`joblens/app`)
+
+Run once locally (admin AWS creds) to generate a persistent login signing key:
+
+```bash
+./deploy/ensure-app-secrets.sh
+```
+
+This merges missing fields into `joblens/app` without printing values. **JWT_SECRET** signs login tokens — if it changes on redeploy, everyone must log in again.
+
+### LangSmith (optional debug tracing)
+
+1. Sign up free at [smith.langchain.com](https://smith.langchain.com) (GitHub/Google/email).
+2. [Settings → API Keys](https://smith.langchain.com/settings) → **Create API Key** → copy once.
+3. Store in Secrets Manager:
+
+```bash
+LANGCHAIN_API_KEY=lsv2_pt_... ./deploy/ensure-app-secrets.sh
+```
+
+4. Redeploy EC2 (`deploy/ec2-redeploy.sh`). `/health` shows `"langsmith": true` when active. Traces appear under project **`joblens-analyze`**.
+
+Initial secret template:
 
 ```bash
 aws secretsmanager create-secret --name joblens/app --secret-string '{
   "LLM_API_KEY": "sk-or-v1-...",
   "LLM_BASE_URL": "https://openrouter.ai/api/v1",
   "LLM_MODEL": "openai/gpt-oss-20b:free",
-  "USE_REACT_AGENT": "true",
   "JWT_SECRET": "long-random-string",
+  "LANGCHAIN_API_KEY": "lsv2_pt_...",
   "LANGSMITH_PROJECT": "joblens-analyze"
 }'
 ```

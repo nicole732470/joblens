@@ -1,11 +1,24 @@
 /* JobLens extension — tokens: design/tokens.css (sync via scripts/sync-design-tokens.sh) */
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap");
 @import "tokens.css";
+@import "report-panel.css";
+
+/* Reset LinkedIn/global bleed into the shadow panel */
+#joblens-panel,
+#joblens-panel *,
+#joblens-panel *::before,
+#joblens-panel *::after {
+  box-sizing: border-box;
+}
 
 #joblens-panel {
   --lca-fs: 13px;
   --lca-fs-sm: 11px;
   --lca-fs-xs: 10px;
+  --lca-chrome-bg: rgba(255, 253, 248, 0.96);
+  --lca-chrome-border: rgba(42, 36, 24, 0.08);
+  --lca-body-bg: #faf8f4;
+  --lca-panel-bg: #fffdf9;
   position: fixed;
   top: 80px;
   right: 24px;
@@ -16,15 +29,32 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
+  isolation: isolate;
   font-family: var(--jn-font);
   font-size: var(--lca-fs);
   line-height: 1.5;
   color: var(--jn-text);
-  background: var(--jn-bg-panel);
-  border-radius: var(--jn-radius-lg);
-  border: 1px solid var(--jn-border);
-  box-shadow: 0 1px 0 rgba(90, 70, 30, 0.04), 0 2px 12px -8px rgba(90, 70, 30, 0.12);
+  background: var(--lca-panel-bg);
+  border-radius: 20px;
+  border: 1px solid var(--lca-chrome-border);
+  box-shadow:
+    0 4px 6px -2px rgba(42, 36, 24, 0.06),
+    0 24px 48px -16px rgba(42, 36, 24, 0.18);
+}
+
+#joblens-panel button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+}
+
+#joblens-panel .lca-chrome button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .lca-badge.lca-dragging {
@@ -32,100 +62,117 @@
   user-select: none;
 }
 
-.lca-chrome {
+#joblens-panel .lca-chrome {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
-  background: var(--jn-bg-tool);
-  border-bottom: 1px solid var(--jn-border);
+  padding: 12px 14px 12px 12px;
+  background: var(--lca-chrome-bg);
+  border-bottom: 1px solid var(--lca-chrome-border);
   flex-shrink: 0;
   cursor: grab;
   touch-action: none;
+  position: relative;
+  z-index: 2;
+  backdrop-filter: blur(12px);
 }
-.lca-badge.lca-dragging .lca-chrome {
+#joblens-panel.lca-badge.lca-dragging .lca-chrome {
   cursor: grabbing;
 }
-.lca-drag-handle {
-  color: var(--jn-text-faint);
-  font-size: 11px;
+#joblens-panel .lca-drag-handle {
+  color: #7a6f5c;
+  font-size: 12px;
+  font-weight: 700;
   letter-spacing: -2px;
   pointer-events: none;
-  opacity: 0.55;
+  opacity: 0.85;
 }
-.lca-brand {
+#joblens-panel .lca-brand {
   flex: 1;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   font-family: var(--jn-font-mono);
-  color: var(--jn-brand);
+  color: #2a2418;
   letter-spacing: -0.02em;
   pointer-events: none;
+  line-height: 1.2;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
 }
-.lca-brand::before {
+#joblens-panel .lca-brand::before {
   content: "◐ ";
-  color: var(--jn-accent);
+  color: #4a6741;
   margin-right: 2px;
 }
-.lca-refresh-btn,
-.lca-analyze-btn {
+#joblens-panel .lca-refresh-btn,
+#joblens-panel .lca-analyze-btn {
   flex-shrink: 0;
-  border: 1px solid var(--jn-cta);
-  border-radius: var(--jn-radius);
-  background: var(--jn-cta);
-  color: #fdfaf3;
+  min-width: 72px;
+  min-height: 30px;
+  border: none !important;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #c96a52, #b85a44) !important;
+  background-color: #c4654a !important;
+  color: #ffffff !important;
   font-family: var(--jn-font-mono);
   font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   line-height: 1;
-  padding: 6px 12px;
+  padding: 8px 14px;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.12);
-  transition: background 120ms ease, transform 120ms ease;
+  box-shadow: 0 2px 8px rgba(184, 90, 68, 0.35);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
-.lca-refresh-btn:hover,
-.lca-analyze-btn:hover {
-  background: var(--jn-cta-hover);
+#joblens-panel .lca-refresh-btn:hover,
+#joblens-panel .lca-analyze-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 4px 12px rgba(184, 90, 68, 0.4);
 }
-.lca-refresh-btn:active,
-.lca-analyze-btn:active {
+#joblens-panel .lca-refresh-btn:active,
+#joblens-panel .lca-analyze-btn:active {
   transform: translateY(1px);
 }
-.lca-refresh-btn:disabled,
-.lca-analyze-btn:disabled {
-  opacity: 0.55;
+#joblens-panel .lca-refresh-btn:disabled,
+#joblens-panel .lca-analyze-btn:disabled {
+  opacity: 0.6;
   cursor: default;
 }
-.lca-close {
+#joblens-panel .lca-close {
   border: none;
-  background: transparent;
-  font-size: 20px;
+  background: rgba(42, 36, 24, 0.06) !important;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  color: var(--jn-text-faint);
-  padding: 0 2px;
+  color: #5b5240 !important;
+  padding: 0;
   flex-shrink: 0;
-  transition: color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
-.lca-close:hover {
-  color: var(--jn-text);
+#joblens-panel .lca-close:hover {
+  background: rgba(42, 36, 24, 0.12) !important;
+  color: #2a2418 !important;
 }
 
-.lca-body {
-  padding: 14px 16px 12px;
+#joblens-panel .lca-body {
+  padding: 12px 14px 14px;
   overflow-y: auto;
   flex: 1;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfaf6 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--lca-body-bg);
   scrollbar-width: thin;
-  scrollbar-color: rgba(55, 53, 47, 0.15) transparent;
+  scrollbar-color: rgba(42, 36, 24, 0.2) transparent;
 }
-.lca-body::-webkit-scrollbar {
+#joblens-panel .lca-body::-webkit-scrollbar {
   width: 4px;
 }
-.lca-body::-webkit-scrollbar-thumb {
-  background: rgba(55, 53, 47, 0.15);
+#joblens-panel .lca-body::-webkit-scrollbar-thumb {
+  background: rgba(42, 36, 24, 0.2);
   border-radius: 99px;
 }
 
@@ -174,7 +221,7 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 .lca-head-pill {
   display: flex;
@@ -229,12 +276,44 @@
   font-weight: 500;
   color: var(--jn-text-secondary);
   line-height: 1.35;
-  margin: 0 0 6px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(55, 53, 47, 0.12);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+.lca-job-location {
+  font-size: var(--lca-fs-xs);
+  font-weight: 500;
+  color: var(--jn-text-faint);
+  line-height: 1.3;
+  margin-top: 4px;
+}
+
+/* ── Section cards (company / H-1B / fit) ── */
+.lca-section-card {
+  border-radius: 14px;
+  border: 1px solid rgba(42, 36, 24, 0.08);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 1px 2px rgba(42, 36, 24, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lca-section-card--company {
+  background: rgba(255, 255, 255, 0.85);
+}
+.lca-section-card--h1b {
+  border-color: rgba(74, 103, 65, 0.2);
+  background: linear-gradient(160deg, rgba(238, 245, 232, 0.95), rgba(255, 255, 255, 0.9));
+}
+.lca-section-card--fit {
+  border-color: rgba(196, 101, 74, 0.18);
+  background: linear-gradient(160deg, rgba(255, 248, 242, 0.95), rgba(255, 255, 255, 0.92));
 }
 .lca-disclaimer {
   font-size: var(--lca-fs-xs);
@@ -266,8 +345,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--jn-border);
 }
 
 .lca-section-label {
@@ -277,17 +354,18 @@
   text-transform: uppercase;
   color: var(--jn-text-faint);
   line-height: 1.2;
+  margin-bottom: 2px;
 }
 
 .lca-analyze-result {
-  margin-top: 10px;
+  margin-top: 0;
 }
 .lca-analyze-inner {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--jn-border);
+  padding-top: 0;
+  border-top: none;
 }
 .lca-fadein {
   animation: lca-fadein 0.35s ease both;
@@ -313,6 +391,37 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(42, 36, 24, 0.06);
+  background: rgba(255, 255, 255, 0.65);
+}
+.lca-verdict-card--apply,
+.lca-verdict-card--ok {
+  background: #edf8f0;
+  border-color: #bfe3c9;
+}
+.lca-verdict-card--consider,
+.lca-verdict-card--caution,
+.lca-verdict-card--near-apply {
+  background: #fff9e6;
+  border-color: #f3e2a0;
+}
+.lca-verdict-card--skip {
+  background: #fef2f1;
+  border-color: #f3c8c5;
+}
+.lca-verdict-card--neutral,
+.lca-verdict-card--later {
+  background: var(--jn-bg-subtle);
+  border-color: var(--jn-border);
+}
+
+.lca-metrics-wrap {
+  border: none;
+  border-radius: 12px;
+  padding: 4px 0;
+  background: transparent;
 }
 
 .lca-verdict-row {
@@ -338,22 +447,22 @@
 .lca-metric {
   position: relative;
   text-align: center;
-  padding: 7px 4px;
-  background: var(--jn-bg-subtle);
-  border-radius: 8px;
-  border: 1px solid var(--jn-border);
+  padding: 8px 4px;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 10px;
+  border: 1px solid rgba(42, 36, 24, 0.06);
   cursor: default;
   outline: none;
   transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
 }
 .lca-metric.lca-has-tip {
-  cursor: help;
+  cursor: pointer;
 }
 .lca-metric.lca-has-tip:hover,
 .lca-metric.lca-has-tip:focus-visible {
-  border-color: var(--jn-accent);
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.06);
+  border-color: rgba(196, 101, 74, 0.35);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(42, 36, 24, 0.08);
   z-index: 2;
 }
 .lca-metric-val {
@@ -384,12 +493,21 @@
   max-width: 260px;
   padding: 10px 12px;
   background: var(--jn-bg);
-  border: 1px solid var(--jn-border);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px -8px rgba(15, 15, 15, 0.18);
+  border: 1px solid rgba(42, 36, 24, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -10px rgba(15, 15, 15, 0.22);
   text-align: left;
   pointer-events: none;
   z-index: 100001;
+}
+body > .lca-metric-tip.lca-tip-visible,
+#joblens-panel > .lca-metric-tip.lca-tip-visible {
+  display: block !important;
+  position: fixed;
+  background: #fdfaf3 !important;
+  color: #2a2418 !important;
+  border: 1px solid rgba(42, 36, 24, 0.12) !important;
+  opacity: 1 !important;
 }
 .lca-tip-title {
   font-size: 10px;

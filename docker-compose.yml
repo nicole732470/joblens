@@ -20,7 +20,9 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: jobintel-backend
     restart: unless-stopped
     environment:

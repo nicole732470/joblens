@@ -71,6 +71,7 @@ def assemble_report(
             "has_resume": bool(req.get("resolved_resume")),
             "resume_source": req.get("resume_source"),
             "job_url": req.get("job_url"),
+            "job_location": req.get("job_location"),
             "linkedin_followers": req.get("linkedin_followers"),
             "alumni_hints": req.get("alumni_hints"),
         },

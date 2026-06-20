@@ -23,7 +23,6 @@ services:
       DEFAULT_RESUME_PATH: ${DEFAULT_RESUME_PATH:-evals/golden_set/resume.md}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
       RESUME_FIT_METHOD: ${RESUME_FIT_METHOD:-auto}
-      USE_REACT_AGENT: ${USE_REACT_AGENT:-false}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       TRACE_DIR: /app/logs/traces
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}

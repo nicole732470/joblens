@@ -246,10 +246,10 @@ requirement.
 
 ### `generate_recommendation(all_results)`
 
-Generates final recommendation using structured inputs. Must cite evidence IDs.
-**Excludes H-1B database signals** (see §8.1): it consumes JD requirements
-(incl. JD-stated visa language), resume fit, and risk rules — but never the
-H-1B/LCA match as a reason to apply or not.
+Generates final recommendation. **Default:** LLM reads JD + resume +
+`candidate_profile.yaml` (`recommendation_llm.py`). **Fallback:** deterministic
+rules on `fit_ratio` + track priority (`recommendation.py`). Must cite evidence
+IDs where available. **Excludes H-1B database signals** (see §8.1).
 
 ## 8. Citation Enforcement
 

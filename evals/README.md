@@ -1,28 +1,51 @@
 # Evaluation
 
-The scoreboard for the platform. Built **before** the agents so every change is
-measurable.
+Offline scoreboard for the platform — every product dimension gets a golden-set
+label and a line in `run_eval.py` summary.
 
 ## Status
 
-Skeleton only.
+- **Golden set:** `golden_set/samples.csv` — multi-column labels (see README there)
+- **Harness:** `run_eval.py` — calls `POST /analyze`, reports per-dimension accuracy
+- **Traces:** optional LangSmith + `logs/traces/` JSON
 
-## Plan
+## What we measure
 
-1. **Golden set** — 30–50 real job postings, each hand-labeled with expected
-   outcomes:
-   - sponsorship likely? (yes / no / unclear)
-   - recommendation (Apply / Apply with modifications / Low Priority / Skip)
-   - key missing qualifications
-2. **Harness** — offline script that runs the pipeline over the golden set and
-   reports retrieval relevance, citation coverage, and recommendation accuracy.
-3. **Tracking** — LangSmith for traces + regression across prompt/model versions.
+Each row in `samples.csv` can label:
 
-## Planned layout
+| Dimension | Column | API field |
+|-----------|--------|-----------|
+| H-1B entity match | `expected_sponsors` | `sponsorship.matched` |
+| Role P-tier | `expected_priority` | `recommendation.track_priority` |
+| Profile track | `expected_track_id` | `recommendation.track_id` |
+| Location tier | `expected_location_tier` | `recommendation.location_tier` |
+| Company tier | `expected_company_tier` | `company.company_tier` |
+| Resume fit (display) | `expected_fit_band` | `fit_ratio` from `resume_fit` |
+| Final verdict | `expected_decision` | `recommendation.decision` |
+
+Resume fit is still computed and shown in the UI; golden `expected_fit_band`
+optimizes that layer **separately** from `expected_decision` (LLM verdict).
+
+## Run
+
+```bash
+cd evals
+python3 run_eval.py
+BASE_URL=http://localhost:8000 python3 run_eval.py
+```
+
+Target: **30–50** labeled postings. Leave columns blank until judged.
+
+## Layout
 
 ```
 evals/
-├── golden_set/        # labeled postings (jsonl) + resumes used for fit tests
-├── run_eval.py        # offline harness
-└── metrics/           # saved results per run for regression comparison
+├── golden_set/
+│   ├── samples.csv
+│   ├── resume.md
+│   ├── candidate_profile.yaml
+│   └── README.md
+└── run_eval.py
 ```
+
+Threshold reference: `docs/FIT_THRESHOLDS.md`
