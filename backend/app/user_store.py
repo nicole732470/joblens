@@ -168,3 +168,26 @@ def get_primary_resume_text(user_id: uuid.UUID) -> str | None:
         (user_id,),
     )
     return row["extracted_text"] if row else None
+
+
+def get_user_resume_status(user_id: uuid.UUID) -> dict:
+    row = fetch_one(
+        """
+        SELECT filename, extracted_text, created_at
+        FROM user_resumes
+        WHERE user_id = %s AND is_primary = true
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        (user_id,),
+    )
+    if not row or not (row.get("extracted_text") or "").strip():
+        return {"uploaded": False, "chars": 0, "summary": "", "filename": None}
+    text = row["extracted_text"]
+    from app.tools.resume_summary import resume_summary
+
+    return {
+        "uploaded": True,
+        "chars": len(text),
+        "summary": resume_summary(text),
+        "filename": row.get("filename"),
+    }

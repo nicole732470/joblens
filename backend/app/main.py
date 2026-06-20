@@ -39,6 +39,7 @@ from app.tools.resume_store import index_resume
 from app.user_store import (
     get_primary_resume_text,
     get_user_profile,
+    get_user_resume_status,
     is_owner_email,
     save_user_profile,
     save_user_resume,
@@ -210,6 +211,11 @@ def auth_login(req: AuthLoginRequest) -> dict:
 @app.get("/me/profile", response_model=CandidateProfile)
 def me_profile(user_id: uuid.UUID = Depends(require_user_id)) -> CandidateProfile:
     return get_user_profile(user_id)
+
+
+@app.get("/me/resume")
+def me_resume(user_id: uuid.UUID = Depends(require_user_id)) -> dict:
+    return get_user_resume_status(user_id)
 
 
 @app.put("/me/profile", response_model=CandidateProfile)

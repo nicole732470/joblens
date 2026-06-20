@@ -12,6 +12,7 @@ from app.schemas.report import (
     SponsorshipAnalysis,
 )
 from app.tools.analysis_context import get_artifacts, get_input
+from app.tools.resume_summary import resume_summary
 
 
 def assemble_report(
@@ -55,6 +56,7 @@ def assemble_report(
         "observability": observability or {},
     }
 
+    resolved = req.get("resolved_resume") or ""
     return Report(
         status=status,
         pending=pending,
@@ -68,7 +70,9 @@ def assemble_report(
             "company": req.get("company"),
             "title": req.get("title"),
             "jd_chars": len(req.get("jd_text") or ""),
-            "has_resume": bool(req.get("resolved_resume")),
+            "has_resume": bool(resolved),
+            "resume_chars": len(resolved),
+            "resume_summary": resume_summary(resolved),
             "resume_source": req.get("resume_source"),
             "job_url": req.get("job_url"),
             "job_location": req.get("job_location"),

@@ -1238,7 +1238,7 @@
 
     const enriched = enrichReport(report, inputs);
     const errLine = !jd?.available ? `<p class="lca-err-mini">${escapeHtml(shortJdError(chars, jd))}</p>` : "";
-    const fitBlock = RV.renderUnifiedReport(enriched, { sections: ["fit", "risk"] });
+    const fitBlock = RV.renderUnifiedReport(enriched, { sections: ["fit", "resume_detail", "risk"] });
     return `<div class="lca-analyze-inner">${errLine}${fitBlock}</div>`;
   }
 

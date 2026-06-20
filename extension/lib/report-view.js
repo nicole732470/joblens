@@ -328,6 +328,65 @@ function renderRiskSection(risk) {
   return `<p class="lca-risk-line">⚠ ${escapeHtml(truncated)}${more ? `<span class="lca-risk-more">${escapeHtml(more)}</span>` : ""}</p>`;
 }
 
+function renderResumeClaimList(items, emptyLabel) {
+  const rows = (items || [])
+    .map((c) => {
+      const text = stripClaimPrefix(c?.claim || c);
+      return text ? `<li>${escapeHtml(text)}</li>` : "";
+    })
+    .filter(Boolean)
+    .join("");
+  if (!rows) return `<p class="lca-resume-empty">${escapeHtml(emptyLabel)}</p>`;
+  return `<ul class="lca-resume-list">${rows}</ul>`;
+}
+
+/** Your resume snapshot + requirement-level match for this posting. */
+function renderResumeDetailSection(rf, received) {
+  const hasResume = Boolean(received?.has_resume);
+  const summary = (received?.resume_summary || "").trim();
+  if (!hasResume && !rf?.available) return "";
+
+  const blocks = [];
+  if (hasResume) {
+    const body = summary
+      ? `<p class="lca-resume-summary">${escapeHtml(summary)}</p>`
+      : `<p class="lca-resume-summary">${Number(received?.resume_chars || 0).toLocaleString()} characters on file.</p>`;
+    blocks.push(`
+      <div class="lca-section-card lca-section-card--resume lca-resume-you">
+        <div class="lca-section-label">Your resume</div>
+        ${body}
+      </div>`);
+  }
+
+  if (rf?.available) {
+    const strong = rf.strong_matches || [];
+    const partial = rf.partial_matches || [];
+    const missing = rf.missing || [];
+    blocks.push(`
+      <div class="lca-section-card lca-section-card--resume lca-resume-role">
+        <div class="lca-section-label">Resume vs this role</div>
+        <div class="lca-resume-cols">
+          <div class="lca-resume-col">
+            <div class="lca-resume-col-hd">Strong (${strong.length})</div>
+            ${renderResumeClaimList(strong, "No strong overlaps.")}
+          </div>
+          <div class="lca-resume-col">
+            <div class="lca-resume-col-hd">Partial (${partial.length})</div>
+            ${renderResumeClaimList(partial, "No partial overlaps.")}
+          </div>
+          <div class="lca-resume-col">
+            <div class="lca-resume-col-hd">Gaps (${missing.length})</div>
+            ${renderResumeClaimList(missing, "No major gaps flagged.")}
+          </div>
+        </div>
+      </div>`);
+  } else if (hasResume && rf?.reason) {
+    blocks.push(`<p class="lca-h1b-subline">${escapeHtml(rf.reason)}</p>`);
+  }
+
+  return blocks.join("");
+}
+
 /** H-1B block — works with extension employer object or API sponsorship. */
 function renderH1bBlock(data, currentJobTitle = null) {
   const filings = Number(data.filings ?? data.lca_count ?? data.total_lca_count) || 0;
@@ -403,7 +462,7 @@ function renderSponsorshipFromApi(sp, currentJobTitle = null) {
 
 /** Web + extension: unified layout (company → H-1B → fit). */
 function renderUnifiedReport(report, options = {}) {
-  const sections = options.sections || ["head", "h1b", "fit", "risk"];
+  const sections = options.sections || ["head", "h1b", "fit", "resume_detail", "risk"];
   const title = options.title || report.received?.title || null;
   const jobLocation = options.jobLocation || report.received?.job_location || null;
   const company =
@@ -449,6 +508,9 @@ function renderUnifiedReport(report, options = {}) {
     parts.push(
       renderAnalysisBlock(report.recommendation, report.resume_fit, report.company, report.explain)
     );
+  }
+  if (sections.includes("resume_detail")) {
+    parts.push(renderResumeDetailSection(report.resume_fit, report.received));
   }
   if (sections.includes("risk")) {
     parts.push(renderRiskSection(report.risk));
@@ -571,27 +633,55 @@ function wireMetricTips(root) {
 }
 
 // Extension content scripts (no bundler): attach to global.
+const JobLensReportView = {
+  escapeHtml,
+  formatWage,
+  buildVerdictNote,
+  titlesRoughlyMatch,
+  statusPill,
+  renderMetricGrid,
+  buildMetricCells,
+  renderMetricsGrid,
+  renderCompanySignals,
+  renderAnalysisBlock,
+  renderResumeDetailSection,
+  renderRiskSection,
+  renderH1bBlock,
+  renderSponsorshipFromApi,
+  renderUnifiedReport,
+  renderReportResults,
+  renderCompanyHeadBlock,
+  sponsorHeadPillFromApi,
+  wireMetricTips,
+  hardRequirementFit,
+  resolveFitRatio,
+};
+
 if (typeof globalThis !== "undefined") {
-  globalThis.JobLensReportView = {
-    escapeHtml,
-    formatWage,
-    buildVerdictNote,
-    titlesRoughlyMatch,
-    statusPill,
-    renderMetricGrid,
-    buildMetricCells,
-    renderMetricsGrid,
-    renderCompanySignals,
-    renderAnalysisBlock,
-    renderRiskSection,
-    renderH1bBlock,
-    renderSponsorshipFromApi,
-    renderUnifiedReport,
-    renderReportResults,
-    renderCompanyHeadBlock,
-    sponsorHeadPillFromApi,
-    wireMetricTips,
-    hardRequirementFit,
-    resolveFitRatio,
-  };
+  globalThis.JobLensReportView = JobLensReportView;
 }
+
+export {
+  escapeHtml,
+  formatWage,
+  buildVerdictNote,
+  titlesRoughlyMatch,
+  statusPill,
+  renderMetricGrid,
+  buildMetricCells,
+  renderMetricsGrid,
+  renderCompanySignals,
+  renderAnalysisBlock,
+  renderResumeDetailSection,
+  renderRiskSection,
+  renderH1bBlock,
+  renderSponsorshipFromApi,
+  renderUnifiedReport,
+  renderReportResults,
+  renderCompanyHeadBlock,
+  sponsorHeadPillFromApi,
+  wireMetricTips,
+  hardRequirementFit,
+  resolveFitRatio,
+  JobLensReportView,
+};

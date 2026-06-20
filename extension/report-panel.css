@@ -114,6 +114,48 @@
   margin-top: 4px;
 }
 
+.lca-section-card--resume {
+  border-color: rgba(74, 103, 65, 0.16);
+  background: linear-gradient(160deg, rgba(248, 252, 245, 0.95), rgba(255, 255, 255, 0.92));
+}
+.lca-resume-summary {
+  font-size: var(--lca-fs-sm);
+  color: var(--jn-text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+.lca-resume-cols {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+@media (min-width: 520px) {
+  .lca-resume-cols {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+.lca-resume-col-hd {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--jn-text-faint);
+  margin-bottom: 6px;
+}
+.lca-resume-list {
+  margin: 0;
+  padding-left: 14px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--jn-text-secondary);
+}
+.lca-resume-list li { margin: 0 0 4px; }
+.lca-resume-empty {
+  font-size: 11px;
+  color: var(--jn-text-faint);
+  margin: 0;
+}
+
 .lca-analyze-inner {
   display: flex;
   flex-direction: column;
