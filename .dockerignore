@@ -1,0 +1,11 @@
+.git
+.github
+extension
+web
+logs
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+.env
+**/.pytest_cache
