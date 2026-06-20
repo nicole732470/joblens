@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobLens",
-  "version": "3.3.7",
+  "version": "3.3.8",
   "description": "JobLens — visa sponsorship + role match on LinkedIn before you apply.",
   "permissions": ["storage"],
   "host_permissions": [

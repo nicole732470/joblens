@@ -1,5 +1,4 @@
 (function () {
-  const EXTENSION_VERSION = chrome.runtime.getManifest().version;
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
@@ -7,13 +6,31 @@
   // Lovable web app — set after Publish (vision-job-glow). Empty = no footer link.
   const WEB_APP_URL = "https://vision-job-glow.lovable.app";
   let extensionBroken = false;
+  let extensionStale = false;
 
   function extensionRuntime() {
     try {
-      return globalThis.chrome?.runtime ?? globalThis.browser?.runtime ?? null;
+      const rt = globalThis.chrome?.runtime ?? globalThis.browser?.runtime ?? null;
+      if (rt?.id) void rt.id;
+      return rt;
     } catch (_) {
       return null;
     }
+  }
+
+  function extensionVersion() {
+    try {
+      return extensionRuntime()?.getManifest?.()?.version || "?";
+    } catch (_) {
+      return "?";
+    }
+  }
+
+  function isExtensionContextError(err) {
+    const msg = String(err?.message || err || "");
+    return /extension context invalidated|extension was updated|receiving end does not exist|message port closed|could not establish connection/i.test(
+      msg
+    );
   }
 
   function showExtensionBrokenBanner() {
@@ -28,6 +45,15 @@
       "background:#fff5f5;border:1px solid #fca5a5;border-radius:8px;font:13px/1.4 system-ui,sans-serif;" +
       "color:#991b1b;box-shadow:0 4px 16px rgba(0,0,0,.12);";
     document.body.appendChild(el);
+  }
+
+  /** Extension was reloaded while this tab stayed open — APIs dead but page may still work via fetch. */
+  function markExtensionStale() {
+    if (extensionBroken || extensionStale) return;
+    extensionStale = true;
+    console.warn(
+      "[JobLens] Extension was reloaded — refresh this LinkedIn tab (F5) for full plugin features."
+    );
   }
 
   const runtime = extensionRuntime();
@@ -84,7 +110,7 @@
         `<a href="${escapeHtml(WEB_APP_URL)}" target="_blank" rel="noopener" title="Paste job links and edit your profile">Full site</a>`
       );
     }
-    bits.push(`v${EXTENSION_VERSION}`);
+    bits.push(`v${extensionVersion()}`);
     return `<div class="lca-foot">${bits.join(" · ")}</div>`;
   }
 
@@ -1126,22 +1152,41 @@
       linkedin_followers: inputs.linkedin_followers ?? null,
       alumni_hints: inputs.alumni_hints || [],
     };
-    const viaBackground = await new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: "JOBLENS_ANALYZE", body }, (resp) => {
-        if (chrome.runtime.lastError) {
-          resolve({ ok: false, error: chrome.runtime.lastError.message });
-          return;
-        }
-        resolve(resp || { ok: false, error: "no response" });
-      });
-    });
-    if (viaBackground.ok && viaBackground.data) return viaBackground.data;
-    if (viaBackground.status) {
-      throw new Error(`Backend responded ${viaBackground.status}${viaBackground.error ? ` — ${viaBackground.error}` : ""}`);
-    }
-    if (viaBackground.error) throw new TypeError(viaBackground.error);
 
-    // Fallback: direct fetch (local dev)
+    let viaBackground = null;
+    const rt = extensionRuntime();
+    if (rt?.sendMessage) {
+      viaBackground = await new Promise((resolve) => {
+        try {
+          rt.sendMessage({ type: "JOBLENS_ANALYZE", body }, (resp) => {
+            const err = rt.lastError;
+            if (err) {
+              resolve({ ok: false, error: err.message });
+              return;
+            }
+            resolve(resp || { ok: false, error: "no response" });
+          });
+        } catch (e) {
+          resolve({ ok: false, error: e.message || String(e) });
+        }
+      });
+    }
+
+    if (viaBackground?.ok && viaBackground.data) return viaBackground.data;
+
+    const contextDead = viaBackground?.error && isExtensionContextError({ message: viaBackground.error });
+    if (contextDead) markExtensionStale();
+
+    if (viaBackground?.error && !contextDead) {
+      if (viaBackground.status) {
+        throw new Error(
+          `Backend responded ${viaBackground.status}${viaBackground.error ? ` — ${viaBackground.error}` : ""}`
+        );
+      }
+      throw new TypeError(viaBackground.error);
+    }
+
+    // Fallback: direct fetch (dev, or extension reloaded while tab stayed open)
     const resp = await fetch(`${BACKEND_URL}/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1270,8 +1315,11 @@
     const msg = err?.message || String(err);
     const isAbort = /abort/i.test(msg);
     const isNetwork = err instanceof TypeError || /Failed to fetch/i.test(msg);
+    const isStale = isExtensionContextError(err);
     return `<div class="lca-analyze-inner lca-analyze-err">${
-      isAbort
+      isStale
+        ? "JobLens was just reloaded in the background — <strong>refresh this LinkedIn tab (F5)</strong>, then click Retry. (Analysis could not finish on the old page session.)"
+        : isAbort
         ? "Analysis timed out after 2 minutes — the server may be busy. Click <strong>Retry</strong>."
         : isNetwork
         ? `Can't reach the analysis server at <code>${escapeHtml(BACKEND_URL)}</code>. Reload the extension at chrome://extensions, then Retry.`
@@ -1320,9 +1368,15 @@
       window.__jobLensLastReport = report;
       console.debug("[JobLens] explain:", report.explain);
       out.innerHTML = renderAnalysisInline(report, inputs.captureProbe, inputs);
+      if (extensionStale) {
+        out.innerHTML =
+          `<p class="lca-err-mini">Extension was reloaded — refresh this tab (F5) before the next job.</p>` +
+          out.innerHTML;
+      }
       RV.wireMetricTips(document.getElementById(BADGE_ID));
     } catch (err) {
       if (!stillCurrent()) return;
+      if (isExtensionContextError(err)) markExtensionStale();
       console.error("[JobLens]", err);
       out.innerHTML = renderAnalysisErrorInline(err);
       out.dataset.analyzedFor = "";
@@ -1359,11 +1413,15 @@
       else renderMiss(ctx);
     } catch (err) {
       console.error("[JobLens]", err);
+      if (isExtensionContextError(err)) {
+        markExtensionStale();
+        showExtensionBrokenBanner();
+      }
       const el = ensureBadge();
       el.className = "lca-badge lca-miss";
       const hint =
-        /extension disconnected|extension was updated|getURL/i.test(String(err.message))
-          ? `<div class="lca-hint">${escapeHtml(err.message)}</div>`
+        isExtensionContextError(err) || /extension disconnected|extension was updated|getURL/i.test(String(err.message))
+          ? `<div class="lca-hint">JobLens was reloaded — <strong>refresh this LinkedIn tab (F5)</strong>, then open the job again.</div>`
           : `<div class="lca-foot">${escapeHtml(err.message)}</div>`;
       el.innerHTML = `
         ${renderChrome()}
