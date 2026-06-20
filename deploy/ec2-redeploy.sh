@@ -28,11 +28,7 @@ psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f db/auth_schema.sql
 JWT_SECRET=$(echo "$APP_JSON" | jq -r '.JWT_SECRET // empty')
 if [[ -z "$JWT_SECRET" || "$JWT_SECRET" == "null" ]]; then
   JWT_SECRET=$(openssl rand -hex 32)
-  APP_JSON=$(echo "$APP_JSON" | jq --arg j "$JWT_SECRET" '.JWT_SECRET = $j | .USE_REACT_AGENT = "true"')
-  aws secretsmanager put-secret-value --secret-id joblens/app --region "$REGION" --secret-string "$APP_JSON"
-else
-  APP_JSON=$(echo "$APP_JSON" | jq '.USE_REACT_AGENT = "true"')
-  aws secretsmanager put-secret-value --secret-id joblens/app --region "$REGION" --secret-string "$APP_JSON"
+  echo "WARN: JWT_SECRET missing in joblens/app — using ephemeral .env value (add JWT_SECRET to secret for persistence)"
 fi
 
 cat > .env <<EOF
