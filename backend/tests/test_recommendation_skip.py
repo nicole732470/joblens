@@ -11,7 +11,7 @@ def _profile() -> CandidateProfile:
             Track(
                 id="research_eng",
                 label="Research Engineer",
-                priority=4,
+                priority=3,
                 example_titles=["Applied Research Engineer", "Research Engineer"],
             ),
             Track(
@@ -36,7 +36,7 @@ def _resume_fit_partial() -> ResumeFitAnalysis:
     )
 
 
-def test_research_p4_skips_despite_partial_fit():
+def test_research_p3_is_not_system_p4():
     jd = JDParse(available=True, requirements=[])
     out = generate_recommendation(
         jd,
@@ -45,8 +45,7 @@ def test_research_p4_skips_despite_partial_fit():
         "Applied Research Engineer",
         "Research engineering team alongside research scientists.",
     )
-    assert out["decision"] == Recommendation.SKIP
-    assert out.get("track_priority") == 4
+    assert out.get("track_priority") == 3
 
 
 def test_hpc_analyst_penalty_p4_skips():

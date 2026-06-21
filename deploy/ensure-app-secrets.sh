@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Merge missing joblens/app secret fields (run locally with admin AWS creds).
-# Never prints secret values. Optional env: LANGCHAIN_API_KEY or LANGSMITH_API_KEY.
+# Never prints secret values. Optional env: LANGCHAIN_API_KEY/LANGSMITH_API_KEY,
+# TAVILY_API_KEY.
 set -euo pipefail
 
 REGION="${AWS_REGION:-us-east-2}"
@@ -33,6 +34,13 @@ if [[ -n "$LS_KEY" ]]; then
   add_field LANGCHAIN_API_KEY "$LS_KEY"
 elif [[ -z "$(echo "$UPDATED" | jq -r '.LANGCHAIN_API_KEY // .LANGSMITH_API_KEY // empty')" ]]; then
   echo "skip LANGCHAIN_API_KEY (pass LANGCHAIN_API_KEY=... to enable LangSmith)"
+fi
+
+TAVILY_KEY="${TAVILY_API_KEY:-}"
+if [[ -n "$TAVILY_KEY" ]]; then
+  add_field TAVILY_API_KEY "$TAVILY_KEY"
+elif [[ -z "$(echo "$UPDATED" | jq -r '.TAVILY_API_KEY // empty')" ]]; then
+  echo "skip TAVILY_API_KEY (pass TAVILY_API_KEY=... to enable company research)"
 fi
 
 if [[ "$CHANGED" -eq 0 ]]; then

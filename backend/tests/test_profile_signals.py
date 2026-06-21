@@ -34,7 +34,7 @@ def test_clearwater_onsite_not_remote():
     title = "Software Engineer (Part-time/Onsite - Clearwater, FL)"
     jd = JDParse(available=False)
     loc = score_location(jd, "Must work from our Clearwater office.", _profile(), title)
-    assert loc["location_tier"] == 3
+    assert loc["location_tier"] == 4
     assert "Remote" not in (loc["location_label"] or "")
     assert "Clearwater" in (loc["location_label"] or "")
 

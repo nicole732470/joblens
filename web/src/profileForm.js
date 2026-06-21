@@ -53,7 +53,7 @@ export function buildProfileFromForm(form) {
     tracks: form.tracks.map((t) => ({
       id: t.id.trim() || `track_${Date.now()}`,
       label: t.label.trim() || "Untitled track",
-      priority: Number(t.priority) || 2,
+      priority: Math.max(1, Math.min(3, Number(t.priority) || 2)),
       example_titles: linesToList(t.titlesText),
     })),
     avoid_tracks: form.avoidTracks.map((t) => ({

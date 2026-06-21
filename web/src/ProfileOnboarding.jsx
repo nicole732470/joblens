@@ -68,7 +68,7 @@ export default function ProfileOnboarding({ initialProfile, onSave, onCancel, ti
 
         <section className="section-card">
           <h3>Target tracks</h3>
-          <p className="hint">Role categories you want. Priority 1 = most wanted, 5 = last resort.</p>
+          <p className="hint">Role categories you want. Configure P1–P3; unmatched roles become P4.</p>
           {form.tracks.map((t, i) => (
             <div key={t.id + i} className="repeat-block">
               <div className="row-2">
@@ -81,11 +81,11 @@ export default function ProfileOnboarding({ initialProfile, onSave, onCancel, ti
                   />
                 </label>
                 <label className="field narrow">
-                  <span className="field-label">Priority (1–5)</span>
+                  <span className="field-label">Priority (1–3)</span>
                   <input
                     type="number"
                     min={1}
-                    max={5}
+                    max={3}
                     value={t.priority}
                     onChange={(e) => updateTrack(i, { priority: e.target.value })}
                   />

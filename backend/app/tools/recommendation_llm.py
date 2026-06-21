@@ -53,7 +53,11 @@ Respond with JSON only:
   "summary": "one short UI line — core reason, not generic (max 100 chars)",
   "track_id": "matched profile track id or null",
   "track_label": "human label or null",
-  "track_priority": 1-5 integer or null
+  "track_priority": "the selected configured track's P1-P3 priority, or 4 when no configured track fits",
+  "location_tier": "1-4 using configured locations; fully remote is P1; unmatched is P4",
+  "location_reason": "city/state/remote/rural relationship in one short sentence",
+  "preference_hits": ["exact configured preference strings that clearly match"],
+  "dealbreaker_hits": ["exact configured dealbreaker strings that clearly match"]
 }"""
 
 _GENERIC_SUMMARIES = frozenset(
@@ -110,6 +114,19 @@ def _normalize_decision(raw: str | None) -> Recommendation:
 
 def _profile_block(profile: CandidateProfile) -> str:
     return json.dumps(profile.model_dump(), indent=2, ensure_ascii=False)
+
+
+def _validated_configured_hits(raw, configured: list[str]) -> list[str]:
+    """Accept only exact configured profile items returned by AI."""
+    if not isinstance(raw, list):
+        return []
+    by_key = {item.strip().lower(): item for item in configured if item.strip()}
+    out: list[str] = []
+    for item in raw:
+        hit = by_key.get(str(item or "").strip().lower())
+        if hit and hit not in out:
+            out.append(hit)
+    return out
 
 
 def _preflight_block(
@@ -219,16 +236,73 @@ def generate_recommendation_llm(
         _s, _p, _w, _g, ratio = _fit_counts(resume_fit)
         fit_ratio = round(ratio, 3)
 
-    # Model may override track; fall back to semantic match.
-    llm_tid = data.get("track_id")
-    llm_label = data.get("track_label")
-    llm_pri = data.get("track_priority")
-    if llm_tid:
-        track_fields["track_id"] = llm_tid
-    if llm_label:
-        track_fields["track_label"] = llm_label
-    if isinstance(llm_pri, int) and 1 <= llm_pri <= 5:
-        track_fields["track_priority"] = llm_pri
+    # AI may classify only into a configured track. Priority is owned by the
+    # profile, never invented by the model. Explicit null means unmatched P4;
+    # a missing/invalid response falls back to the semantic embedding result.
+    if "track_id" in data:
+        llm_tid = data.get("track_id")
+        configured = next((tr for tr in profile.tracks if tr.id == llm_tid), None)
+        if configured:
+            track_fields.update(
+                track_id=configured.id,
+                track_label=configured.label,
+                track_priority=configured.priority,
+            )
+        elif llm_tid is None:
+            track_fields.update(track_id=None, track_label=None, track_priority=4)
+
+    from app.tools.role_priority import apply_technical_penalties
+
+    adjusted_priority, penalty_hits = apply_technical_penalties(
+        track_fields.get("track_priority"), jd, raw_jd, profile
+    )
+    track_fields["track_priority"] = adjusted_priority
+    track_fields["technical_penalty_hits"] = penalty_hits
+
+    # AI is primary for preference/dealbreaker recognition. If the model omits
+    # either field, retain the embedding/rule fallback already in signal_fields.
+    if "preference_hits" in data:
+        preference_hits = _validated_configured_hits(data.get("preference_hits"), profile.preferences)
+        signal_fields.update(
+            preferences_matched=len(preference_hits),
+            preferences_total=len(profile.preferences),
+            preference_hits=preference_hits,
+        )
+    if "dealbreaker_hits" in data:
+        dealbreaker_hits = _validated_configured_hits(data.get("dealbreaker_hits"), profile.dealbreakers)
+        signal_fields.update(
+            dealbreakers_matched=len(dealbreaker_hits),
+            dealbreakers_total=len(profile.dealbreakers),
+            dealbreaker_hits=dealbreaker_hits,
+        )
+    ai_location_tier = data.get("location_tier")
+    if isinstance(ai_location_tier, int) and 1 <= ai_location_tier <= 4:
+        location_reason = str(data.get("location_reason") or "AI geographic classification").strip()
+        signal_fields.update(
+            location_tier=ai_location_tier,
+            location_score={1: 1.0, 2: 0.75, 3: 0.50, 4: 0.10}[ai_location_tier],
+            location_label=f"P{ai_location_tier} · {location_reason[:80]}",
+        )
+
+    # Deterministic verdict guardrails. Dimensions remain fixed; the final AI
+    # may explain them but cannot override these product rules.
+    veto, _veto_ids, _veto_quote = _jd_sponsorship_veto(jd)
+    has_sponsorship_veto = profile.constraints.needs_sponsorship and veto
+    hard_dealbreakers = signal_fields.get("dealbreaker_hits") or []
+    role_priority = track_fields.get("track_priority")
+    if has_sponsorship_veto or hard_dealbreakers:
+        decision = Recommendation.SKIP
+        summary = (
+            "Job explicitly excludes required visa sponsorship"
+            if has_sponsorship_veto
+            else f"Dealbreaker: {hard_dealbreakers[0]}"
+        )
+    elif role_priority in (1, 2) and fit_ratio is not None and fit_ratio > 0.50:
+        decision = Recommendation.APPLY
+        summary = f"P{role_priority} target role · resume fit {fit_ratio:.0%}"
+    elif role_priority == 4 and decision == Recommendation.APPLY:
+        decision = Recommendation.SKIP
+        summary = "Role is outside configured P1–P3 tracks"
 
     evidence_ids = _collect_evidence_ids(resume_fit, jd) if resume_fit.available else []
     if profile.constraints.needs_sponsorship:

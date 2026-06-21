@@ -32,8 +32,12 @@ if [[ -z "$JWT_SECRET" || "$JWT_SECRET" == "null" ]]; then
 fi
 LANGCHAIN_API_KEY=$(echo "$APP_JSON" | jq -r '.LANGCHAIN_API_KEY // .LANGSMITH_API_KEY // empty')
 LANGSMITH_PROJECT=$(echo "$APP_JSON" | jq -r '.LANGSMITH_PROJECT // "joblens-analyze"')
+TAVILY_API_KEY=$(echo "$APP_JSON" | jq -r '.TAVILY_API_KEY // empty')
 if [[ -z "$LANGCHAIN_API_KEY" || "$LANGCHAIN_API_KEY" == "null" ]]; then
   echo "INFO: LANGCHAIN_API_KEY not in joblens/app — LangSmith tracing off (run deploy/ensure-app-secrets.sh with key)"
+fi
+if [[ -z "$TAVILY_API_KEY" || "$TAVILY_API_KEY" == "null" ]]; then
+  echo "INFO: TAVILY_API_KEY not in joblens/app — external company research off"
 fi
 
 cat > .env <<EOF
@@ -44,6 +48,7 @@ LLM_MODEL=$(echo "$APP_JSON" | jq -r .LLM_MODEL)
 JWT_SECRET=${JWT_SECRET}
 LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
 LANGSMITH_PROJECT=${LANGSMITH_PROJECT}
+TAVILY_API_KEY=${TAVILY_API_KEY}
 BACKEND_BIND=0.0.0.0:8000
 EOF
 

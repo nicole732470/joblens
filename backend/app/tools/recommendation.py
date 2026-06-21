@@ -26,7 +26,7 @@ _SKIP_PRIORITY_MIN = 4  # P4–P5 tracks (research, penalized analyst, etc.) →
 
 # Resume–requirement match weights (tune via golden set / run_eval).
 _PARTIAL_WEIGHT = 0.5
-_WEAK_WEIGHT = 0.3
+_WEAK_WEIGHT = 0.25
 
 
 def _qualifies_apply(strong: int, ratio: float) -> bool:

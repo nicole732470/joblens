@@ -1,108 +1,131 @@
-"""Company fit scoring — employer quality vs profile preferences (NOT H-1B sponsor odds).
-
-Signals: profile preferences, NAICS industry, LinkedIn page text (followers / alumni
-lines) sent by the extension from the page the user already has open — no backend
-crawler. Startup vs large corp are not opposites; scale does not penalize big companies.
-"""
+"""Personalized Company fit from external/structured company evidence only."""
 
 from __future__ import annotations
 
-import re
+import math
+from typing import Any
 
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import JDParse, SponsorshipAnalysis
-from app.tools.profile_signals import _dealbreaker_hits, _jd_scan_blob, _semantic_phrase_hits
+from app.tools.company_research import research_company
+from app.tools.embeddings import embed_texts
+from app.tools.llm import complete_json_with_retry, llm_available
 
-_TECH_NAICS = frozenset({"51", "54"})
-_FINANCE_NAICS = frozenset({"52", "55"})
-_TRADITIONAL_NAICS = frozenset({"31", "32", "33", "44", "45", "72"})
+_DIMENSIONS = ("industry", "stage_funding", "scale_traction", "network")
 
 
-def _company_blob(
-    company_name: str | None,
-    jd: JDParse,
-    jd_text: str,
+def _applicable_preferences(profile: CandidateProfile) -> dict[str, list[str]]:
+    prefs = profile.company_preferences
+    return {
+        "industry": [*prefs.industries, *[f"avoid: {v}" for v in prefs.avoid]],
+        "stage_funding": [*prefs.stages, *prefs.funding_signals],
+        "scale_traction": list(prefs.sizes),
+        "network": [*prefs.network_signals, *profile.alumni_schools],
+    }
+
+
+def _structured_sources(
     sponsorship: SponsorshipAnalysis,
+    linkedin_followers: int | None,
     alumni_hints: list[str] | None,
-) -> str:
-    parts: list[str] = []
-    if company_name:
-        parts.append(f"Company: {company_name}")
-    if sponsorship.matched and sponsorship.company:
-        co = sponsorship.company
-        if co.name:
-            parts.append(co.name)
-        if co.naics_sector:
-            parts.append(f"Industry: {co.naics_sector}")
-        if co.city and co.state:
-            parts.append(f"HQ: {co.city}, {co.state}")
-    if alumni_hints:
-        parts.extend(alumni_hints)
-    parts.append(_jd_scan_blob(jd, jd_text))
-    blob = " ".join(p for p in parts if p)
-    return blob[:4500] if len(blob) > 4500 else blob
+) -> list[dict[str, str]]:
+    sources: list[dict[str, str]] = []
+    company = sponsorship.company
+    if company:
+        bits = [
+            f"Legal name: {company.name}" if company.name else "",
+            f"NAICS: {company.naics_code} {company.naics_sector or ''}" if company.naics_code else "",
+            f"Headquarters: {company.city}, {company.state}" if company.city and company.state else "",
+        ]
+        content = ". ".join(bit for bit in bits if bit)
+        if content:
+            sources.append({"title": "DOL employer record", "url": "dol://h1b", "content": content})
+    if linkedin_followers is not None:
+        sources.append(
+            {
+                "title": "LinkedIn company metadata",
+                "url": "linkedin://visible-company-page",
+                "content": f"LinkedIn followers: {linkedin_followers:,}",
+            }
+        )
+    hints = [str(v).strip() for v in (alumni_hints or []) if str(v).strip()]
+    if hints:
+        sources.append(
+            {
+                "title": "LinkedIn network metadata",
+                "url": "linkedin://visible-network-hints",
+                "content": " | ".join(hints)[:2500],
+            }
+        )
+    return sources
 
 
-def _industry_component(naics_code: str | None, naics_sector: str | None) -> tuple[float, str]:
-    code = (naics_code or "").strip()
-    sector = (naics_sector or "").strip()
-    if not code and not sector:
-        return 0.55, "industry unknown"
-    prefix = code[:2] if len(code) >= 2 and code[:2].isdigit() else ""
-    if prefix in _TECH_NAICS:
-        return 0.88, sector or "Information / tech services"
-    if prefix in _FINANCE_NAICS:
-        return 0.72, sector or "Finance / holding"
-    if prefix in _TRADITIONAL_NAICS:
-        return 0.48, sector or "Traditional industry"
-    return 0.58, sector or "Other industry"
+def _cosine(a: list[float], b: list[float]) -> float:
+    denom = math.sqrt(sum(v * v for v in a)) * math.sqrt(sum(v * v for v in b))
+    return sum(x * y for x, y in zip(a, b)) / denom if denom else 0.0
 
 
-def _followers_component(count: int | None) -> tuple[float, str]:
-    """Visibility proxy only — not a startup vs enterprise judgment."""
-    if count is None:
-        return 0.55, ""
-    if count >= 50_000:
-        return 0.72, f"{count:,} LinkedIn followers"
-    if count >= 5_000:
-        return 0.65, f"{count:,} LinkedIn followers"
-    return 0.58, f"{count:,} LinkedIn followers"
+def _embedding_scores(
+    applicable: dict[str, list[str]], sources: list[dict[str, str]]
+) -> tuple[dict[str, float], dict[str, str]]:
+    evidence = "\n".join(source["content"] for source in sources)
+    dimensions = [name for name in _DIMENSIONS if applicable[name]]
+    vectors = embed_texts([evidence, *["; ".join(applicable[name]) for name in dimensions]])
+    scores: dict[str, float] = {}
+    reasons: dict[str, str] = {}
+    for index, name in enumerate(dimensions, start=1):
+        similarity = _cosine(vectors[0], vectors[index])
+        scores[name] = max(0.0, min(1.0, (similarity - 0.20) / 0.60))
+        reasons[name] = f"embedding similarity {similarity:.2f}"
+    return scores, reasons
 
 
-def _alumni_component(
-    profile: CandidateProfile,
-    alumni_hints: list[str] | None,
-) -> tuple[float, list[str]]:
-    schools = profile.alumni_schools or []
-    hints = alumni_hints or []
-    if not schools or not hints:
-        return 0.55, []
-    blob = " ".join(hints).lower()
-    hits: list[str] = []
-    for school in schools:
-        s = school.strip().lower()
-        if s and s in blob:
-            hits.append(school)
-    if not hits:
-        return 0.55, []
-    return 0.55 + 0.15 * min(len(hits), 2), hits
+def _llm_scores(
+    company_name: str,
+    applicable: dict[str, list[str]],
+    sources: list[dict[str, str]],
+) -> tuple[dict[str, float], dict[str, str], list[str]]:
+    requested = {name: values for name, values in applicable.items() if values}
+    indexed_sources = [
+        {"index": i, "title": row["title"], "url": row["url"], "content": row["content"]}
+        for i, row in enumerate(sources)
+    ]
+    result = complete_json_with_retry(
+        """You score employer evidence against one user's explicit company preferences.
+Score only requested dimensions from 0 to 1. A different user must receive different
+scores when preferences differ. Do not infer facts from a job description. For every
+score cite one or more supplied source indexes. Return JSON:
+{"dimensions":{"industry":{"score":0.0,"reason":"...","source_indexes":[0]}},
+ "avoid_hits":[]}. Omit unsupported dimensions; do not use a neutral default.""",
+        f"Company: {company_name}\nUser preferences: {requested}\nEvidence: {indexed_sources}",
+        max_tokens=1300,
+    )
+    scores: dict[str, float] = {}
+    reasons: dict[str, str] = {}
+    for name, row in (result.get("dimensions") or {}).items():
+        if name not in requested or not isinstance(row, dict):
+            continue
+        indexes = row.get("source_indexes") or []
+        if not any(isinstance(i, int) and 0 <= i < len(sources) for i in indexes):
+            continue
+        try:
+            score = float(row.get("score"))
+        except (TypeError, ValueError):
+            continue
+        scores[name] = max(0.0, min(1.0, score))
+        reasons[name] = str(row.get("reason") or "evidence-backed AI score")[:300]
+    avoid_hits = [str(v).strip() for v in (result.get("avoid_hits") or []) if str(v).strip()]
+    return scores, reasons, avoid_hits
 
 
-def _preference_component(profile: CandidateProfile, blob: str) -> tuple[float, int, list[str]]:
-    total = len(profile.preferences)
-    if total == 0:
-        return 0.55, 0, []
-    n, hits = _semantic_phrase_hits(profile.preferences, blob)
-    return 0.35 + 0.65 * (n / total), n, hits
-
-
-def _score_to_tier(score: float) -> int:
-    """Broad bands — most companies land P1 or P2 unless dealbreaker."""
-    if score >= 0.52:
+def _tier(score: float) -> int:
+    if score >= 0.75:
         return 1
-    if score >= 0.38:
+    if score >= 0.50:
         return 2
-    return 3
+    if score >= 0.25:
+        return 3
+    return 4
 
 
 def score_company(
@@ -114,83 +137,71 @@ def score_company(
     *,
     linkedin_followers: int | None = None,
     alumni_hints: list[str] | None = None,
-) -> dict:
-    blob = _company_blob(company_name, jd, jd_text, sponsorship, alumni_hints)
-    if not blob.strip():
-        return {"available": False, "reason": "no company or JD text"}
+) -> dict[str, Any]:
+    """Score evidence against the current profile; JD arguments are identity-only legacy inputs."""
+    del jd, jd_text
+    name = (company_name or (sponsorship.company.name if sponsorship.company else None) or "").strip()
+    if not name:
+        return {"available": False, "reason": "no company name"}
 
-    deal_n, deal_hits = _dealbreaker_hits(profile.dealbreakers, blob)
-    if deal_n > 0:
-        hit = deal_hits[0][:48]
-        return {
-            "available": True,
-            "company_score": 0.25,
-            "company_tier": 3,
-            "company_label": f"P3 · dealbreaker ({hit})",
-            "summary": f"Company/JD hits dealbreaker: {hit}",
-            "preference_hits": [],
-            "industry_label": None,
-            "dealbreakers_matched": deal_n,
-            "dealbreaker_hits": deal_hits[:5],
-            "score_breakdown": {"reason": "dealbreaker", "hit": hit},
-            "linkedin_followers": linkedin_followers,
-            "alumni_hits": [],
-        }
+    applicable = _applicable_preferences(profile)
+    active = [name for name in _DIMENSIONS if applicable[name]]
+    if not active:
+        return {"available": False, "reason": "no company preferences configured"}
 
-    pref_score, pref_n, pref_hits = _preference_component(profile, blob)
-    naics_code = sponsorship.company.naics_code if sponsorship.company else None
-    naics_sector = sponsorship.company.naics_sector if sponsorship.company else None
-    ind_score, ind_label = _industry_component(naics_code, naics_sector)
-    fol_score, fol_label = _followers_component(linkedin_followers)
-    alum_score, alum_hits = _alumni_component(profile, alumni_hints)
+    research = research_company(name)
+    sources = _structured_sources(sponsorship, linkedin_followers, alumni_hints)
+    sources.extend(research.get("sources") or [])
+    if not sources:
+        return {"available": False, "reason": research.get("reason") or "no reliable company evidence"}
 
-    combined = 0.50 * pref_score + 0.28 * ind_score + 0.12 * fol_score + 0.10 * alum_score
-    if pref_n >= 2:
-        combined = min(1.0, combined + 0.08)
-    elif pref_n >= 1:
-        combined = min(1.0, combined + 0.04)
+    method = "llm"
+    try:
+        if not llm_available():
+            raise RuntimeError("LLM unavailable")
+        scores, reasons, proposed_avoids = _llm_scores(name, applicable, sources)
+    except Exception:  # noqa: BLE001
+        method = "embedding"
+        try:
+            scores, reasons = _embedding_scores(applicable, sources)
+            proposed_avoids = []
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "available": False,
+                "reason": f"company scoring unavailable: {type(exc).__name__}",
+                "sources": sources,
+            }
 
-    tier = _score_to_tier(combined)
+    scores = {key: value for key, value in scores.items() if key in active}
+    if not scores:
+        return {"available": False, "reason": "no applicable dimension supported by evidence", "sources": sources}
 
-    parts: list[str] = [f"P{tier}"]
-    if pref_hits:
-        parts.append(pref_hits[0][:28])
-    elif alum_hits:
-        parts.append(f"{alum_hits[0][:20]} alumni")
-    elif ind_label != "industry unknown":
-        parts.append(ind_label[:28])
-
-    summary_bits: list[str] = []
-    if fol_label:
-        summary_bits.append(fol_label)
-    if alum_hits:
-        summary_bits.append(f"{', '.join(alum_hits[:2])} alumni on LinkedIn")
-    if pref_hits:
-        summary_bits.append(f"{pref_n} preference hit(s)")
-    elif ind_label and ind_label != "industry unknown":
-        summary_bits.append(ind_label)
-
+    configured_avoids = [value.strip() for value in profile.company_preferences.avoid if value.strip()]
+    avoid_hits = [hit for hit in proposed_avoids if hit in configured_avoids]
+    combined = sum(scores.values()) / len(scores)
+    tier = 4 if avoid_hits else _tier(combined)
+    confidence = "low" if len(scores) == 1 else "standard"
     return {
         "available": True,
         "company_score": round(combined, 3),
         "company_tier": tier,
-        "company_label": " · ".join(parts[:2]),
-        "summary": " · ".join(summary_bits[:3]) or f"Company fit {combined:.0%}",
-        "preference_hits": pref_hits[:5],
-        "industry_label": ind_label if ind_label != "industry unknown" else None,
+        "company_label": f"P{tier} · personalized company fit",
+        "summary": avoid_hits[0] if avoid_hits else f"{len(scores)}/{len(active)} applicable dimensions scored",
+        "preference_hits": [],
+        "industry_label": reasons.get("industry"),
         "dealbreakers_matched": 0,
         "dealbreaker_hits": [],
         "score_breakdown": {
-            "preference": round(pref_score, 3),
-            "industry": round(ind_score, 3),
-            "followers": round(fol_score, 3),
-            "alumni": round(alum_score, 3),
-            "combined": round(combined, 3),
-            "weights": "50% pref · 28% industry · 12% followers · 10% alumni",
+            "dimensions": {key: round(value, 3) for key, value in scores.items()},
+            "reasons": reasons,
+            "applicable": active,
+            "effective_weight": round(1 / len(scores), 3),
+            "method": method,
+            "confidence": confidence,
+            "avoid_hits": avoid_hits,
         },
         "linkedin_followers": linkedin_followers,
-        "alumni_hits": alum_hits[:5],
+        "alumni_hits": [],
+        "sources": sources,
+        "research_available": bool(research.get("available")),
     }
-
-
-# Technical penalty logic lives in role_priority.py (Role P-tier, not company score).

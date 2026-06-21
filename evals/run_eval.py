@@ -29,7 +29,7 @@ BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 
 # Resume fit band thresholds (display metric — same weights as recommendation rules).
 _FIT_PARTIAL_WEIGHT = 0.5
-_FIT_WEAK_WEIGHT = 0.3
+_FIT_WEAK_WEIGHT = 0.25
 _FIT_BAND_HIGH = 0.50
 _FIT_BAND_MEDIUM = 0.28
 
@@ -80,11 +80,11 @@ def norm_priority(raw: str) -> str:
 
 
 def norm_tier(raw: str) -> str:
-    """Location or company tier: 1-3, unknown, or blank."""
+    """Location or company tier: 1-4, unknown, or blank."""
     v = (raw or "").strip().lower().replace("_", " ")
     if v in ("unknown", "unk", "not sure", "not_sure", "unsure", "?"):
         return "unknown"
-    if v.isdigit() and 1 <= int(v) <= 3:
+    if v.isdigit() and 1 <= int(v) <= 4:
         return v
     return ""
 

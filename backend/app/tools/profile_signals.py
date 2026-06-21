@@ -405,9 +405,9 @@ def score_location(
 
     if _is_onsite_job(policy_text) or place:
         suffix = place or "onsite"
-        return {"location_score": 0.35, "location_label": f"P3 · {suffix}", "location_tier": 3}
+        return {"location_score": 0.10, "location_label": f"P4 · {suffix}", "location_tier": 4}
 
-    return {"location_score": 0.5, "location_label": "P3 · unspecified", "location_tier": 3}
+    return {"location_score": 0.10, "location_label": "P4 · outside configured locations", "location_tier": 4}
 
 
 def evaluate_profile_signals(

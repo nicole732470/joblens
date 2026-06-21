@@ -11,6 +11,7 @@ _SYSTEM = (
     "retrieved resume snippets and judge fit.\n"
     "- strong: resume clearly demonstrates this requirement\n"
     "- partial: related experience but incomplete or indirect\n"
+    "- weak: only weakly related evidence exists\n"
     "- missing: no meaningful evidence in the snippets\n"
     "Be conservative with strong. Cite the best resume_chunk id when not missing. "
     "Respond with JSON only."
@@ -23,7 +24,7 @@ _RETRIEVE_LIMIT = 3
 def _format_batch_prompt(batch: list[dict]) -> str:
     lines = ["Classify each requirement against the resume evidence.\n"]
     lines.append(
-        'Return JSON: {"matches":[{"requirement_id":"...","level":"strong|partial|missing",'
+        'Return JSON: {"matches":[{"requirement_id":"...","level":"strong|partial|weak|missing",'
         '"reasoning":"one sentence","resume_evidence_id":"chunk id or null"}]}\n'
     )
     for item in batch:
@@ -51,7 +52,7 @@ def _parse_llm_matches(data: dict, batch: list[dict]) -> dict[str, dict]:
             continue
         rid = str(row.get("requirement_id") or "").strip()
         level = str(row.get("level") or "").strip().lower()
-        if level not in ("strong", "partial", "missing"):
+        if level not in ("strong", "partial", "weak", "missing"):
             continue
         out[rid] = {
             "level": level,

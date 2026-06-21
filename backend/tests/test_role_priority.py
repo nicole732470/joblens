@@ -43,7 +43,7 @@ class TitleKeywordTests(unittest.TestCase):
         self.profile = _minimal_profile(
             [
                 Track(id="customer_success", label="CSM", priority=3, example_titles=["CSM"]),
-                Track(id="research_eng", label="Research", priority=4, example_titles=[]),
+                Track(id="research_eng", label="Research", priority=3, example_titles=[]),
                 Track(id="business_analyst", label="Analyst", priority=3, example_titles=[]),
             ]
         )
@@ -71,7 +71,7 @@ class SolutionEngineerTitleTests(unittest.TestCase):
                     priority=1,
                     example_titles=["Solution Engineer", "Product Engineer"],
                 ),
-                Track(id="research_eng", label="Research", priority=4, example_titles=["Research Engineer"]),
+                Track(id="research_eng", label="Research", priority=3, example_titles=["Research Engineer"]),
                 Track(id="ai_eng", label="AI Engineer", priority=1, example_titles=["AI Engineer"]),
             ]
         )

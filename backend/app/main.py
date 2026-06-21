@@ -175,6 +175,7 @@ def health() -> dict:
         "database": "connected" if db_ok else "unavailable",
         "candidate_profile": "loaded" if profile_ok else "unavailable",
         "llm": "configured" if llm_available() else "missing_key",
+        "company_research": "configured" if settings.tavily_api_key else "missing_key",
         "resume_fit_method": settings.resume_fit_method,
         "orchestration": "langgraph",
         "pipeline": "deterministic",

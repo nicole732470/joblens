@@ -8,9 +8,10 @@ from app.tools.llm import llm_available
 from app.tools.resume_fit_llm import classify_requirements_llm
 from app.tools.resume_store import index_resume, retrieve_resume_evidence
 
-# Cosine distance thresholds when LLM unavailable or fails (lower = stricter).
-_STRONG_MAX = 0.34
-_PARTIAL_MAX = 0.52
+# Cosine distance thresholds when AI is unavailable (similarity = 1 - distance).
+_STRONG_MAX = 0.20   # >= 80% similarity
+_PARTIAL_MAX = 0.40  # >= 60% similarity
+_WEAK_MAX = 0.60     # >= 40% similarity
 _RETRIEVE_LIMIT = 3
 
 
@@ -68,9 +69,11 @@ def _analyze_with_llm(jd: JDParse, resume_key: str) -> dict:
             strong_matches.append(_claim(req, resume_ids, reasoning, "strong"))
         elif level == "partial":
             partial_matches.append(_claim(req, resume_ids, reasoning, "partial"))
+        elif level == "weak":
+            weak_ids = resume_ids or ([candidates[0]["id"]] if candidates else [])
+            missing.append(_claim(req, weak_ids, reasoning or "Weak resume evidence.", "weak"))
         else:
-            kind = "weak" if candidates else "missing"
-            missing.append(_claim(req, resume_ids, reasoning or "No resume evidence.", kind))
+            missing.append(_claim(req, [], reasoning or "No resume evidence.", "missing"))
 
     return {
         "available": True,
@@ -107,8 +110,10 @@ def _analyze_with_vector(jd: JDParse, resume_key: str) -> dict:
             strong_matches.append(_claim(req, [hit["id"]], reasoning, "strong"))
         elif dist <= _PARTIAL_MAX:
             partial_matches.append(_claim(req, [hit["id"]], reasoning, "partial"))
-        else:
+        elif dist <= _WEAK_MAX:
             missing.append(_claim(req, [hit["id"]], reasoning, "weak"))
+        else:
+            missing.append(_claim(req, [], reasoning, "missing"))
 
     return {
         "available": True,

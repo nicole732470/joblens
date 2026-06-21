@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     embedding_model: str = "openai/text-embedding-3-small"
     embedding_dimensions: int = 1536
 
+    # Company research. Tavily discovers evidence; the LLM scores that evidence
+    # against the authenticated user's own company preferences.
+    tavily_api_key: str = ""
+    tavily_search_depth: str = "basic"
+    tavily_max_results: int = 6
+    company_research_ttl_hours: int = 24
+
     # Resume fit: auto tries LLM after RAG retrieval, falls back to vector thresholds.
     resume_fit_method: str = "auto"  # auto | llm | vector
 

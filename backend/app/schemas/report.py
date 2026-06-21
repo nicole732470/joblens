@@ -183,6 +183,8 @@ class CompanyAnalysis(BaseModel):
     score_breakdown: dict = {}
     linkedin_followers: Optional[int] = None
     alumni_hits: list[str] = []
+    sources: list[dict] = []
+    research_available: bool = False
 
 
 class Report(BaseModel):
