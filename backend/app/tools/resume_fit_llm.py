@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.config import settings
 from app.schemas.report import JDParse
 from app.tools.llm import complete_json_with_retry, llm_available
 from app.tools.resume_store import retrieve_resume_evidence
@@ -96,6 +97,7 @@ def classify_requirements_llm(
         )
 
     classified: dict[str, dict] = {}
+    debug_batches: list[dict] = []
     for i in range(0, len(items), _BATCH_SIZE):
         batch = items[i : i + _BATCH_SIZE]
         data = complete_json_with_retry(
@@ -104,6 +106,12 @@ def classify_requirements_llm(
             max_attempts=2,
             max_tokens=2500,
         )
+        debug_batches.append({
+            "prompt_version": "resume-fit-v1",
+            "model": settings.llm_model,
+            "requirement_ids": [item["req_id"] for item in batch],
+            "raw_output": data,
+        })
         batch_results = _parse_llm_matches(data, batch)
         for item in batch:
             rid = item["req_id"]
@@ -111,4 +119,5 @@ def classify_requirements_llm(
             meta["candidates"] = item["candidates"]
             meta["req"] = item["req"]
             classified[rid] = meta
+    classified["__debug__"] = {"method": "llm", "batches": debug_batches}
     return classified

@@ -24,6 +24,7 @@ def test_company_weights_only_current_users_applicable_dimensions(monkeypatch):
             {"industry": 0.8, "stage_funding": 0.6},
             {"industry": "AI", "stage_funding": "Series B"},
             [],
+            {},
         ),
     )
 
@@ -53,7 +54,7 @@ def test_unconfigured_dimension_is_not_zero(monkeypatch):
     monkeypatch.setattr(
         company_signals,
         "_llm_scores",
-        lambda *_args: ({"industry": 0.8}, {"industry": "AI"}, []),
+        lambda *_args: ({"industry": 0.8}, {"industry": "AI"}, [], {}),
     )
 
     result = company_signals.score_company(

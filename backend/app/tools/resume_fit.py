@@ -45,6 +45,7 @@ def analyze_resume_fit(jd: JDParse, resume_text: str) -> dict:
 
 def _analyze_with_llm(jd: JDParse, resume_key: str) -> dict:
     classified = classify_requirements_llm(jd, resume_key)
+    debug = classified.pop("__debug__", {})
     strong_matches: list[dict] = []
     partial_matches: list[dict] = []
     missing: list[dict] = []
@@ -81,6 +82,7 @@ def _analyze_with_llm(jd: JDParse, resume_key: str) -> dict:
         "strong_matches": strong_matches,
         "partial_matches": partial_matches,
         "missing": missing,
+        "debug": debug,
     }
 
 
@@ -121,6 +123,12 @@ def _analyze_with_vector(jd: JDParse, resume_key: str) -> dict:
         "strong_matches": strong_matches,
         "partial_matches": partial_matches,
         "missing": missing,
+        "debug": {
+            "method": "vector",
+            "prompt_version": None,
+            "fallback_reason": "LLM unavailable, failed, or vector mode selected",
+            "thresholds": {"strong": 0.80, "partial": 0.60, "weak": 0.40},
+        },
     }
 
 

@@ -12,6 +12,7 @@ from app.auth import (
     create_user,
     ensure_auth_schema,
     fetch_user_by_email,
+    fetch_user_email,
     get_current_user_id,
     require_user_id,
     verify_password,
@@ -273,12 +274,16 @@ def candidate_profile(user_id: uuid.UUID | None = Depends(get_current_user_id)) 
 
 
 @app.get("/observability/traces")
-def traces_list(limit: int = 20) -> dict:
+def traces_list(limit: int = 20, user_id: uuid.UUID = Depends(require_user_id)) -> dict:
+    if (fetch_user_email(user_id) or "").lower() != settings.debug_account_email.lower():
+        raise HTTPException(status_code=403, detail="debug account required")
     return {"traces": list_recent_traces(limit=limit)}
 
 
 @app.get("/observability/traces/{run_id}")
-def traces_get(run_id: str) -> dict:
+def traces_get(run_id: str, user_id: uuid.UUID = Depends(require_user_id)) -> dict:
+    if (fetch_user_email(user_id) or "").lower() != settings.debug_account_email.lower():
+        raise HTTPException(status_code=403, detail="debug account required")
     data = load_trace(run_id)
     if data is None:
         raise HTTPException(status_code=404, detail="trace not found")
@@ -333,6 +338,10 @@ def _resolve_analyze_inputs(req: AnalyzeRequest, user_id: uuid.UUID | None) -> d
         "job_location": job_location,
         "linkedin_followers": req.linkedin_followers,
         "alumni_hints": req.alumni_hints,
+        "debug_enabled": bool(
+            user_id
+            and (fetch_user_email(user_id) or "").lower() == settings.debug_account_email.lower()
+        ),
     }
 
 

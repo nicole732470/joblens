@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     tavily_search_depth: str = "basic"
     tavily_max_results: int = 6
     company_research_ttl_hours: int = 24
+    debug_account_email: str = "example@test.com"
 
     # Resume fit: auto tries LLM after RAG retrieval, falls back to vector thresholds.
     resume_fit_method: str = "auto"  # auto | llm | vector

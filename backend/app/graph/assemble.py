@@ -30,6 +30,10 @@ def assemble_report(
     company = CompanyAnalysis(**(artifacts.get("company_analysis") or {}))
     risk = RiskAnalysis(**(artifacts.get("risk") or {}))
     recommendation = RecommendationResult(**(artifacts.get("recommendation") or {}))
+    if not req.get("debug_enabled"):
+        recommendation.debug_decisions = {}
+        resume_fit.debug = {}
+        company.score_breakdown.pop("raw_output", None)
 
     pending: list[str] = []
     if not jd.available:

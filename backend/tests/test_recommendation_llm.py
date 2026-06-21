@@ -7,6 +7,33 @@ from app.schemas.report import Claim, JDParse, Recommendation, ResumeFitAnalysis
 from app.tools.recommendation import generate_recommendation
 
 
+def _records(*, priority=1, location=2, dealbreakers=None):
+    def rec(dimension, output):
+        return {
+            "dimension": dimension, "model": "test", "prompt_version": "test-v1",
+            "method": "llm", "inputs": {}, "evidence": [], "raw_output": output,
+            "validated_output": output, "validation_error": None, "fallback_reason": None,
+        }
+    return {
+        "role": rec("role", {
+            "track_id": "ai_eng" if priority < 4 else None,
+            "track_label": "AI Engineer" if priority < 4 else None,
+            "track_priority": priority, "track_similarity": 0.9,
+            "technical_penalty_hits": [], "reason": "test",
+        }),
+        "location": rec("location", {
+            "location_tier": location, "location_score": 0.75,
+            "location_label": f"P{location} · Austin, Texas",
+        }),
+        "preferences_dealbreakers": rec("preferences_dealbreakers", {
+            "preferences_matched": 0, "preferences_total": 0, "preference_hits": [],
+            "dealbreakers_matched": len(dealbreakers or []),
+            "dealbreakers_total": len(dealbreakers or []),
+            "dealbreaker_hits": dealbreakers or [],
+        }),
+    }
+
+
 def _profile() -> CandidateProfile:
     return CandidateProfile(
         tracks=[
@@ -18,7 +45,9 @@ def _profile() -> CandidateProfile:
 
 @patch("app.tools.recommendation_llm.llm_available", return_value=True)
 @patch("app.tools.recommendation_llm.complete_json_with_retry")
-def test_llm_recommendation_apply(mock_llm, _mock_avail):
+@patch("app.tools.independent_decisions.run_independent_decisions")
+def test_llm_recommendation_apply(mock_decisions, mock_llm, _mock_avail):
+    mock_decisions.return_value = _records()
     mock_llm.return_value = {
         "decision": "Apply",
         "reasoning": "Title matches AI Engineer track; resume shows agent and RAG work.",
@@ -52,7 +81,9 @@ def test_llm_recommendation_apply(mock_llm, _mock_avail):
 
 @patch("app.tools.recommendation_llm.llm_available", return_value=True)
 @patch("app.tools.recommendation_llm.complete_json_with_retry")
-def test_llm_skip_summary_not_generic(mock_llm, _mock_avail):
+@patch("app.tools.independent_decisions.run_independent_decisions")
+def test_llm_skip_summary_not_generic(mock_decisions, mock_llm, _mock_avail):
+    mock_decisions.return_value = _records(priority=4)
     mock_llm.return_value = {
         "decision": "Skip",
         "reasoning": "JD is a research scientist role requiring PhD publications; resume is product AI engineering.",
@@ -78,7 +109,9 @@ def test_llm_skip_summary_not_generic(mock_llm, _mock_avail):
 
 @patch("app.tools.recommendation_llm.llm_available", return_value=True)
 @patch("app.tools.recommendation_llm.complete_json_with_retry")
-def test_p1_role_and_resume_over_50_forces_apply(mock_llm, _mock_avail):
+@patch("app.tools.independent_decisions.run_independent_decisions")
+def test_p1_role_and_resume_over_50_forces_apply(mock_decisions, mock_llm, _mock_avail):
+    mock_decisions.return_value = _records(priority=1)
     mock_llm.return_value = {
         "decision": "Consider",
         "reasoning": "Model was uncertain.",
@@ -111,8 +144,10 @@ def test_p1_role_and_resume_over_50_forces_apply(mock_llm, _mock_avail):
 
 @patch("app.tools.recommendation_llm.llm_available", return_value=True)
 @patch("app.tools.recommendation_llm.complete_json_with_retry")
-def test_ai_dealbreaker_hit_forces_skip(mock_llm, _mock_avail):
+@patch("app.tools.independent_decisions.run_independent_decisions")
+def test_ai_dealbreaker_hit_forces_skip(mock_decisions, mock_llm, _mock_avail):
     profile = _profile().model_copy(update={"dealbreakers": ["unpaid internship"]})
+    mock_decisions.return_value = _records(dealbreakers=["unpaid internship"])
     mock_llm.return_value = {
         "decision": "Apply",
         "reasoning": "Otherwise aligned.",

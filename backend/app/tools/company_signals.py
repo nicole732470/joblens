@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from app.config import settings
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import JDParse, SponsorshipAnalysis
 from app.tools.company_research import research_company
@@ -84,7 +85,7 @@ def _llm_scores(
     company_name: str,
     applicable: dict[str, list[str]],
     sources: list[dict[str, str]],
-) -> tuple[dict[str, float], dict[str, str], list[str]]:
+) -> tuple[dict[str, float], dict[str, str], list[str], dict]:
     requested = {name: values for name, values in applicable.items() if values}
     indexed_sources = [
         {"index": i, "title": row["title"], "url": row["url"], "content": row["content"]}
@@ -115,7 +116,7 @@ score cite one or more supplied source indexes. Return JSON:
         scores[name] = max(0.0, min(1.0, score))
         reasons[name] = str(row.get("reason") or "evidence-backed AI score")[:300]
     avoid_hits = [str(v).strip() for v in (result.get("avoid_hits") or []) if str(v).strip()]
-    return scores, reasons, avoid_hits
+    return scores, reasons, avoid_hits, result
 
 
 def _tier(score: float) -> int:
@@ -159,12 +160,13 @@ def score_company(
     try:
         if not llm_available():
             raise RuntimeError("LLM unavailable")
-        scores, reasons, proposed_avoids = _llm_scores(name, applicable, sources)
+        scores, reasons, proposed_avoids, raw_output = _llm_scores(name, applicable, sources)
     except Exception:  # noqa: BLE001
         method = "embedding"
         try:
             scores, reasons = _embedding_scores(applicable, sources)
             proposed_avoids = []
+            raw_output = None
         except Exception as exc:  # noqa: BLE001
             return {
                 "available": False,
@@ -199,6 +201,9 @@ def score_company(
             "method": method,
             "confidence": confidence,
             "avoid_hits": avoid_hits,
+            "prompt_version": "company-fit-v1",
+            "model": settings.llm_model if method == "llm" else None,
+            "raw_output": raw_output,
         },
         "linkedin_followers": linkedin_followers,
         "alumni_hits": [],

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import JDParse, Recommendation, ResumeFitAnalysis
+from app.config import settings
 from app.tools.llm import complete_json_with_retry, llm_available
 from app.tools.profile_signals import evaluate_profile_signals
 from app.tools.risk_rules import _jd_sponsorship_veto
@@ -173,7 +175,7 @@ def generate_recommendation_llm(
     resume_text: str | None = None,
     job_location: str | None = None,
 ) -> dict:
-    """Return RecommendationResult shape via LLM synthesis."""
+    """Run independent dimensions in parallel, then synthesize only the verdict."""
     if not llm_available():
         raise RuntimeError("LLM not configured")
 
@@ -184,50 +186,21 @@ def generate_recommendation_llm(
     if not raw_jd and jd.available:
         raw_jd = "\n".join(r.text for r in jd.requirements)
 
-    signals = evaluate_profile_signals(jd, raw_jd, profile, title, job_location)
     from app.tools.recommendation import _collect_evidence_ids, _signal_fields
 
-    signal_fields = _signal_fields(signals)
-
     if not jd.available:
-        return {"available": False, "reason": "JD parsing unavailable", **signal_fields}
+        return {"available": False, "reason": "JD parsing unavailable"}
 
     if not resume:
-        return {"available": False, "reason": "no resume text for LLM recommendation", **signal_fields}
+        return {"available": False, "reason": "no resume text for LLM recommendation"}
 
-    tm = match_job_to_profile(title, raw_jd, jd, profile)
-    track_fields = {
-        "track_id": tm["matched_track"].id if tm.get("matched_track") else None,
-        "track_label": tm["matched_track"].label if tm.get("matched_track") else None,
-        "track_priority": tm["matched_track"].priority if tm.get("matched_track") else None,
-        "track_similarity": tm.get("similarity"),
-    }
+    from app.tools.independent_decisions import run_independent_decisions
 
-    preflight = _preflight_block(profile, jd, raw_jd, title, resume_fit, job_location)
-
-    user = "\n".join(
-        [
-            "## candidate_profile",
-            _profile_block(profile),
-            "",
-            f"## job_title\n{title or '(unknown)'}",
-            "",
-            "## job_description",
-            raw_jd[:12_000] or "(empty)",
-            "",
-            "## resume_text",
-            resume[:12_000],
-            "",
-            "## preflight_signals (hints only)",
-            json.dumps(preflight, indent=2, ensure_ascii=False),
-        ]
-    )
-
-    data = complete_json_with_retry(_SYSTEM, user, max_tokens=1200)
-    decision = _normalize_decision(data.get("decision"))
-
-    reasoning = (data.get("reasoning") or "").strip()
-    summary = _polish_summary(decision, (data.get("summary") or "").strip(), reasoning, preflight)
+    records = run_independent_decisions(title, raw_jd, jd, profile, job_location)
+    track_fields = dict(records["role"]["validated_output"])
+    location_fields = dict(records["location"]["validated_output"])
+    profile_fields = dict(records["preferences_dealbreakers"]["validated_output"])
+    signal_fields = {**location_fields, **profile_fields}
 
     fit_ratio = None
     if resume_fit.available:
@@ -236,73 +209,89 @@ def generate_recommendation_llm(
         _s, _p, _w, _g, ratio = _fit_counts(resume_fit)
         fit_ratio = round(ratio, 3)
 
-    # AI may classify only into a configured track. Priority is owned by the
-    # profile, never invented by the model. Explicit null means unmatched P4;
-    # a missing/invalid response falls back to the semantic embedding result.
-    if "track_id" in data:
-        llm_tid = data.get("track_id")
-        configured = next((tr for tr in profile.tracks if tr.id == llm_tid), None)
-        if configured:
-            track_fields.update(
-                track_id=configured.id,
-                track_label=configured.label,
-                track_priority=configured.priority,
-            )
-        elif llm_tid is None:
-            track_fields.update(track_id=None, track_label=None, track_priority=4)
+    profile_json = json.dumps(profile.model_dump(), sort_keys=True, ensure_ascii=False)
+    debug = {
+        "profile_version": hashlib.sha256(profile_json.encode()).hexdigest()[:12],
+        "model": settings.llm_model,
+        "decisions": records,
+    }
 
-    from app.tools.role_priority import apply_technical_penalties
-
-    adjusted_priority, penalty_hits = apply_technical_penalties(
-        track_fields.get("track_priority"), jd, raw_jd, profile
-    )
-    track_fields["track_priority"] = adjusted_priority
-    track_fields["technical_penalty_hits"] = penalty_hits
-
-    # AI is primary for preference/dealbreaker recognition. If the model omits
-    # either field, retain the embedding/rule fallback already in signal_fields.
-    if "preference_hits" in data:
-        preference_hits = _validated_configured_hits(data.get("preference_hits"), profile.preferences)
-        signal_fields.update(
-            preferences_matched=len(preference_hits),
-            preferences_total=len(profile.preferences),
-            preference_hits=preference_hits,
-        )
-    if "dealbreaker_hits" in data:
-        dealbreaker_hits = _validated_configured_hits(data.get("dealbreaker_hits"), profile.dealbreakers)
-        signal_fields.update(
-            dealbreakers_matched=len(dealbreaker_hits),
-            dealbreakers_total=len(profile.dealbreakers),
-            dealbreaker_hits=dealbreaker_hits,
-        )
-    ai_location_tier = data.get("location_tier")
-    if isinstance(ai_location_tier, int) and 1 <= ai_location_tier <= 4:
-        location_reason = str(data.get("location_reason") or "AI geographic classification").strip()
-        signal_fields.update(
-            location_tier=ai_location_tier,
-            location_score={1: 1.0, 2: 0.75, 3: 0.50, 4: 0.10}[ai_location_tier],
-            location_label=f"P{ai_location_tier} · {location_reason[:80]}",
-        )
-
-    # Deterministic verdict guardrails. Dimensions remain fixed; the final AI
-    # may explain them but cannot override these product rules.
+    # Clear cases are rules-only. Only ambiguous cases call the verdict LLM.
     veto, _veto_ids, _veto_quote = _jd_sponsorship_veto(jd)
     has_sponsorship_veto = profile.constraints.needs_sponsorship and veto
     hard_dealbreakers = signal_fields.get("dealbreaker_hits") or []
     role_priority = track_fields.get("track_priority")
+    raw_final = None
+    override_reason = None
     if has_sponsorship_veto or hard_dealbreakers:
         decision = Recommendation.SKIP
+        reasoning = "A deterministic hard constraint vetoed this job."
         summary = (
             "Job explicitly excludes required visa sponsorship"
             if has_sponsorship_veto
             else f"Dealbreaker: {hard_dealbreakers[0]}"
         )
+        method = "rules"
+        override_reason = "sponsorship veto" if has_sponsorship_veto else "dealbreaker veto"
     elif role_priority in (1, 2) and fit_ratio is not None and fit_ratio > 0.50:
         decision = Recommendation.APPLY
+        reasoning = "Configured P1/P2 role and resume fit exceeds the 50% Apply guardrail."
         summary = f"P{role_priority} target role · resume fit {fit_ratio:.0%}"
-    elif role_priority == 4 and decision == Recommendation.APPLY:
+        method = "rules"
+        override_reason = "P1/P2 + resume > 50%"
+    elif role_priority == 4:
         decision = Recommendation.SKIP
+        reasoning = "The independently classified role is outside configured P1–P3 tracks."
         summary = "Role is outside configured P1–P3 tracks"
+        method = "rules"
+        override_reason = "Role P4"
+    else:
+        method = "llm"
+        final_input = {
+            "fixed_dimensions": {
+                "role": track_fields,
+                "resume_fit": fit_ratio,
+                "location": location_fields,
+                "profile_signals": profile_fields,
+            },
+            "resume_evidence": [
+                {"claim": c.claim, "reasoning": c.reasoning}
+                for c in [*resume_fit.strong_matches, *resume_fit.partial_matches, *resume_fit.missing]
+            ][:20],
+        }
+        try:
+            raw_final = complete_json_with_retry(
+                """Choose only the final verdict from already-fixed independent dimensions.
+Do not reclassify Role, Resume, Location, preferences, or dealbreakers. Return JSON only:
+{"decision":"Apply|Near apply|Consider|Skip","reasoning":"2-3 evidence-based sentences",
+"summary":"one concrete line under 100 characters"}.""",
+                json.dumps(final_input, ensure_ascii=False),
+                max_tokens=650,
+            )
+            decision = _normalize_decision(raw_final.get("decision"))
+            reasoning = str(raw_final.get("reasoning") or "").strip()
+            summary = str(raw_final.get("summary") or reasoning).strip()[:120]
+        except Exception as exc:  # noqa: BLE001
+            method = "rules_fallback"
+            override_reason = f"final LLM failed: {type(exc).__name__}"
+            if role_priority in (1, 2) and (fit_ratio or 0) >= 0.22:
+                decision = Recommendation.NEAR_APPLY
+            elif role_priority == 3 and (fit_ratio or 0) >= 0.28:
+                decision = Recommendation.CONSIDER
+            else:
+                decision = Recommendation.SKIP
+            reasoning = "Deterministic boundary fallback after final-verdict LLM failure."
+            summary = f"P{role_priority or 4} role · resume fit {(fit_ratio or 0):.0%}"
+
+    debug["final_verdict"] = {
+        "dimension": "final_verdict",
+        "model": settings.llm_model if method == "llm" else None,
+        "prompt_version": "final-verdict-v1",
+        "method": method,
+        "raw_output": raw_final,
+        "validated_output": {"decision": decision.value, "reasoning": reasoning, "summary": summary},
+        "rule_override": override_reason,
+    }
 
     evidence_ids = _collect_evidence_ids(resume_fit, jd) if resume_fit.available else []
     if profile.constraints.needs_sponsorship:
@@ -317,7 +306,8 @@ def generate_recommendation_llm(
         "summary": summary,
         "evidence_ids": evidence_ids,
         "fit_ratio": fit_ratio,
-        "recommendation_method": "llm",
+        "recommendation_method": method,
+        "debug_decisions": debug,
         **signal_fields,
         **track_fields,
     }

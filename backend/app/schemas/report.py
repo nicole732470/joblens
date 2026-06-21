@@ -133,6 +133,7 @@ class ResumeFitAnalysis(BaseModel):
     strong_matches: list[Claim] = []
     partial_matches: list[Claim] = []
     missing: list[Claim] = []
+    debug: dict = {}
 
 
 class RecommendationResult(BaseModel):
@@ -159,6 +160,7 @@ class RecommendationResult(BaseModel):
     dealbreakers_total: int = 0
     dealbreaker_hits: list[str] = []
     preference_hits: list[str] = []
+    debug_decisions: dict = {}
 
 
 class RiskAnalysis(BaseModel):

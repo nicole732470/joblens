@@ -33,6 +33,7 @@ class AnalyzeState(TypedDict, total=False):
     job_location: str | None
     linkedin_followers: int | None
     alumni_hints: list[str]
+    debug_enabled: bool
     resolved_resume: str | None
     resume_source: str | None
     profile_loaded: bool
@@ -122,6 +123,7 @@ def run_analyze_workflow(
     job_location: str | None,
     linkedin_followers: int | None,
     alumni_hints: list[str],
+    debug_enabled: bool = False,
     build_explain,
 ) -> Report:
     begin_analysis(
@@ -135,6 +137,7 @@ def run_analyze_workflow(
             "job_location": job_location,
             "linkedin_followers": linkedin_followers,
             "alumni_hints": alumni_hints,
+            "debug_enabled": debug_enabled,
         }
     )
 
@@ -150,6 +153,7 @@ def run_analyze_workflow(
         "job_location": job_location,
         "linkedin_followers": linkedin_followers,
         "alumni_hints": alumni_hints,
+        "debug_enabled": debug_enabled,
         "parse_attempts": 0,
     }
 
