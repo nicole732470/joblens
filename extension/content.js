@@ -335,11 +335,13 @@
           if (panel && !isInsideBadge(panel)) return panel;
         }
       }
-      const rail = document.querySelector(".jobs-search__job-details, .jobs-search__right-rail");
+      const rail = document.querySelector(
+        ".jobs-search__job-details, .jobs-search__right-rail, .scaffold-layout__detail"
+      );
       if (rail && !isInsideBadge(rail)) {
         if (
           rail.querySelector(
-            ".job-details-jobs-unified-top-card, .jobs-unified-top-card, .job-details-jobs-unified-top-card__job-title"
+            ".job-details-jobs-unified-top-card, .jobs-unified-top-card, .job-details-jobs-unified-top-card__job-title, #job-details, [class*='jobs-description']"
           )
         ) {
           return rail;
@@ -543,9 +545,6 @@
     return el;
   }
 
-  function renderLoadingInline(message) {
-    return `<div class="lca-analyze-inner"><div class="lca-loading-row"><span class="lca-spinner"></span> ${escapeHtml(message)}</div></div>`;
-  }
   function wireRefreshButton(el) {
     const btn = el.querySelector(".lca-refresh-btn");
     if (!btn || btn.dataset.wired === "1") return;
@@ -563,18 +562,6 @@
   function showCompanyPageFitHint(out) {
     if (!out) return;
     out.innerHTML = `<div class="lca-section-card lca-section-card--fit">${renderCompanyPageAnalyzeHint()}</div>`;
-  }
-
-  function renderWaiting(ctx) {
-    const el = ensureBadge();
-    el.className = "lca-badge lca-waiting";
-    el.innerHTML = `
-      ${renderChrome()}
-      <div class="lca-body">
-        <div class="lca-title">Waiting for job details…</div>
-        <div class="lca-hint">Open a job posting to detect the employer.</div>
-      </div>`;
-    initPanelChrome(el);
   }
 
   function isCompanyProfilePage() {
@@ -604,7 +591,6 @@
       ".jobs-details-top-card__job-title",
       "[data-test-job-title]",
       "h1.t-24",
-      "main h1",
     ];
     const panel = findActiveJobPanel();
     for (const scope of [panel, document]) {
@@ -1164,9 +1150,13 @@
   async function enrichMissingJobMetadata(inputs) {
     if (inputs?.company || !inputs?.job_url) return inputs;
     try {
+      const jobId = extractJobId();
+      const metadataUrl = jobId
+        ? `https://www.linkedin.com/jobs/view/${jobId}/`
+        : inputs.job_url;
       const parsed = await extensionApiJson("/jobs/parse-url", {
         method: "POST",
-        body: JSON.stringify({ url: inputs.job_url }),
+        body: JSON.stringify({ url: metadataUrl }),
       });
       return {
         ...inputs,
@@ -1177,6 +1167,27 @@
     } catch (_) {
       return inputs;
     }
+  }
+
+  function jobInputsReady(inputs) {
+    return Boolean(
+      extractJobId() &&
+      String(inputs?.company || "").trim() &&
+      String(inputs?.title || "").trim() &&
+      String(inputs?.jd_text || "").trim().length >= 40
+    );
+  }
+
+  async function waitForReadyJobInputs(ctx, stillCurrent) {
+    let inputs = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (!stillCurrent()) return null;
+      inputs = await gatherJobInputs(ctx);
+      inputs = await enrichMissingJobMetadata(inputs);
+      if (jobInputsReady(inputs)) return inputs;
+      await sleep(700);
+    }
+    return inputs;
   }
 
   async function analyzeAuthHeaders() {
@@ -1469,9 +1480,8 @@
 
   let analysisSeq = 0;
 
-  async function runFullAnalysis(out, ctx) {
+  async function runFullAnalysis(out, ctx, inputs, sponsorship, seq) {
     if (!out) return;
-    const seq = ++analysisSeq;
     const stillCurrent = () => seq === analysisSeq;
 
     const fresh = extractPageContext();
@@ -1481,33 +1491,7 @@
       return;
     }
 
-    out.innerHTML = renderLoadingInline("Starting analysis…");
-
     try {
-      let inputs = await gatherJobInputs(ctx);
-      let jdWait = 0;
-      while ((inputs.jd_text || "").length < 40 && jdWait < 10) {
-        if (!stillCurrent()) return;
-        out.innerHTML = renderLoadingInline("Loading job description…");
-        await sleep(900);
-        inputs = await gatherJobInputs(ctx);
-        jdWait += 1;
-      }
-
-      // Company is required for sponsorship lookup. If LinkedIn changed its
-      // logged-in DOM, recover metadata from the same job URL before querying.
-      inputs = await enrichMissingJobMetadata(inputs);
-
-      if (!stillCurrent()) return;
-
-      if ((inputs.jd_text || "").length < 40) {
-        out.innerHTML = `<div class="lca-analyze-inner">${renderCaptureMeta(inputs.jd_text?.length || 0, inputs.captureProbe)}<p class="lca-err-mini">Job description not loaded yet — wait a moment, then click <strong>Retry</strong>.</p></div>`;
-        out.dataset.analyzedFor = "";
-        return;
-      }
-
-      out.innerHTML = renderLoadingInline("Checking visa sponsorship…");
-      const sponsorship = await lookupSponsorshipQuick(inputs, ctx);
       if (!stillCurrent()) return;
 
       const headH1b = renderHeadAndH1b(inputs, ctx, sponsorship);
@@ -1552,21 +1536,37 @@
     }
 
     if (!ctx.pageKey) {
-      if (onJobs) renderWaiting(ctx);
       return;
     }
 
     const fp = contextFingerprint(ctx);
     if (!options.force && fp === lastFingerprint) return;
-    lastFingerprint = fp;
-
-    const el = renderPanelShell(await readAuthState());
-    const out = el.querySelector(".lca-analyze-result");
     if (!canRunFitAnalysis(ctx)) {
+      lastFingerprint = fp;
+      const el = renderPanelShell(await readAuthState());
+      const out = el.querySelector(".lca-analyze-result");
       showCompanyPageFitHint(out);
       return;
     }
-    await runFullAnalysis(out, ctx);
+
+    const seq = ++analysisSeq;
+    const stillCurrent = () => seq === analysisSeq && navigationKey() === lastNavKey;
+    const inputs = await waitForReadyJobInputs(ctx, stillCurrent);
+    if (!stillCurrent()) return;
+    if (!jobInputsReady(inputs)) {
+      document.getElementById(BADGE_ID)?.remove();
+      lastFingerprint = null;
+      setTimeout(() => run({ force: true }), 1500);
+      return;
+    }
+
+    const sponsorship = await lookupSponsorshipQuick(inputs, ctx);
+    if (!stillCurrent()) return;
+
+    lastFingerprint = fp;
+    const el = renderPanelShell(await readAuthState());
+    const out = el.querySelector(".lca-analyze-result");
+    await runFullAnalysis(out, ctx, inputs, sponsorship, seq);
   }
 
   let lastNavKey = navigationKey();
@@ -1575,6 +1575,8 @@
     const key = navigationKey();
     if (key === lastNavKey) return;
     lastNavKey = key;
+    analysisSeq += 1;
+    document.getElementById(BADGE_ID)?.remove();
     lastFingerprint = null;
     scheduleRun();
   }
