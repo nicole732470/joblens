@@ -95,6 +95,9 @@ Rules:
 - Compare avoid tracks independently.
 - Below the positive threshold, or when avoid wins, assign P4.
 - Embedding fallback must be labeled `method=embedding` in the report.
+- The production decision threshold is 0.55 cosine similarity. A lower nearest
+  match remains unmatched P4; fallback must never force a track merely because
+  it is the least-distant option.
 
 ## 3. Resume fit
 

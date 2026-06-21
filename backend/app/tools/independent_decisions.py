@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -13,6 +14,16 @@ from app.tools.llm import complete_json_with_retry
 from app.tools.profile_signals import evaluate_profile_signals
 from app.tools.role_priority import apply_technical_penalties
 from app.tools.track_match import match_job_to_profile
+
+_ROLE_EMBEDDING_MIN = 0.55
+_TRADITIONAL_ENGINEERING_TITLE_RE = re.compile(
+    r"\b(electrical|mechanical|civil|architectural|structural|construction)\s+engineer(?:ing)?\b",
+    re.I,
+)
+_AI_ROLE_RE = re.compile(
+    r"\b(artificial intelligence|machine learning|deep learning|generative ai|llm|rag|agentic|ai engineer)\b",
+    re.I,
+)
 
 ROLE_PROMPT_VERSION = "role-v1"
 LOCATION_PROMPT_VERSION = "location-v1"
@@ -69,7 +80,7 @@ Use responsibilities, not title keywords alone. Return JSON only:
 {"track_id":"configured id or null","avoid_track_id":"configured avoid id or null",
 "reason":"short reason","evidence":["exact job excerpts"]}. Never invent an id.""",
             json.dumps(inputs, ensure_ascii=False),
-            max_attempts=1,
+            max_attempts=2,
             max_tokens=700,
         )
         tid = raw.get("track_id")
@@ -80,6 +91,13 @@ Use responsibilities, not title keywords alone. Return JSON only:
             raise ValueError(f"unknown track_id {tid!r}")
         if aid is not None and avoid is None:
             raise ValueError(f"unknown avoid_track_id {aid!r}")
+        if (
+            track
+            and track.id == "ai_eng"
+            and _TRADITIONAL_ENGINEERING_TITLE_RE.search(title)
+            and not _AI_ROLE_RE.search(f"{title}\n{jd_text}")
+        ):
+            raise ValueError("AI track contradicts explicit traditional-engineering title and JD content")
         if avoid:
             out = {"track_id": None, "track_label": avoid.label, "track_priority": 4, "track_similarity": None, "role_status": "avoid"}
         elif track:
@@ -94,6 +112,11 @@ Use responsibilities, not title keywords alone. Return JSON only:
     def fallback() -> dict:
         tm = match_job_to_profile(title, jd_text, jd, profile)
         track = tm.get("matched_track")
+        # Embeddings must be confident enough to classify a role. The old 0.30
+        # matcher threshold is useful for retrieval but too weak for assigning
+        # a user's P-tier (e.g. Electrical Engineer -> AI at 0.448).
+        if track and float(tm.get("similarity") or 0) < _ROLE_EMBEDDING_MIN:
+            track = None
         priority = 4 if tm.get("avoid_match") or not track else track.priority
         priority, hits = apply_technical_penalties(priority, jd, jd_text, profile)
         return {
@@ -103,7 +126,11 @@ Use responsibilities, not title keywords alone. Return JSON only:
             "track_similarity": tm.get("similarity"),
             "technical_penalty_hits": hits,
             "role_status": "avoid" if tm.get("avoid_match") else ("target" if track else "unmatched"),
-            "reason": "embedding fallback",
+            "reason": (
+                "embedding fallback"
+                if track or tm.get("avoid_match")
+                else f"embedding similarity below {_ROLE_EMBEDDING_MIN:.2f}; left unmatched"
+            ),
             "evidence": [title],
         }
 
