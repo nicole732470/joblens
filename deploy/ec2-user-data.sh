@@ -32,9 +32,9 @@ psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -c "SELECT 1" >/dev/null
 rm -rf "$APP_DIR"
 git clone "$REPO" "$APP_DIR"
 cd "$APP_DIR"
-psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f deploy/rds-init.sql
-psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f db/schema.sql
-psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f db/auth_schema.sql
+psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -v ON_ERROR_STOP=1 -f deploy/rds-init.sql
+psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -v ON_ERROR_STOP=1 -f db/schema.sql
+psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -v ON_ERROR_STOP=1 -f db/auth_schema.sql
 
 JWT_SECRET=$(echo "$APP_JSON" | jq -r '.JWT_SECRET // empty')
 if [[ -z "$JWT_SECRET" || "$JWT_SECRET" == "null" ]]; then
