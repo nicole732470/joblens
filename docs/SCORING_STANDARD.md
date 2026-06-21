@@ -29,6 +29,23 @@ labels, golden-set expectations, and tooltips must follow this contract.
    - P4: extremely low / outside the user's stated target range
 7. Users configure only P1, P2, and P3 targets. P4 is system-assigned for an
    unmatched role, location, or company.
+8. Role, Location, and Preference/Dealbreaker decisions run as independent,
+   parallel structured decisions. The final verdict consumes their validated
+   outputs and cannot silently reclassify a dimension.
+
+### Decision execution and debugging
+
+- Role, Location, and Preference/Dealbreaker AI calls run in parallel.
+- Resume and Company retain their independent evidence pipelines.
+- Clear guardrail cases use deterministic rules. Only boundary cases call the
+  Final Verdict model.
+- An invalid independent AI response falls back immediately for that dimension
+  only; it does not rerun or replace other dimensions.
+- Each decision record stores input preview, model, prompt version, method,
+  evidence, raw structured output, validated output, validation/fallback error,
+  and any final rule override.
+- Raw decision records are returned only for the configured debug account. They
+  are stripped server-side for every other account and anonymous request.
 
 ## 2. Role fit
 
