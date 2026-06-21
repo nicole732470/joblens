@@ -324,3 +324,76 @@ def match_job_to_profile(
         }
 
     return match_title_to_profile(title, profile)
+
+
+def match_role_content_to_profile(
+    title: str,
+    jd_text: str,
+    jd: JDParse | None,
+    profile: CandidateProfile,
+) -> dict:
+    """Embedding fallback over title + role responsibilities and requirements.
+
+    This is intentionally separate from the legacy title-only matcher. It is
+    used only after the Role LLM fails, where ignoring a clearly contradictory
+    JD can force an unrelated nearest track.
+    """
+    title = (title or "").strip()
+    if not profile.tracks:
+        return {
+            "matched_track": None,
+            "similarity": 0.0,
+            "avoid_match": False,
+            "avoid_label": None,
+            "evidence_text": title,
+        }
+
+    role_text = _job_content_blob(title, jd, jd_text)
+    exact_track, exact_sim = _exact_track_match(title, profile)
+    avoid_label_exact, avoid_sim_exact = _exact_avoid_match(title, profile)
+    if avoid_label_exact and avoid_sim_exact >= (exact_sim if exact_track else 0):
+        return {
+            "matched_track": None,
+            "similarity": exact_sim if exact_track else 0.0,
+            "avoid_match": True,
+            "avoid_label": avoid_label_exact,
+            "evidence_text": role_text,
+        }
+
+    want = [(track, _track_descriptor(track)) for track in profile.tracks]
+    avoid = [(track, _track_descriptor(track)) for track in profile.avoid_tracks]
+    try:
+        vectors = embed_texts([role_text, *[d for _, d in want], *[d for _, d in avoid]])
+    except Exception:
+        return {
+            "matched_track": exact_track,
+            "similarity": exact_sim,
+            "avoid_match": False,
+            "avoid_label": None,
+            "evidence_text": role_text,
+        }
+
+    role_vec = vectors[0]
+    best_track = exact_track
+    best_sim = exact_sim
+    for index, (track, _) in enumerate(want, start=1):
+        similarity = _cosine_similarity(role_vec, vectors[index])
+        if similarity > best_sim:
+            best_track, best_sim = track, similarity
+
+    avoid_label = None
+    avoid_sim = 0.0
+    offset = 1 + len(want)
+    for index, (track, _) in enumerate(avoid):
+        similarity = _cosine_similarity(role_vec, vectors[offset + index])
+        if similarity > avoid_sim:
+            avoid_label, avoid_sim = track.label, similarity
+
+    avoid_match = avoid_sim >= _AVOID_MATCH_MIN and avoid_sim >= best_sim
+    return {
+        "matched_track": best_track,
+        "similarity": round(best_sim, 3),
+        "avoid_match": avoid_match,
+        "avoid_label": avoid_label if avoid_match else None,
+        "evidence_text": role_text,
+    }

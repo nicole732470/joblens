@@ -13,7 +13,7 @@ from app.schemas.report import JDParse
 from app.tools.llm import complete_json_with_retry
 from app.tools.profile_signals import evaluate_profile_signals
 from app.tools.role_priority import apply_technical_penalties
-from app.tools.track_match import match_job_to_profile
+from app.tools.track_match import match_role_content_to_profile
 
 _ROLE_EMBEDDING_MIN = 0.55
 _TRADITIONAL_ENGINEERING_TITLE_RE = re.compile(
@@ -110,7 +110,7 @@ Use responsibilities, not title keywords alone. Return JSON only:
         return raw
 
     def fallback() -> dict:
-        tm = match_job_to_profile(title, jd_text, jd, profile)
+        tm = match_role_content_to_profile(title, jd_text, jd, profile)
         track = tm.get("matched_track")
         # Embeddings must be confident enough to classify a role. The old 0.30
         # matcher threshold is useful for retrieval but too weak for assigning
@@ -131,7 +131,7 @@ Use responsibilities, not title keywords alone. Return JSON only:
                 if track or tm.get("avoid_match")
                 else f"embedding similarity below {_ROLE_EMBEDDING_MIN:.2f}; left unmatched"
             ),
-            "evidence": [title],
+            "evidence": [tm.get("evidence_text") or title],
         }
 
     return _run_with_fallback(record, primary, fallback)

@@ -90,7 +90,9 @@ Rules:
 
 ### Fallback: embeddings
 
-- Compare title + role-content embedding with every track descriptor.
+- Compare a combined title + parsed responsibilities + requirements embedding
+  with every track descriptor. Title-only embedding is not an acceptable Role
+  fallback because it ignores contradictory JD evidence.
 - Choose the closest configured track only above a calibrated minimum.
 - Compare avoid tracks independently.
 - Below the positive threshold, or when avoid wins, assign P4.

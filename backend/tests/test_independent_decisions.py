@@ -4,6 +4,7 @@ from unittest.mock import patch
 from app.schemas.candidate_profile import CandidateProfile, Track
 from app.schemas.report import JDParse
 from app.tools.independent_decisions import decide_role
+from app.tools.track_match import match_role_content_to_profile
 
 
 def _profile():
@@ -12,7 +13,7 @@ def _profile():
     )
 
 
-@patch("app.tools.independent_decisions.match_job_to_profile")
+@patch("app.tools.independent_decisions.match_role_content_to_profile")
 @patch("app.tools.independent_decisions.complete_json_with_retry")
 def test_low_similarity_role_fallback_stays_unmatched(mock_llm, mock_match):
     mock_llm.side_effect = json.JSONDecodeError("bad JSON", "{broken", 1)
@@ -35,7 +36,7 @@ def test_low_similarity_role_fallback_stays_unmatched(mock_llm, mock_match):
     assert validated["role_status"] == "unmatched"
 
 
-@patch("app.tools.independent_decisions.match_job_to_profile")
+@patch("app.tools.independent_decisions.match_role_content_to_profile")
 @patch("app.tools.independent_decisions.complete_json_with_retry")
 def test_high_similarity_role_fallback_can_select_target(mock_llm, mock_match):
     profile = _profile()
@@ -51,7 +52,7 @@ def test_high_similarity_role_fallback_can_select_target(mock_llm, mock_match):
     assert result["validated_output"]["role_status"] == "target"
 
 
-@patch("app.tools.independent_decisions.match_job_to_profile")
+@patch("app.tools.independent_decisions.match_role_content_to_profile")
 @patch("app.tools.independent_decisions.complete_json_with_retry")
 def test_llm_ai_selection_is_rejected_for_electrical_role_without_ai_work(mock_llm, mock_match):
     profile = _profile()
@@ -76,3 +77,32 @@ def test_llm_ai_selection_is_rejected_for_electrical_role_without_ai_work(mock_l
     assert result["method"] == "embedding/rules"
     assert result["validated_output"]["role_status"] == "unmatched"
     assert "contradicts" in result["validation_error"]
+
+
+@patch("app.tools.track_match.embed_texts")
+def test_role_embedding_fallback_includes_jd_responsibilities(mock_embed):
+    captured = []
+
+    def fake_embed(texts):
+        captured.extend(texts)
+        return [[1.0, 0.0], [0.0, 1.0]]
+
+    mock_embed.side_effect = fake_embed
+    jd = JDParse(
+        available=True,
+        requirements=[
+            {
+                "id": "jd_req_01",
+                "category": "responsibility",
+                "text": "Lead MEP electrical design and PE quality assurance",
+            }
+        ],
+    )
+    result = match_role_content_to_profile(
+        "Technical Manager I",
+        "Electrical engineering consulting",
+        jd,
+        _profile(),
+    )
+    assert "Lead MEP electrical design" in captured[0]
+    assert result["matched_track"] is None
