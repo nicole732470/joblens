@@ -37,6 +37,111 @@ def load_index() -> dict:
         return json.load(f)
 
 
+def rebuild_default_company_groups(cur) -> None:
+    """Create a conservative 1:1 company-group mapping for every FEIN.
+
+    This keeps the existing FEIN-keyed sponsorship lookup unchanged while giving
+    newer JobPush features an optional company-group layer to attach websites/career URLs
+    to. Parent/brand consolidation can later merge multiple FEINs into one
+    company group without changing the old sponsorship API.
+    """
+
+    cur.execute(
+        """
+        INSERT INTO company_groups (group_key, canonical_name, display_name)
+        SELECT 'legal:' || fein, name, name
+        FROM companies
+        ON CONFLICT (group_key) DO UPDATE
+        SET canonical_name = EXCLUDED.canonical_name,
+            display_name = COALESCE(company_groups.display_name, EXCLUDED.display_name),
+            updated_at = now()
+        """
+    )
+
+
+def upsert_companies(cur, employers: list[dict]) -> None:
+    cur.execute(
+        """
+        CREATE TEMP TABLE tmp_companies (
+            fein TEXT,
+            name TEXT,
+            naics_code TEXT,
+            naics_sector TEXT,
+            city TEXT,
+            state TEXT,
+            lca_count INTEGER,
+            h1b_count INTEGER,
+            certified_count INTEGER,
+            top_jobs JSONB
+        ) ON COMMIT DROP
+        """
+    )
+    with cur.copy(
+        "COPY tmp_companies (fein, name, naics_code, naics_sector, city, "
+        "state, lca_count, h1b_count, certified_count, top_jobs) "
+        "FROM STDIN"
+    ) as copy:
+        for e in employers:
+            copy.write_row(
+                [
+                    e["fein"],
+                    e.get("name") or "",
+                    e.get("naics_code"),
+                    e.get("naics_sector"),
+                    e.get("city"),
+                    e.get("state"),
+                    e.get("lca_count") or 0,
+                    e.get("h1b_count") or 0,
+                    e.get("certified_count") or 0,
+                    Jsonb(e.get("top_jobs") or []),
+                ]
+            )
+    cur.execute(
+        """
+        UPDATE companies
+        SET lca_count = 0,
+            h1b_count = 0,
+            certified_count = 0,
+            top_jobs = '[]'::jsonb
+        """
+    )
+    cur.execute(
+        """
+        INSERT INTO companies (
+            fein, name, naics_code, naics_sector, city, state,
+            lca_count, h1b_count, certified_count, top_jobs
+        )
+        SELECT
+            fein, name, naics_code, naics_sector, city, state,
+            lca_count, h1b_count, certified_count, top_jobs
+        FROM tmp_companies
+        ON CONFLICT (fein) DO UPDATE
+        SET name = EXCLUDED.name,
+            naics_code = EXCLUDED.naics_code,
+            naics_sector = EXCLUDED.naics_sector,
+            city = EXCLUDED.city,
+            state = EXCLUDED.state,
+            lca_count = EXCLUDED.lca_count,
+            h1b_count = EXCLUDED.h1b_count,
+            certified_count = EXCLUDED.certified_count,
+            top_jobs = EXCLUDED.top_jobs
+        """
+    )
+    cur.execute(
+        """
+        INSERT INTO company_group_companies (company_group_id, fein, relationship, is_primary)
+        SELECT g.company_group_id, c.fein, 'legal_entity', TRUE
+        FROM companies c
+        JOIN company_groups g ON g.group_key = 'legal:' || c.fein
+        ON CONFLICT (company_group_id, fein) DO UPDATE
+        SET company_group_id = EXCLUDED.company_group_id,
+            relationship = EXCLUDED.relationship,
+            is_primary = EXCLUDED.is_primary,
+            updated_at = now()
+        """
+    )
+
+
 def main() -> None:
     t0 = time.time()
     print(f"Reading index: {INDEX_PATH}")
@@ -51,30 +156,12 @@ def main() -> None:
             print("Applying schema (db/schema.sql)")
             cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-            print("Clearing existing rows")
-            cur.execute("TRUNCATE companies RESTART IDENTITY CASCADE")
+            print("Clearing replaceable lookup rows")
+            cur.execute("TRUNCATE company_aliases RESTART IDENTITY")
+            cur.execute("TRUNCATE company_search_keys")
 
-            print("Loading companies")
-            with cur.copy(
-                "COPY companies (fein, name, naics_code, naics_sector, city, "
-                "state, lca_count, h1b_count, certified_count, top_jobs) "
-                "FROM STDIN"
-            ) as copy:
-                for e in employers:
-                    copy.write_row(
-                        [
-                            e["fein"],
-                            e.get("name") or "",
-                            e.get("naics_code"),
-                            e.get("naics_sector"),
-                            e.get("city"),
-                            e.get("state"),
-                            e.get("lca_count") or 0,
-                            e.get("h1b_count") or 0,
-                            e.get("certified_count") or 0,
-                            Jsonb(e.get("top_jobs") or []),
-                        ]
-                    )
+            print("Upserting companies")
+            upsert_companies(cur, employers)
 
             print("Loading aliases")
             with cur.copy(
@@ -96,11 +183,20 @@ def main() -> None:
                     if fein in feins:
                         copy.write_row([key, fein])
 
+            print("Rebuilding default company groups")
+            rebuild_default_company_groups(cur)
+
         conn.commit()
 
         with conn.cursor() as cur:
             counts = {}
-            for table in ("companies", "company_aliases", "company_search_keys"):
+            for table in (
+                "companies",
+                "company_aliases",
+                "company_search_keys",
+                "company_groups",
+                "company_group_companies",
+            ):
                 cur.execute(f"SELECT count(*) FROM {table}")
                 counts[table] = cur.fetchone()[0]
 

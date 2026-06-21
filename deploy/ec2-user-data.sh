@@ -33,6 +33,7 @@ rm -rf "$APP_DIR"
 git clone "$REPO" "$APP_DIR"
 cd "$APP_DIR"
 psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f deploy/rds-init.sql
+psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f db/schema.sql
 psql -h "$RDS_HOST" -U "$RDS_USER" -d "$RDS_DB" -f db/auth_schema.sql
 
 JWT_SECRET=$(echo "$APP_JSON" | jq -r '.JWT_SECRET // empty')
