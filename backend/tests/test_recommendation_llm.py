@@ -7,7 +7,7 @@ from app.schemas.report import Claim, JDParse, Recommendation, ResumeFitAnalysis
 from app.tools.recommendation import generate_recommendation
 
 
-def _records(*, priority=1, location=2, dealbreakers=None):
+def _records(*, priority=1, location=2, dealbreakers=None, role_status=None):
     def rec(dimension, output):
         return {
             "dimension": dimension, "model": "test", "prompt_version": "test-v1",
@@ -19,6 +19,7 @@ def _records(*, priority=1, location=2, dealbreakers=None):
             "track_id": "ai_eng" if priority < 4 else None,
             "track_label": "AI Engineer" if priority < 4 else None,
             "track_priority": priority, "track_similarity": 0.9,
+            "role_status": role_status or ("target" if priority < 4 else "unmatched"),
             "technical_penalty_hits": [], "reason": "test",
         }),
         "location": rec("location", {
@@ -83,7 +84,7 @@ def test_llm_recommendation_apply(mock_decisions, mock_llm, _mock_avail):
 @patch("app.tools.recommendation_llm.complete_json_with_retry")
 @patch("app.tools.independent_decisions.run_independent_decisions")
 def test_llm_skip_summary_not_generic(mock_decisions, mock_llm, _mock_avail):
-    mock_decisions.return_value = _records(priority=4)
+    mock_decisions.return_value = _records(priority=4, role_status="unmatched")
     mock_llm.return_value = {
         "decision": "Skip",
         "reasoning": "JD is a research scientist role requiring PhD publications; resume is product AI engineering.",
@@ -167,3 +168,44 @@ def test_ai_dealbreaker_hit_forces_skip(mock_decisions, mock_llm, _mock_avail):
     )
     assert out["decision"] == Recommendation.SKIP
     assert out["dealbreaker_hits"] == ["unpaid internship"]
+
+
+@patch("app.tools.recommendation_llm.llm_available", return_value=True)
+@patch("app.tools.recommendation_llm.complete_json_with_retry")
+@patch("app.tools.independent_decisions.run_independent_decisions")
+def test_unmatched_p4_is_comprehensively_judged_not_auto_skip(mock_decisions, mock_llm, _mock_avail):
+    mock_decisions.return_value = _records(priority=4, role_status="unmatched")
+    mock_llm.return_value = {
+        "decision": "Consider",
+        "reasoning": "The role is adjacent to the candidate's AI work and the resume has relevant evidence.",
+        "summary": "Adjacent AI work offsets an unlisted role category",
+    }
+    out = generate_recommendation(
+        JDParse(available=True, requirements=[]),
+        ResumeFitAnalysis(available=False),
+        _profile(),
+        "Developer Advocate",
+        "Help developers build AI agents.",
+        resume_text="Built AI agents and developer tooling.",
+        method="llm",
+    )
+    assert out["track_priority"] == 4
+    assert out["decision"] == Recommendation.CONSIDER
+    assert "outside configured" not in out["summary"].lower()
+
+
+@patch("app.tools.recommendation_llm.llm_available", return_value=True)
+@patch("app.tools.independent_decisions.run_independent_decisions")
+def test_explicit_avoid_track_remains_hard_skip(mock_decisions, _mock_avail):
+    mock_decisions.return_value = _records(priority=4, role_status="avoid")
+    out = generate_recommendation(
+        JDParse(available=True, requirements=[]),
+        ResumeFitAnalysis(available=False),
+        _profile(),
+        "Sales Representative",
+        "Sell software to enterprise customers.",
+        resume_text="Built AI products.",
+        method="llm",
+    )
+    assert out["decision"] == Recommendation.SKIP
+    assert "explicit avoid" in out["summary"].lower()

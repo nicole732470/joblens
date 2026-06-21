@@ -81,11 +81,11 @@ Use responsibilities, not title keywords alone. Return JSON only:
         if aid is not None and avoid is None:
             raise ValueError(f"unknown avoid_track_id {aid!r}")
         if avoid:
-            out = {"track_id": None, "track_label": avoid.label, "track_priority": 4, "track_similarity": None}
+            out = {"track_id": None, "track_label": avoid.label, "track_priority": 4, "track_similarity": None, "role_status": "avoid"}
         elif track:
-            out = {"track_id": track.id, "track_label": track.label, "track_priority": track.priority, "track_similarity": None}
+            out = {"track_id": track.id, "track_label": track.label, "track_priority": track.priority, "track_similarity": None, "role_status": "target"}
         else:
-            out = {"track_id": None, "track_label": None, "track_priority": 4, "track_similarity": None}
+            out = {"track_id": None, "track_label": None, "track_priority": 4, "track_similarity": None, "role_status": "unmatched"}
         priority, hits = apply_technical_penalties(out["track_priority"], jd, jd_text, profile)
         out.update(track_priority=priority, technical_penalty_hits=hits, reason=str(raw.get("reason") or ""))
         raw["_validated"] = out
@@ -102,6 +102,7 @@ Use responsibilities, not title keywords alone. Return JSON only:
             "track_priority": priority,
             "track_similarity": tm.get("similarity"),
             "technical_penalty_hits": hits,
+            "role_status": "avoid" if tm.get("avoid_match") else ("target" if track else "unmatched"),
             "reason": "embedding fallback",
             "evidence": [title],
         }

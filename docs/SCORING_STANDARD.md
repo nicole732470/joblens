@@ -81,6 +81,10 @@ Rules:
 - A title keyword alone cannot override contradictory role responsibilities.
 - Any avoid-track match is P4.
 - If no configured track fits, return `track_id=null`, P4.
+- `avoid` and `unmatched` are not equivalent: an explicit avoid-track match may
+  hard-veto the verdict; an unmatched P4 only lowers Role priority and must be
+  evaluated with Resume, Location, Company, preferences, and risks. The user's
+  examples are illustrative rather than an exhaustive whitelist.
 - `technical_penalties` may reduce a matched track by one tier, capped at P4,
   but must not reclassify it into a different track.
 

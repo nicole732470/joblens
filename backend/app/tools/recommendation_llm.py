@@ -221,6 +221,7 @@ def generate_recommendation_llm(
     has_sponsorship_veto = profile.constraints.needs_sponsorship and veto
     hard_dealbreakers = signal_fields.get("dealbreaker_hits") or []
     role_priority = track_fields.get("track_priority")
+    role_status = track_fields.get("role_status")
     raw_final = None
     override_reason = None
     if has_sponsorship_veto or hard_dealbreakers:
@@ -239,12 +240,12 @@ def generate_recommendation_llm(
         summary = f"P{role_priority} target role · resume fit {fit_ratio:.0%}"
         method = "rules"
         override_reason = "P1/P2 + resume > 50%"
-    elif role_priority == 4:
+    elif role_status == "avoid":
         decision = Recommendation.SKIP
-        reasoning = "The independently classified role is outside configured P1–P3 tracks."
-        summary = "Role is outside configured P1–P3 tracks"
+        reasoning = "The role matches a track the user explicitly placed in avoid_tracks."
+        summary = f"Explicit avoid track: {track_fields.get('track_label') or 'user-excluded role'}"
         method = "rules"
-        override_reason = "Role P4"
+        override_reason = "explicit avoid track"
     else:
         method = "llm"
         final_input = {
@@ -262,7 +263,11 @@ def generate_recommendation_llm(
         try:
             raw_final = complete_json_with_retry(
                 """Choose only the final verdict from already-fixed independent dimensions.
-Do not reclassify Role, Resume, Location, preferences, or dealbreakers. Return JSON only:
+Do not reclassify Role, Resume, Location, preferences, or dealbreakers. An unmatched P4 Role
+means the user's examples did not cover it; it is a low-priority signal, NOT an automatic Skip.
+Consider resume evidence, location, preferences, company and risks together. Name the concrete
+reason for the verdict; never use only 'outside configured tracks' or another generic phrase.
+Return JSON only:
 {"decision":"Apply|Near apply|Consider|Skip","reasoning":"2-3 evidence-based sentences",
 "summary":"one concrete line under 100 characters"}.""",
                 json.dumps(final_input, ensure_ascii=False),
@@ -271,7 +276,12 @@ Do not reclassify Role, Resume, Location, preferences, or dealbreakers. Return J
             )
             decision = _normalize_decision(raw_final.get("decision"))
             reasoning = str(raw_final.get("reasoning") or "").strip()
-            summary = str(raw_final.get("summary") or reasoning).strip()[:120]
+            summary = _polish_summary(
+                decision,
+                str(raw_final.get("summary") or ""),
+                reasoning,
+                {"semantic_track_match": track_fields},
+            )
         except Exception as exc:  # noqa: BLE001
             method = "rules_fallback"
             override_reason = f"final LLM failed: {type(exc).__name__}"
