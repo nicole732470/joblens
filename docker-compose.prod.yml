@@ -27,6 +27,7 @@ services:
       TRACE_DIR: /app/logs/traces
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY:-}
       LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-joblens-analyze}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     ports:
       # Host side only (default localhost). Use 0.0.0.0:8000 for temporary public debug.
       - "${BACKEND_BIND:-127.0.0.1:8000}:8000"
