@@ -213,12 +213,6 @@ export default function ProfileOnboarding({ initialProfile, onSave, onCancel, ti
         <section className="section-card">
           <h3>Lists</h3>
           <LineList
-            label="Trajectory"
-            hint="Projects in progress — one line each"
-            value={form.trajectory}
-            onChange={(v) => setForm((f) => ({ ...f, trajectory: v }))}
-          />
-          <LineList
             label="Dealbreakers"
             hint="Hard no — one per line"
             value={form.dealbreakers}

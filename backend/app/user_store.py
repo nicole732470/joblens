@@ -58,8 +58,6 @@ def merge_profile_with_yaml_defaults(profile: CandidateProfile) -> CandidateProf
         data["dealbreakers"] = base_data["dealbreakers"]
     if not data.get("constraints") and base_data.get("constraints"):
         data["constraints"] = base_data["constraints"]
-    if not data.get("trajectory") and base_data.get("trajectory"):
-        data["trajectory"] = base_data["trajectory"]
     if not data.get("technical_penalties") and base_data.get("technical_penalties"):
         data["technical_penalties"] = base_data["technical_penalties"]
     if not data.get("alumni_schools") and base_data.get("alumni_schools"):
