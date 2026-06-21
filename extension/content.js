@@ -597,15 +597,24 @@
       if (!scope) continue;
       for (const sel of selectors) {
         const text = scope.querySelector?.(sel)?.textContent?.trim();
-        if (text) return text.replace(/\s+/g, " ");
+        const normalized = text?.replace(/\s+/g, " ");
+        if (isPlausibleJobTitle(normalized)) return normalized;
       }
     }
     const og = document.querySelector('meta[property="og:title"]')?.content;
     if (og) {
       const bit = og.split("|")[0].trim();
-      if (bit.length >= 6) return bit;
+      if (isPlausibleJobTitle(bit)) return bit;
     }
     return null;
+  }
+
+  function isPlausibleJobTitle(raw) {
+    const title = String(raw || "").replace(/\s+/g, " ").trim();
+    if (title.length < 3 || title.length > 180) return false;
+    return !/^(top job picks for you|recommended jobs?|jobs? for you|similar jobs?|people also viewed|job search|search results?|about the job)$/i.test(
+      title
+    );
   }
 
   /** LinkedIn shows city/state under the job title — not always in the title string. */
@@ -1147,8 +1156,8 @@
     };
   }
 
-  async function enrichMissingJobMetadata(inputs) {
-    if (inputs?.company || !inputs?.job_url) return inputs;
+  async function enrichJobMetadata(inputs) {
+    if (!inputs?.job_url) return inputs;
     try {
       const jobId = extractJobId();
       const metadataUrl = jobId
@@ -1160,9 +1169,11 @@
       });
       return {
         ...inputs,
+        // The canonical job page is authoritative for metadata only. Keep the
+        // in-browser/Voyager JD so the two product surfaces remain independent.
         company: parsed?.company || inputs.company || null,
-        title: inputs.title || parsed?.title || null,
-        job_location: inputs.job_location || parsed?.job_location || null,
+        title: parsed?.title || inputs.title || null,
+        job_location: parsed?.job_location || inputs.job_location || null,
       };
     } catch (_) {
       return inputs;
@@ -1173,7 +1184,7 @@
     return Boolean(
       extractJobId() &&
       String(inputs?.company || "").trim() &&
-      String(inputs?.title || "").trim() &&
+      isPlausibleJobTitle(inputs?.title) &&
       String(inputs?.jd_text || "").trim().length >= 40
     );
   }
@@ -1183,7 +1194,7 @@
     for (let attempt = 0; attempt < 4; attempt += 1) {
       if (!stillCurrent()) return null;
       inputs = await gatherJobInputs(ctx);
-      inputs = await enrichMissingJobMetadata(inputs);
+      inputs = await enrichJobMetadata(inputs);
       if (jobInputsReady(inputs)) return inputs;
       await sleep(700);
     }
