@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.schemas.candidate_profile import Track
+from app.schemas.candidate_profile import CandidateProfile, Track
 from app.schemas.report import JDParse, ResumeFitAnalysis, Claim
 from app.tools.role_priority import (
     _strict_phrase_hit,
@@ -148,3 +148,21 @@ class ResumePriorityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+def test_legacy_p4_track_migrates_to_avoid_track():
+    profile = CandidateProfile.model_validate(
+        {
+            "tracks": [
+                {"id": "ai", "label": "AI", "priority": 1, "example_titles": ["AI Engineer"]},
+                {
+                    "id": "research",
+                    "label": "Research",
+                    "priority": 4,
+                    "example_titles": ["Research Scientist"],
+                },
+            ]
+        }
+    )
+
+    assert [track.id for track in profile.tracks] == ["ai"]
+    assert [track.id for track in profile.avoid_tracks] == ["research"]

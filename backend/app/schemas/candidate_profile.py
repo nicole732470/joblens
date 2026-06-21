@@ -1,6 +1,8 @@
 """Candidate profile — durable job-search intent (separate from resume text)."""
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class Track(BaseModel):
@@ -50,3 +52,52 @@ class CandidateProfile(BaseModel):
     # Schools to match against LinkedIn «X alumni work here» (page text from extension).
     alumni_schools: list[str] = []
     constraints: Constraints = Field(default_factory=Constraints)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_low_priority_tracks(cls, value: Any) -> Any:
+        """Move legacy configurable P4/P5 tracks into the extremely-low bucket.
+
+        Users now configure only P1-P3. Keeping an old P4 as P3 would silently
+        raise its priority, so preserve its meaning as an avoid/out-of-range
+        track instead. Saving the profile later persists the new shape.
+        """
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        tracks = list(data.get("tracks") or [])
+        avoids = list(data.get("avoid_tracks") or [])
+        avoid_ids = {
+            str(row.get("id") or "")
+            for row in avoids
+            if isinstance(row, dict)
+        }
+        kept: list[Any] = []
+        changed = False
+        for track in tracks:
+            if not isinstance(track, dict):
+                kept.append(track)
+                continue
+            try:
+                priority = int(track.get("priority"))
+            except (TypeError, ValueError):
+                kept.append(track)
+                continue
+            if 1 <= priority <= 3:
+                kept.append(track)
+                continue
+            changed = True
+            track_id = str(track.get("id") or "")
+            if track_id not in avoid_ids:
+                avoids.append(
+                    {
+                        "id": track_id,
+                        "label": track.get("label") or track_id,
+                        "example_titles": list(track.get("example_titles") or []),
+                    }
+                )
+                avoid_ids.add(track_id)
+        if changed:
+            data["tracks"] = kept
+            data["avoid_tracks"] = avoids
+        return data
