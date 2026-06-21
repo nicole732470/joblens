@@ -15,6 +15,11 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- trajectory was removed from CandidateProfile; clean legacy account JSON.
+UPDATE user_profiles
+SET profile = profile - 'trajectory'
+WHERE profile ? 'trajectory';
+
 CREATE TABLE IF NOT EXISTS user_resumes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
