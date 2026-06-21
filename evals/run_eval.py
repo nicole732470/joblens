@@ -74,7 +74,7 @@ def norm_priority(raw: str) -> str:
         return "skip"
     if v in ("unknown", "unk", "not sure", "not_sure", "unsure", "?"):
         return "unknown"
-    if v.isdigit() and 1 <= int(v) <= 5:
+    if v.isdigit() and 1 <= int(v) <= 4:
         return v
     return ""
 
@@ -302,7 +302,7 @@ def main() -> None:
             ok = api_decision_bucket(rec.get("decision")) == "skip"
             counters["priority_correct"] += int(ok)
             verdict.append("priority OK" if ok else "priority MISMATCH (want skip)")
-        elif expected_pri in ("1", "2", "3", "4", "5"):
+        elif expected_pri in ("1", "2", "3", "4"):
             counters["priority_total"] += 1
             actual = rec.get("track_priority")
             ok = actual is not None and int(actual) == int(expected_pri)
@@ -405,7 +405,7 @@ def main() -> None:
         ("location tier acc", "location_correct", "location_total", "location_unknown"),
         ("company tier acc", "company_correct", "company_total", "company_unknown"),
         ("resume fit band acc", "fit_correct", "fit_total", "fit_unknown"),
-        ("decision acc (LLM verdict)", "decision_correct", "decision_total", "decision_unknown"),
+        ("decision acc", "decision_correct", "decision_total", "decision_unknown"),
     ]
     for label, ck, tk, uk in pairs:
         total = counters[tk]
@@ -415,7 +415,7 @@ def main() -> None:
             print(f"  {label.split(' acc')[0]} unknown (skipped): {counters[uk]}")
 
     print("\nLabeling guide: evals/golden_set/README.md")
-    print("Thresholds: docs/FIT_THRESHOLDS.md")
+    print("Scoring contract: docs/SCORING_STANDARD.md")
 
 
 if __name__ == "__main__":

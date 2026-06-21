@@ -1,66 +1,17 @@
-"""LLM final verdict — profile YAML guides intent; model reads JD + resume holistically."""
+"""Final verdict from independently validated job-fit dimensions."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-import hashlib
 
+from app.config import settings
 from app.schemas.candidate_profile import CandidateProfile
 from app.schemas.report import JDParse, Recommendation, ResumeFitAnalysis
-from app.config import settings
 from app.tools.llm import complete_json_with_retry, llm_available
-from app.tools.profile_signals import evaluate_profile_signals
 from app.tools.risk_rules import _jd_sponsorship_veto
-from app.tools.track_match import match_job_to_profile, resolve_job_title
-
-_SYSTEM = """You are JobLens's apply/skip advisor for one candidate.
-
-You receive:
-- candidate_profile: their INTENT (target tracks with priority 1=most wanted, avoid tracks,
-  dealbreakers, location prefs, technical_penalties, constraints)
-- job_title and job_description
-- resume_text
-- optional preflight_signals (deterministic hints — use as context, not a substitute for reading the JD)
-
-Your job: decide whether THIS candidate should pursue THIS job.
-
-Verdicts (use exactly one):
-- Apply — strong alignment on target track (priority 1–2) AND resume clearly supports the role
-- Near apply — right direction (priority 1–2 track fit) but resume gaps or partial overlap; worth a closer look
-- Consider — mixed fit, fallback track (priority 3), or meaningful gaps but not a hard no
-- Skip — wrong track (priority 4–5 / avoid), dealbreaker hit, explicit no-sponsorship when candidate needs it,
-  or resume fundamentally misaligned with the role
-
-Rules:
-- Priority 1–2 tracks in the profile are primary targets — weigh role type heavily.
-- Read the full JD and resume; do NOT treat embedding scores or keyword overlap as truth.
-- H-1B database / company sponsorship history is NOT provided and must NOT affect your verdict.
-- If constraints.needs_sponsorship is true and the JD explicitly says no visa sponsorship → Skip.
-- If a profile dealbreaker clearly appears in the JD → Skip.
-- technical_penalties in profile mean the candidate avoids those domains — factor into track fit.
-- Be conservative with Apply; use Near apply when track fit is good but resume is not there yet.
-
-Summary rules (critical for UI):
-- "summary" = ONE line, max 100 chars: the single most important reason for THIS verdict.
-- For Skip: state the core mismatch (wrong role track, missing key skill, seniority gap, visa, dealbreaker) — NOT generic phrases.
-- NEVER use only: "not a strong fit", "low overlap", "mixed fit" without naming what mismatched.
-- Good Skip example: "Research-engineer track; JD expects PhD-level ML research, not product AI"
-- Good Apply example: "AI Engineer track · resume shows RAG + agents"
-
-Respond with JSON only:
-{
-  "decision": "Apply|Near apply|Consider|Skip",
-  "reasoning": "2-4 sentences citing role fit and concrete resume/JD evidence",
-  "summary": "one short UI line — core reason, not generic (max 100 chars)",
-  "track_id": "matched profile track id or null",
-  "track_label": "human label or null",
-  "track_priority": "the selected configured track's P1-P3 priority, or 4 when no configured track fits",
-  "location_tier": "1-4 using configured locations; fully remote is P1; unmatched is P4",
-  "location_reason": "city/state/remote/rural relationship in one short sentence",
-  "preference_hits": ["exact configured preference strings that clearly match"],
-  "dealbreaker_hits": ["exact configured dealbreaker strings that clearly match"]
-}"""
+from app.tools.track_match import resolve_job_title
 
 _GENERIC_SUMMARIES = frozenset(
     {
@@ -112,57 +63,6 @@ def _normalize_decision(raw: str | None) -> Recommendation:
         if enum.value.lower() == key:
             return enum
     raise ValueError(f"invalid decision from model: {raw!r}")
-
-
-def _profile_block(profile: CandidateProfile) -> str:
-    return json.dumps(profile.model_dump(), indent=2, ensure_ascii=False)
-
-
-def _validated_configured_hits(raw, configured: list[str]) -> list[str]:
-    """Accept only exact configured profile items returned by AI."""
-    if not isinstance(raw, list):
-        return []
-    by_key = {item.strip().lower(): item for item in configured if item.strip()}
-    out: list[str] = []
-    for item in raw:
-        hit = by_key.get(str(item or "").strip().lower())
-        if hit and hit not in out:
-            out.append(hit)
-    return out
-
-
-def _preflight_block(
-    profile: CandidateProfile,
-    jd: JDParse,
-    jd_text: str,
-    title: str,
-    resume_fit: ResumeFitAnalysis,
-    job_location: str | None = None,
-) -> dict:
-    signals = evaluate_profile_signals(jd, jd_text, profile, title, job_location)
-    tm = match_job_to_profile(title, jd_text, jd, profile)
-    strong = len(resume_fit.strong_matches) if resume_fit.available else 0
-    partial = len(resume_fit.partial_matches) if resume_fit.available else 0
-    missing = len(resume_fit.missing) if resume_fit.available else 0
-    return {
-        "semantic_track_match": {
-            "track_id": tm["matched_track"].id if tm.get("matched_track") else None,
-            "track_label": tm["matched_track"].label if tm.get("matched_track") else None,
-            "track_priority": tm["matched_track"].priority if tm.get("matched_track") else None,
-            "title_similarity": round(tm.get("similarity") or 0.0, 3),
-            "avoid_match": tm.get("avoid_match"),
-            "avoid_label": tm.get("avoid_label"),
-        },
-        "resume_fit_counts": {
-            "strong": strong,
-            "partial": partial,
-            "missing": missing,
-            "match_method": resume_fit.match_method if resume_fit.available else None,
-        },
-        "dealbreaker_hits": signals.get("dealbreaker_hits") or [],
-        "location_tier": signals.get("location_tier"),
-        "location_label": signals.get("location_label"),
-    }
 
 
 def generate_recommendation_llm(

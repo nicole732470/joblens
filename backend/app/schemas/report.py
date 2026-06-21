@@ -3,9 +3,8 @@
 This is the source of truth (enforced at runtime by FastAPI). The human-readable
 description lives in docs/REPORT_SCHEMA.md and must be kept in sync.
 
-Design principle: evidence over keyword matching. Every interpretive claim
-(resume fit, risk, recommendation) carries evidence IDs; see Claim + the
-citation contract in app/tools/citations.py.
+Design principle: evidence over keyword matching. Interpretive Claim objects
+carry source IDs defined by the schema below.
 """
 
 from __future__ import annotations
@@ -68,7 +67,7 @@ class SponsorshipAnalysis(BaseModel):
     matched: bool
     query: Optional[str] = None
     reason: Optional[str] = None
-    # Entity-resolution confidence (matcher.js semantics), NOT sponsorship odds.
+    # Entity-resolution confidence, NOT sponsorship odds.
     match_confidence: Optional[str] = None
     method: Optional[str] = None
     matched_on: Optional[str] = None

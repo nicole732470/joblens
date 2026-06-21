@@ -19,6 +19,6 @@ fi
 
 echo "Log out and back in so docker group applies, then:"
 echo "  git clone https://github.com/nicole732470/joblens.git && cd joblens"
-echo "  cp .env.example .env   # edit DATABASE_URL, LLM_API_KEY"
+echo "  cp .env.example .env   # edit DATABASE_URL, LLM_API_KEY, TAVILY_API_KEY"
 echo "  docker compose -f docker-compose.prod.yml up -d --build"
 echo "  curl http://127.0.0.1:8000/health"

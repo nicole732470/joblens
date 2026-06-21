@@ -1,121 +1,131 @@
-# Report Schema & Citation Contract
+# Report schema
 
-The shape of an `/analyze` result. **Source of truth: `backend/app/schemas/report.py`**
-(enforced at runtime by FastAPI). This file is the human-readable companion —
-keep both in sync.
+The runtime source of truth is
+`backend/app/schemas/report.py`. This document explains the public contract; it
+does not duplicate every optional field.
 
-Guiding principle: **evidence over keyword matching.** Every interpretive claim
-must cite evidence that actually exists in the retrieved context.
-
----
-
-## Top-level: `Report`
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `status` | `"partial"` \| `"complete"` | `partial` until all sections are built |
-| `pending` | `string[]` | Sections not yet implemented (e.g. `resume_fit`) |
-| `sponsorship` | `SponsorshipAnalysis` | H-1B sponsorship analysis (built) |
-| `resume_fit` | `ResumeFitAnalysis` | Resume ↔ JD matching (pending) |
-| `risk` | `RiskAnalysis` | Deterministic risk signals (pending) |
-| `recommendation` | `RecommendationResult` | Final call + reasoning (pending) |
-| `received` | `object` | Echo of the inputs the server parsed |
-
----
-
-## `SponsorshipAnalysis`
-
-Filled by `search_h1b_company` (the faithful `matcher.js` port).
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `matched` | `bool` | Whether an employer entity was resolved |
-| `query` | `string?` | The company name that was searched |
-| `reason` | `string?` | Why no match (only when `matched=false`) |
-| `match_confidence` | `"high"\|"medium"\|"low"` \| null | **Entity-resolution** confidence — how sure we are this is the right legal employer. **NOT** sponsorship probability. |
-| `method` | `string?` | `core_exact` / `core_subset` / `key_overlap` / `token_overlap` |
-| `matched_on` | `string?` | Which tokens/keys drove the match |
-| `company` | `CompanyRef?` | FEIN, legal name, NAICS sector, city/state |
-| `total_lca_count` | `int` | Total H-1B LCA filings on record |
-| `h1b_count` / `certified_count` | `int` | Volume signals |
-| `recent_lca_count` | `int?` | Year-by-year recency — `null` until raw LCA records are imported |
-| `sponsorship_likelihood` | `High\|Medium\|Low\|Unknown` | Separate transparent heuristic (`calculate_sponsorship_likelihood`). `Unknown` until built. |
-| `sponsored_titles` | `{title, count}[]` | Most-filed roles |
-| `aliases` | `string[]` | Alternate legal names under this FEIN |
-| `warnings` / `notes` | `string[]` | Caveats carried over from the resolver |
-| `ambiguous_alternatives` | `object[]` | Other plausible employers (name, fein, lca_count, confidence) |
-| `evidence` | `Evidence[]` | Citable facts (see below) |
-| `evidence_ids` | `string[]` | IDs of the above, for citation |
-
-> **Two different "confidences":** `match_confidence` is about *which company*
-> this is. `sponsorship_likelihood` is about *whether this role is likely to be
-> sponsored*. They are intentionally separate.
-
----
-
-## `Evidence`
-
-An atomic, citable fact.
-
-| Field | Type | Example |
-|-------|------|---------|
-| `id` | `string` | `h1b:91-1144442:lca_count` |
-| `type` | `string` | `sponsorship_volume`, `entity_match`, `sponsored_title` |
-| `value` | `any` | `12132` |
-| `detail` | `string` | `"12132 H-1B LCA filings on record"` |
-
-Evidence IDs are stable, prefixed handles (`h1b:…`, later `jd:…`, `resume:…`)
-so any claim can point back to exactly what supports it.
-
----
-
-## `Claim` (used by resume_fit / risk / recommendation)
-
-Every interpretive statement is a `Claim`:
+## Top level
 
 ```json
 {
-  "claim": "The role is a partial match for RAG experience.",
+  "status": "complete",
+  "pending": [],
+  "sponsorship": {},
+  "company": {},
+  "jd": {},
+  "resume_fit": {},
+  "risk": {},
+  "recommendation": {},
+  "received": {},
+  "explain": {}
+}
+```
+
+| Section | Purpose |
+|---|---|
+| `sponsorship` | DOL/LCA employer identity and filing history |
+| `company` | personalized Company fit from external/structured evidence |
+| `jd` | parsed requirements, location, visa language, risks |
+| `resume_fit` | per-requirement Strong/Partial/Weak/Gap evidence |
+| `risk` | deterministic risk claims |
+| `recommendation` | independent dimension outputs and final verdict |
+| `received` | normalized request metadata and input sizes |
+| `explain` | compact UI/debug explanations and timing |
+
+`partial` means required artifacts are unavailable; `pending` names them.
+
+## Evidence and claims
+
+`Evidence` is an atomic source fact:
+
+```json
+{"id":"jd_req_03","type":"required_skill","value":"RAG","detail":"…"}
+```
+
+`Claim` is an interpretation with source handles:
+
+```json
+{
+  "claim": "[partial] Build production RAG systems",
   "claim_type": "resume_fit",
   "jd_evidence_ids": ["jd_req_03"],
-  "resume_evidence_ids": ["resume_proj_02"],
+  "resume_evidence_ids": ["resume_chunk_07"],
   "h1b_evidence_ids": [],
-  "reasoning": "The JD asks for RAG pipelines; the resume shows LLM retrieval but not a full vector-DB RAG system.",
+  "reasoning": "Related retrieval work exists but production scale is unclear.",
   "inference": false
 }
 ```
 
----
+Rules:
 
-## Citation Contract
+- non-Gap Resume claims should cite retrieved Resume evidence
+- H-1B evidence must not be used to justify Role, Resume, Location, Company, or verdict
+- Company sources carry URLs/timestamps and are separate from JD evidence
+- unsupported facts should be unavailable, not assigned a neutral score
 
-Enforced by `validate_claims()` in `backend/app/tools/citations.py`:
+## Sponsorship
 
-1. **A non-inference claim must cite at least one evidence ID.**
-2. **Every cited evidence ID must exist** in the retrieved context for that
-   analysis. (No inventing citations.)
-3. Claims not grounded in evidence are allowed **only** if explicitly marked
-   `inference: true`.
-4. **A `claim_type="recommendation"` claim must NOT cite `h1b_evidence_ids`.**
-   The apply decision is kept independent of the H-1B/LCA database match (which
-   can be wrong and is volatile). A recommendation may cite `jd_evidence_ids`
-   (including JD-stated visa language) and `resume_evidence_ids` only. JD text
-   that explicitly denies sponsorship *does* affect the recommendation; the
-   historical sponsorship database does not. See DESIGN.md §8.1.
+Important fields:
 
-Violations are returned as a list of issues (`no_evidence`,
-`unknown_evidence_id`, `h1b_in_recommendation`). Once the LLM generation stage
-exists (Week 3), violating claims are rejected and regenerated rather than
-shown. This is a code-level guarantee, not just a prompt instruction.
+- `matched`, `query`, `reason`
+- `match_confidence`, `method`, `matched_on`
+- `company` legal entity/FEIN/NAICS/location
+- `total_lca_count`, `h1b_count`, `certified_count`
+- `sponsored_titles`, `aliases`, `ambiguous_alternatives`
+- `evidence`, `evidence_ids`
 
----
+`match_confidence` means identity confidence, not the probability that this job
+will sponsor. `sponsorship_likelihood` remains `Unknown` until a separate
+transparent model is implemented.
 
-## Status
+## Resume fit
 
-| Section | State |
-|---------|-------|
-| `sponsorship` | Implemented (real data, evidence IDs) |
-| `sponsorship_likelihood` | Pending (`calculate_sponsorship_likelihood`) |
-| `resume_fit` | Pending (RAG + claims) |
-| `risk` | Pending (rule engine) |
-| `recommendation` | Pending |
+- `match_method`: `llm` or `vector`
+- `strong_matches`
+- `partial_matches`
+- `missing` — contains both Weak claims (with Resume evidence) and pure Gaps
+- `debug` — test-account-only structured records
+
+The aggregate ratio is exposed on `recommendation.fit_ratio`.
+
+## Company
+
+- `available`, `reason`
+- `company_score`, `company_tier`, `company_label`
+- `score_breakdown.dimensions`, effective weight, method, confidence
+- `sources`, `research_available`
+
+Raw model output in `score_breakdown` is removed for non-debug responses.
+
+## Recommendation
+
+- `decision`, `summary`, `reasoning`
+- `track_id`, `track_label`, `track_priority`, `track_similarity`
+- `location_tier`, `location_label`
+- `preference_hits`, `dealbreaker_hits`
+- `fit_ratio`, `recommendation_method`
+- `technical_penalty_hits`, `evidence_ids`
+- `debug_decisions` — test-account-only decision records
+
+Allowed decisions: `Apply`, `Near apply`, `Consider`, `Skip`.
+
+## Debug records
+
+For the configured debug account, every independent decision includes:
+
+- model and prompt version
+- method
+- input preview
+- evidence
+- raw structured output
+- validated output
+- validation error/fallback reason
+- final rule override
+
+Other accounts receive empty Debug fields. Trace endpoints also require the
+debug account.
+
+## Compatibility
+
+Clients should tolerate unknown fields and missing optional sections. The API
+may add explanation/debug metadata without changing primary report fields.

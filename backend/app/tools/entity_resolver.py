@@ -1,15 +1,13 @@
-"""Evidence-first entity resolution — a faithful 1:1 port of
-extension/lib/matcher.js.
+"""Evidence-first entity resolution backed by Postgres.
 
 Every signal, ranking rule, confidence rule, warning, note, and alternative
 from the extension is preserved. The only differences are environmental:
 
   * Data is loaded from Postgres (companies / company_aliases /
-    company_search_keys), which was imported from the same employers.json.gz
-    the extension ships, so the in-memory structures are identical.
+    company_search_keys), imported from `data/h1b/employers.json.gz`.
   * Async fetch/decompress is replaced by a synchronous DB load.
 
-lookup() returns the same shape as matcher.js:
+lookup() returns normalized resolution metadata:
   { employer, confidence, rank_score, method, matched_on, warnings, notes,
     alternatives } | None
 """

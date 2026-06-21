@@ -2,7 +2,7 @@
 
 Turns raw JD text into typed requirements, each carrying a verbatim quote and a
 citable evidence id (jd_req_01, …) so downstream analyses (resume fit, risk) can
-reference them under the citation contract (see docs/DESIGN.md §7-8).
+reference them under the Report evidence contract (see docs/REPORT_SCHEMA.md).
 """
 
 from __future__ import annotations

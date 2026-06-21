@@ -1,54 +1,79 @@
-# Backend — JobLens API
+# JobLens backend
 
-FastAPI + LangGraph service for `/analyze`: JD parsing, RAG + LLM resume fit,
-role/location/company scoring (display + eval), and LLM Apply / Skip with rules
-fallback.
-
-H-1B **entity resolution** runs in the Chrome extension (`extension/lib/matcher.js`). The backend uses Postgres + pgvector for resume chunks and optional employer index.
+FastAPI + LangGraph service for authentication, job analysis, H-1B lookup,
+resume RAG, company research, and structured decision traces.
 
 ## Run
 
+From the repository root:
+
 ```bash
-# from repo root
-cp .env.example .env   # set LLM_API_KEY
+cp .env.example .env
 docker compose up -d --build
 curl http://localhost:8000/health
 ```
 
-## Key routes
+## Code map
+
+```text
+app/
+  main.py                  routes, auth context, sync/async analyze entry
+  analyze_jobs.py          in-memory async job state
+  auth.py, user_store.py   JWT accounts, profiles, resumes
+  graph/
+    workflow.py            LangGraph topology
+    nodes.py               prepare, prefetch, analyze nodes
+    assemble.py            artifacts → Report
+  schemas/
+    candidate_profile.py   user intent contract
+    report.py              API response contract
+  tools/
+    jd_parser.py           structured JD extraction
+    resume_fit*.py         pgvector retrieval + four-band classification
+    independent_decisions.py
+                             parallel Role/Location/Profile decisions
+    company_research.py    Tavily source discovery + cache
+    company_signals.py     personalized Company scoring
+    recommendation*.py     final rules and boundary LLM
+    sponsorship.py         DOL/LCA employer history
+    observability.py       run traces
+```
+
+## Analyze flow
+
+`POST /analyze/async` returns a `job_id`; poll
+`GET /analyze/jobs/{job_id}` until the report is ready.
+
+1. Load DB profile/resume or guest golden defaults.
+2. Parallel H-1B lookup and JD parse.
+3. Resume fit and Company evidence scoring.
+4. Parallel Role, Location, and Preference/Dealbreaker decisions.
+5. Clear guardrails or boundary Final Verdict LLM.
+6. Assemble `Report` and optional trace JSON.
+
+## Important routes
 
 | Route | Purpose |
-|-------|---------|
-| `GET /health` | DB, profile, LLM, pipeline status |
-| `POST /analyze` | Full report (LangGraph pipeline) |
-| `POST /analyze/async` | Background analyze + job poll |
-| `GET /candidate-profile` | Loaded YAML profile |
-| `POST /resume/index` | Chunk + embed resume into pgvector |
-| `GET /observability/traces` | List analyze traces |
-| `GET /observability/traces/{run_id}` | One trace JSON |
+|---|---|
+| `GET /health` | database, LLM, company research status |
+| `POST /analyze`, `/analyze/async` | full report |
+| `POST /sponsorship/lookup` | fast H-1B lookup |
+| `/auth/*`, `/me/*` | account, profile, resume |
+| `POST /jobs/parse-url` | web URL ingestion |
+| `/observability/traces*` | debug-account-only traces |
 
-## Layout
+## Verify and deploy
 
-```
-backend/app/
-├── main.py                 # FastAPI routes
-├── graph/
-│   ├── workflow.py         # LangGraph compile + invoke
-│   ├── nodes.py            # prepare, prefetch, analyze pipeline
-│   └── assemble.py         # Report from artifacts
-├── tools/
-│   ├── analyze_tools.py    # Pipeline step functions
-│   ├── jd_parser.py        # LLM JD → requirements
-│   ├── resume_fit.py       # RAG + LLM classify (vector fallback)
-│   ├── recommendation_llm.py
-│   ├── recommendation.py   # Verdict router + rules fallback
-│   ├── track_match.py      # Title ↔ profile tracks
-│   ├── profile_signals.py  # Location, dealbreakers
-│   ├── company_signals.py
-│   └── observability.py    # Traces + optional LangSmith
-└── schemas/                # Report, CandidateProfile
+```bash
+PYTHONPATH=backend pytest -q backend/tests
 ```
 
-Profile path: `CANDIDATE_PROFILE_PATH` or `evals/golden_set/candidate_profile.yaml`.
+Production:
 
-See [`../README.md`](../README.md) for architecture diagrams and glossary.
+```bash
+cd /opt/joblens && git pull && bash deploy/ec2-redeploy.sh
+```
+
+See [architecture](../docs/ARCHITECTURE.md),
+[scoring](../docs/SCORING_STANDARD.md), and
+[database](../docs/DATABASE.md).

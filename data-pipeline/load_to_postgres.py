@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Load the employer index (extension/data/employers.json.gz) into PostgreSQL.
+Load the employer index (`data/h1b/employers.json.gz`) into PostgreSQL.
 
 This is the bridge from the existing offline H-1B pipeline to the new backend.
 The shipped gzip index is the source of truth (the raw Excel / SQLite DB are not
@@ -24,7 +24,7 @@ from psycopg.types.json import Jsonb
 
 BASE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BASE_DIR.parent
-INDEX_PATH = REPO_ROOT / "extension" / "data" / "employers.json.gz"
+INDEX_PATH = REPO_ROOT / "data" / "h1b" / "employers.json.gz"
 SCHEMA_PATH = REPO_ROOT / "db" / "schema.sql"
 
 DATABASE_URL = os.environ.get(

@@ -1,4 +1,4 @@
--- H-1B / LCA structured data, loaded from extension/data/employers.json.gz
+-- H-1B / LCA structured data, loaded from data/h1b/employers.json.gz
 -- by data-pipeline/load_to_postgres.py. Idempotent (safe to re-run).
 
 CREATE TABLE IF NOT EXISTS companies (

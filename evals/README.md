@@ -1,51 +1,27 @@
 # Evaluation
 
-Offline scoreboard for the platform — every product dimension gets a golden-set
-label and a line in `run_eval.py` summary.
-
-## Status
-
-- **Golden set:** `golden_set/samples.csv` — multi-column labels (see README there)
-- **Harness:** `run_eval.py` — calls `POST /analyze`, reports per-dimension accuracy
-- **Traces:** optional LangSmith + `logs/traces/` JSON
-
-## What we measure
-
-Each row in `samples.csv` can label:
-
-| Dimension | Column | API field |
-|-----------|--------|-----------|
-| H-1B entity match | `expected_sponsors` | `sponsorship.matched` |
-| Role P-tier | `expected_priority` | `recommendation.track_priority` |
-| Profile track | `expected_track_id` | `recommendation.track_id` |
-| Location tier | `expected_location_tier` | `recommendation.location_tier` |
-| Company tier | `expected_company_tier` | `company.company_tier` |
-| Resume fit (display) | `expected_fit_band` | `fit_ratio` from `resume_fit` |
-| Final verdict | `expected_decision` | `recommendation.decision` |
-
-Resume fit is still computed and shown in the UI; golden `expected_fit_band`
-optimizes that layer **separately** from `expected_decision` (LLM verdict).
-
-## Run
+`run_eval.py` sends every labeled posting to the same `/analyze` API used by
+Web and extension, then scores each independent dimension.
 
 ```bash
 cd evals
 python3 run_eval.py
-BASE_URL=http://localhost:8000 python3 run_eval.py
+BASE_URL=https://3-128-164-130.sslip.io python3 run_eval.py
 ```
 
-Target: **30–50** labeled postings. Leave columns blank until judged.
+Assets:
 
-## Layout
-
-```
-evals/
-├── golden_set/
-│   ├── samples.csv
-│   ├── resume.md
-│   ├── candidate_profile.yaml
-│   └── README.md
-└── run_eval.py
+```text
+golden_set/candidate_profile.yaml   guest/eval intent
+golden_set/resume.md                eval resume
+golden_set/samples.csv              job inputs and optional labels
+golden_set/README.md                labeling guide
+run_eval.py                         stdlib-only harness
 ```
 
-Threshold reference: `docs/FIT_THRESHOLDS.md`
+Blank and `unknown` labels are excluded from accuracy. The harness reports
+H-1B, Role tier/track, Location, Company, Resume band, and Final Verdict
+separately; a strong final score must not hide a broken dimension.
+
+The source of truth for definitions and thresholds is
+[`docs/SCORING_STANDARD.md`](../docs/SCORING_STANDARD.md).

@@ -1,7 +1,7 @@
 """H-1B sponsorship lookup tool.
 
 `search_h1b_company` resolves a raw company name to a FEIN-keyed employer using
-the faithful evidence-first resolver (port of extension/lib/matcher.js) and
+the evidence-first server resolver and
 returns its historical sponsorship signals — preserving the extension's
 confidence, warnings, notes, and alternatives — plus evidence IDs for the
 platform's citation contract.
@@ -98,7 +98,7 @@ def search_h1b_company(company_name: str) -> dict:
     return {
         "matched": True,
         "query": name,
-        # Entity-resolution confidence (matcher.js semantics), not sponsorship
+        # Entity-resolution confidence, not sponsorship
         # probability. Drives how much to trust the company match itself.
         "match_confidence": confidence,
         "method": result["method"],

@@ -1,30 +1,26 @@
-# Shared UI (extension + web)
+# Shared report UI
 
-Single source of truth for **report rendering** — same `/analyze` JSON must look the same everywhere.
+These files are the source for analyze-result rendering on both product surfaces:
 
-| File | Purpose |
-|------|---------|
-| `shared/report-view.js` | HTML builders: metrics grid, verdict, H-1B block, `renderReportResults()` |
-| `design/report-panel.css` | Shared styles (`.lca-*` classes) |
-| `design/tokens.css` | Colors, fonts, radii |
+- `report-view.js` — report HTML, metric tooltips, section layout
+- `analyze-client.js` — async analyze + polling client
+- `../design/report-panel.css` — report styles
+- `../design/tokens.css` — shared visual tokens
 
-## Sync to surfaces
+After changing shared report code or styles:
 
 ```bash
-./scripts/sync-design-tokens.sh   # tokens → extension + Lovable
-./scripts/sync-shared-ui.sh       # report-view.js + report-panel.css → extension + Lovable
+./scripts/sync-shared-ui.sh
+./scripts/sync-design-tokens.sh
 ```
 
-After editing `shared/` or `design/report-panel.css`, **always run both scripts** (or copy manually) before testing the extension.
+Copies are written to:
 
-## How each surface uses it
+| Surface | Destination |
+|---|---|
+| Extension | `extension/lib/`, `extension/report-panel.css`, `extension/tokens.css` |
+| Lovable web | `vision-job-glow/src/lib/`, `src/styles/`, `public/` |
 
-| Surface | JS | CSS |
-|---------|----|-----|
-| **Extension** | `extension/lib/report-view.js` (copy), loaded before `content.js` | `@import "report-panel.css"` in `styles.css` |
-| **Web (joblens/web)** | `import from "../../shared/report-view.js"` | `@import "../design/report-panel.css"` |
-| **Lovable (vision-job-glow)** | copy to `src/lib/report-view.js` | `/joblens-report-panel.css` in public |
-
-Web React wrapper (`web/src/ReportPanel.jsx`) is ~15 lines: calls `renderReportResults()` + `wireMetricTips()`.
-
-Extension keeps LinkedIn-only chrome (drag handle, JD scrape) in `content.js`; all analyze result HTML comes from `JobLensReportView`.
+Do not implement report metric cards separately in React or `content.js`.
+Web-only application UI, including Profile and Debug views, belongs in
+`vision-job-glow` and is not synced from this folder.

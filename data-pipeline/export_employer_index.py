@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Export employer index from LCA SQLite DB for the Chrome extension.
+Export the employer index used to seed Postgres.
 
 Usage:
     python3 export_employer_index.py
@@ -24,7 +24,7 @@ from naics_sectors import naics_sector_label
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "lca_fy2026_q2.db"
 SLUG_OVERRIDES_PATH = BASE_DIR / "slug_overrides.json"
-OUT_DIR = BASE_DIR.parent / "extension" / "data"
+OUT_DIR = BASE_DIR.parent / "data" / "h1b"
 OUT_JSON = OUT_DIR / "employers.json"
 OUT_GZ = OUT_DIR / "employers.json.gz"
 

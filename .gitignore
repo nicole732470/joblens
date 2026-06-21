@@ -17,7 +17,6 @@ venv/
 .DS_Store
 Thumbs.db
 node_modules/
-web/dist/
 
 # Extension dev (keep committed gzip; ignore uncompressed export for size)
 extension/data/employers.json
@@ -28,4 +27,3 @@ data-pipeline/.venv/
 *.egg-info/
 # Trace files (keep logs/traces/.gitkeep)
 logs/traces/*.json
-

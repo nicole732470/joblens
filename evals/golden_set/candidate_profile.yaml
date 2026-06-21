@@ -1,7 +1,7 @@
 # Candidate Profile — your job-search INTENT (separate from the resume).
-# Spec: docs/FIT_AND_RECOMMENDATION.md
+# Spec: docs/SCORING_STANDARD.md
 #
-# HOW TO WRITE LISTS (trajectory / dealbreakers / preferences / example_titles):
+# HOW TO WRITE LISTS (dealbreakers / preferences / example_titles):
 #   - Each item on its own line with "  - " in front, OR
 #   - One line in brackets: ["item one", "item two"]
 #   - Use quotes when the text has commas or special chars; plain text is fine too.
@@ -10,15 +10,15 @@
 # Lines starting with # are comments (ignored).
 
 # ---------------------------------------------------------------------------
-# TRACKS — role CATEGORIES you want. priority: 1 = most wanted, 5 = last resort.
+# TRACKS — role CATEGORIES you want. priority: 1 = strongest, 3 = lowest configured.
 # Same number = same tier. Add as many tracks as you need.
 # ---------------------------------------------------------------------------
 tracks:
   - id: pm_eng
     label: "product roles"
     priority: 1
-    example_titles: 
-      - Techinical Product Manager
+    example_titles:
+      - Technical Product Manager
       - Product Owner
       - Product Manager
       - System Engineer
@@ -26,17 +26,16 @@ tracks:
       - Solution Engineer
       - Solutions Engineer
       - Product Engineer
-  
+
   - id: ai_eng
     label: "AI Engineer"
-    priority: 1
-    example_titles: 
+    priority: 2
+    example_titles:
       - AI Engineer
       - AI Developer
-      - Forward Deoloyed Engineer
+      - Forward Deployed Engineer
       - AI Builder
       - Agentic AI Engineer
-      - Member of Technical Staff
 
   - id: customer_success
     label: "Customer Success / technical account"
@@ -46,18 +45,10 @@ tracks:
       - Technical Customer Success Manager
       - CSM
 
-  - id: research_eng
-    label: "Research Engineer"
-    priority: 4
-    example_titles:
-      - Applied Research Engineer
-      - Research Engineer
-      - Research Scientist
-
   - id: sde_eng
     label: "SDE roles"
     priority: 3
-    example_titles: 
+    example_titles:
       - Software Engineer
       - Full Stack Engineer
       - Backend Engineer
@@ -70,10 +61,11 @@ tracks:
   - id: business_analyst
     label: "Analyst role"
     priority: 3
-    example_titles: 
+    example_titles:
       - Data Analyst
       - Business Analyst
       - Consultant
+
 
   # Copy this block for more tracks:
   # - id: <short_english_id>
@@ -83,7 +75,7 @@ tracks:
 
 # ---------------------------------------------------------------------------
 # AVOID TRACKS — role types you do NOT want (negative examples / anti-patterns).
-# If a job looks like these, recommendation should lean Skip regardless of fit.
+# If a job clearly matches one, it is an explicit avoid and may force Skip.
 # Same flexible matching as tracks — rough descriptions work.
 # ---------------------------------------------------------------------------
 avoid_tracks:
@@ -92,7 +84,19 @@ avoid_tracks:
     example_titles:
       - Sales Representative
 
+  - id: pure_eng
+    label: "traditional engineering"
+    example_titles:
+      - Mechanical Engineer
+      - Civil Engineer
+      - Electrical Engineer
 
+  - id: research_eng
+    label: "Research Engineer"
+    example_titles:
+      - Applied Research Engineer
+      - Research Engineer
+      - Scientist
   # - id: <short_id>
   #   label: "<category you never want>"
   #   example_titles: ["..."]
@@ -108,19 +112,11 @@ locations:
     - Texas
     - California
     - New York
+    - major metros in Illinois
   tier_3:                  # optional — avoid / hard no
     - onsite-only in rural areas in the US
     - not in the US
   remote_ok: true
-  relocation_ok: true
-
-# ---------------------------------------------------------------------------
-# TRAJECTORY — projects in progress / soon on resume (near-term fit).
-# One sentence per line is fine. Rough description OK.
-# ---------------------------------------------------------------------------
-trajectory:
-  - "Evidence-based AI job-intelligence agent (this project): FastAPI, RAG, evaluation"
-  # - "another project you're building — one line, rough is fine"
 
 # ---------------------------------------------------------------------------
 # DEALBREAKERS — hard no's for ANY job (can veto recommendation). Optional.
@@ -128,50 +124,41 @@ trajectory:
 # Write plain phrases; quotes only if you want.
 # ---------------------------------------------------------------------------
 dealbreakers:
-  - rural areas
-  - small local companies in tranditional industries
-  - no one in the company studied in a prestigious university
   - unpaid internship
-  - no visa sponsorship stated in JD
+  - no visa sponsorship clearly stated in JD
 
 preferences:
-  - Y combinator backed startup
-  - a16z backed startup
-  - VC backed startup
-  - pre-IPO company
-  - tech industry
   - Python stack
-  - non Chinese background company
-  - Northwestern alumni
+
+# Company-specific preferences. Evaluate only from company evidence, never JD wording.
+company_preferences:
+  industries: [tech, AI software]
+  stages: [VC-backed, pre-IPO]
+  sizes: [at least 1,000 LinkedIn followers]
+  funding_signals: [Y Combinator, a16z, institutional VC]
+  network_signals: [Northwestern alumni, prestigious university alumni]
+  avoid: [small local traditional-industry company, Chinese/Indian-background company]
 
 # Domains you cannot do — JD mentions bump Role P-tier by +1 (editable list).
 technical_penalties:
-  - mechanical engineering
-  - civil engineering
-  - road engineering
-  - architectural engineering
-  - construction engineering
   - chip design
   - GPU hardware
   - HPC hardware
   - high-performance computing
   - HPC scheduler
-  - Slurm
-  - InfiniBand
-  - parallel storage
+  - algorithmic trading
   - silicon
-  - ASIC
-  - semiconductor fabrication
 
 # Match LinkedIn «X alumni work here» lines (from page you have open — not scraped).
 alumni_schools:
-  - Northwestern
   - Northwestern University
+  - Northwestern University McCormick School of Engineering
+  - Northwestern University School of Kellogg
 
 # ---------------------------------------------------------------------------
 # CONSTRAINTS
 # needs_sponsorship: used ONLY when JD says "no sponsorship" (JD veto).
-# H-1B database does NOT affect recommendation — see docs/FIT_AND_RECOMMENDATION.md §6
+# H-1B database does NOT affect recommendation — see docs/SCORING_STANDARD.md
 # ---------------------------------------------------------------------------
 constraints:
   needs_sponsorship: true

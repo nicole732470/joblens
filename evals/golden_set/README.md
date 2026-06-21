@@ -1,150 +1,75 @@
-# Golden Set
+# Golden set
 
-The labeled evaluation set. **You fill in `samples.csv`** (one row per job
-posting); the harness (`evals/run_eval.py`) scores each **product dimension**
-against your labels.
+One CSV row represents one job posting evaluated against the profile and resume
+in this directory. Labels are human judgments; leave uncertain fields blank or
+write `unknown`.
 
-Target: **30–50 real job postings**. Example rows ship in `samples.csv` —
-replace or extend them.
+## Columns
 
-## What we optimize
+| Column | Meaning | Allowed labels |
+|---|---|---|
+| `id` | stable sample ID | unique text |
+| `company`, `title`, `job_url`, `jd_text` | API inputs | text |
+| `expected_sponsors` | employer found in DOL/LCA history | `yes`, `no`, `unknown` |
+| `expected_priority` | Role tier after validation/penalties | `1`, `2`, `3`, `4`, `unknown` |
+| `expected_track_id` | configured track family | track ID, blank for unmatched, `unknown` |
+| `expected_location_tier` | Location tier | `1`–`4`, `unknown` |
+| `expected_company_tier` | personalized Company tier | `1`–`4`, `unknown` |
+| `expected_fit_band` | rough aggregate Resume fit | `high`, `medium`, `low`, `unknown` |
+| `expected_decision` | holistic verdict | `apply`, `near_apply`, `consider`, `skip`, `unknown` |
+| `notes` | rationale or known ambiguity | free text |
 
-The product shows several independent signals. The golden set tracks **accuracy
-of each**, not only the final Apply/Skip pill:
+Every expected field is optional.
 
-| UI signal | Golden column | Compared to |
-|-----------|---------------|-------------|
-| H-1B sponsor match | `expected_sponsors` | `sponsorship.matched` |
-| Role track + P-tier | `expected_priority`, `expected_track_id` | `recommendation.track_priority`, `track_id` |
-| Location tier | `expected_location_tier` | `recommendation.location_tier` |
-| Company tier | `expected_company_tier` | `company.company_tier` |
-| Resume ↔ JD fit (display) | `expected_fit_band` | `fit_ratio` band from `resume_fit` |
-| Final verdict | `expected_decision` | `recommendation.decision` (LLM by default) |
+## Labels that look similar
 
-**Important:** Resume fit (`fit_ratio`, strong/partial/missing) is still
-**computed and shown** in the UI. It is a **display + eval dimension** — not
-the primary decision function when `RECOMMENDATION_METHOD=llm`. The LLM reads
-full JD + resume + profile YAML for the final verdict; we tune fit scoring
-separately against `expected_fit_band`.
+`expected_track_id` and `expected_priority` are related but not duplicates:
 
-## How to fill it
+- Track checks the role-family classification.
+- Priority checks the configured tier after an allowed technical penalty.
+- An unmatched role has blank `expected_track_id` and normally P4.
 
-Open `samples.csv` in Excel / Numbers / Google Sheets. One row = one job posting.
+Only label Track when the role clearly belongs to a configured family.
 
-| Column | Fill with | Allowed values |
-|--------|-----------|----------------|
-| `id` | Short unique id | e.g. `ex1`, `job_001` |
-| `company` | Company name | free text |
-| `title` | Job title | free text |
-| `job_url` | Posting link (optional) | URL or blank |
-| `jd_text` | Full job description | paste full text |
-| `expected_sponsors` | In U.S. H-1B data? | `yes` / `no` / `unknown` / blank |
-| `expected_priority` | Role P-tier after title **+ JD** | `1`–`5` / `skip` / `unknown` / blank |
-| `expected_track_id` | Profile track id | e.g. `ai_eng`, `pm_eng` / `unknown` / blank |
-| `expected_location_tier` | Location fit | `1` / `2` / `3` / `unknown` / blank |
-| `expected_company_tier` | Company quality tier | `1` / `2` / `3` / `unknown` / blank |
-| `expected_fit_band` | Resume–JD overlap (display metric) | `high` / `medium` / `low` / `unknown` / blank |
-| `expected_decision` | Final verdict | `apply` / `near_apply` / `consider` / `skip` / `unknown` / blank |
-| `notes` | Anything useful | free text |
+`expected_fit_band` is deliberately approximate. It evaluates the aggregate
+Resume display score, not each Strong/Partial/Weak/Gap requirement label:
 
-Leave any column **blank** until you've judged it; the harness skips scoring
-that dimension for that row.
+| Band | Weighted Resume score |
+|---|---|
+| `high` | ≥ 50% |
+| `medium` | 28%–49% |
+| `low` | < 28% |
 
-### `expected_sponsors`
+Requirement weights are Strong 1.0, Partial 0.5, Weak 0.25, Gap 0.
 
-`yes` = employer in DOL H-1B data; `no` = not found; `unknown` = not verified.
+## P-tier interpretation
 
-### `expected_priority` (Role P-tier)
+- P1: strongest target
+- P2: good target
+- P3: acceptable/lower priority
+- P4: unmatched or extremely low
 
-The **Role P** the UI should show (`1`–`5`) after reading **title + JD
-together** — same scale as `candidate_profile.yaml` track priorities.
+Users configure P1–P3 only. An unmatched P4 is not itself a final Skip. An
+explicit avoid track is different and may veto.
 
-This is **fit you can actually do**, not “how much you want the job”:
+## Labeling workflow
 
-- **Role family** — Customer Success ≠ Product/AI; Research Engineer ≠ builder AI if JD expects PhD research.
-- **JD hardness** — hardware/HPC-heavy posting can downgrade tier (e.g. analyst title P3 in abstract → P4 for this JD).
+1. Preserve the complete JD and canonical title/company/location.
+2. Label each dimension independently before choosing Final Verdict.
+3. Add a short note for ambiguous or regression-critical cases.
+4. Run the harness after prompt, threshold, Profile, or parser changes.
+5. Inspect the test-account Debug trace for mismatches.
 
-`run_eval.py` compares to `recommendation.track_priority`.
+For Web/extension stability, one logical job may later have multiple input
+variants. Those variants should share expected dimension bands while preserving
+their different raw JD inputs.
 
-### `expected_track_id`
-
-Optional check on **which profile track** matched (e.g. `ai_eng`, `pm_eng`,
-`customer_success`). Use when title is ambiguous.
-
-### `expected_location_tier`
-
-Your judgment of location fit vs profile `locations`:
-
-| Tier | Meaning |
-|------|---------|
-| `1` | Preferred (`tier_1` or strong remote fit) |
-| `2` | Acceptable |
-| `3` | Avoid / no-go / poor remote fit |
-
-Compared to `recommendation.location_tier` from `profile_signals.py`.
-
-### `expected_company_tier`
-
-Company quality vs your preferences (not H-1B odds):
-
-| Tier | Typical system rule |
-|------|---------------------|
-| `1` | `company_score ≥ 0.52` |
-| `2` | `≥ 0.38` |
-| `3` | below that or dealbreaker industry |
-
-Compared to `company.company_tier` from `company_signals.py`.
-
-### `expected_fit_band`
-
-Resume–requirement overlap **as shown in the UI** (RAG + per-requirement
-classification). Bands used by `run_eval.py`:
-
-| Band | `fit_ratio` (weighted) |
-|------|-------------------------|
-| `high` | ≥ **50%** |
-| `medium` | **28% – 49%** |
-| `low` | **< 28%** |
-
-Formula: `effective = strong + partial×0.5 + weak×0.3`, divided by total
-requirements. See `docs/FIT_THRESHOLDS.md`.
-
-This does **not** have to match `expected_decision` — e.g. right track (Near
-apply) with `medium` fit is valid.
-
-### `expected_decision`
-
-Final **Apply / Near apply / Consider / Skip** — your holistic judgment for
-this posting + your resume. Compared to `recommendation.decision`.
-
-With `RECOMMENDATION_METHOD=llm` (default), the backend uses an LLM reading
-JD + resume + profile YAML. Tune prompts and profile until **decision acc**
-improves on labeled rows.
-
-Legacy `RECOMMENDATION_METHOD=rules` uses `fit_ratio` thresholds instead — only
-for fallback / regression.
-
-## Resume
-
-`resume.md` — **dev/eval default only.** `/analyze` uses it when no
-`resume_text` is sent. Extension/web uploads override per user.
-
-## Running the evaluation
+## Run
 
 ```bash
 cd evals
 python3 run_eval.py
-# BASE_URL=https://3-128-164-130.sslip.io python3 run_eval.py
+BASE_URL=https://3-128-164-130.sslip.io python3 run_eval.py
 ```
 
-Summary lines:
-
-- **sponsors acc** — H-1B entity match
-- **priority acc** — Role P-tier
-- **track_id acc** — Matched profile track
-- **location tier acc** — Location P1–P3
-- **company tier acc** — Company P1–P3
-- **resume fit band acc** — high / medium / low
-- **decision acc** — LLM (or rules fallback) verdict
-
-See **`docs/FIT_THRESHOLDS.md`** for all numeric constants.
+Definitions and guardrails: [`../../docs/SCORING_STANDARD.md`](../../docs/SCORING_STANDARD.md).

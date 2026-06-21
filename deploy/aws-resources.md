@@ -26,6 +26,8 @@ Run once locally (admin AWS creds) to generate a persistent login signing key:
 
 This merges missing fields into `joblens/app` without printing values. **JWT_SECRET** signs login tokens — if it changes on redeploy, everyone must log in again.
 
+Pass `TAVILY_API_KEY=...` to the same script to enable Company research.
+
 ### LangSmith (optional debug tracing)
 
 1. Sign up free at [smith.langchain.com](https://smith.langchain.com) (GitHub/Google/email).
@@ -45,6 +47,7 @@ aws secretsmanager create-secret --name joblens/app --secret-string '{
   "LLM_API_KEY": "sk-or-v1-...",
   "LLM_BASE_URL": "https://openrouter.ai/api/v1",
   "LLM_MODEL": "openai/gpt-oss-20b:free",
+  "TAVILY_API_KEY": "tvly-...",
   "JWT_SECRET": "long-random-string",
   "LANGCHAIN_API_KEY": "lsv2_pt_...",
   "LANGSMITH_PROJECT": "joblens-analyze"

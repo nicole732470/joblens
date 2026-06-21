@@ -1,4 +1,4 @@
-"""Token normalization primitives, ported 1:1 from extension/lib/matcher.js.
+"""Token normalization primitives for employer entity resolution.
 
 These mirror tokenizeRaw / stripNoiseTokens / meaningfulTokens / coreNormalize
 exactly so backend entity resolution behaves identically to the extension.
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-# matcher.js: NOISE_WORDS = LEGAL_SUFFIXES ∪ WEAK_CORPORATE_WORDS
+# NOISE_WORDS = LEGAL_SUFFIXES ∪ WEAK_CORPORATE_WORDS
 LEGAL_SUFFIXES = frozenset(
     {
         "inc", "incorporated", "llc", "ltd", "limited", "corporation", "corp",
@@ -77,7 +77,7 @@ def core_normalize(text: str) -> str:
     return " ".join(meaningful_tokens(text))
 
 
-# Alias kept for readability; matcher.js exposes both names identically.
+# Alias kept for resolver readability.
 normalize = core_normalize
 
 

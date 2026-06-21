@@ -8,8 +8,6 @@ Usage:
     python3 convert_to_sqlite.py
 """
 
-VISA_CLASS_FILTER = "H-1B"
-
 from __future__ import annotations
 
 import sqlite3
@@ -18,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from python_calamine import CalamineWorkbook
+
+VISA_CLASS_FILTER = "H-1B"
 
 BASE_DIR = Path(__file__).resolve().parent
 XLSX_PATH = BASE_DIR / "LCA_Dislclosure_Data_FY2026_Q2.xlsx"

@@ -183,19 +183,31 @@ function buildMetricCells(rec, co, explain, rf) {
   if (co?.company_tier != null) {
     const bd = explain?.company?.breakdown || co.score_breakdown || {};
     const coTip = [{ k: "Tier", v: co.company_label || `P${co.company_tier}` }];
-    if (bd.reason === "dealbreaker") {
-      coTip.push({ k: "Reason", v: bd.hit || co.dealbreaker_hits?.[0] || "dealbreaker" });
-    } else if (bd.combined != null) {
-      coTip.push({ k: "Score", v: `${Math.round(bd.combined * 100)}%` });
-      if (bd.preference != null) coTip.push({ k: "Preferences", v: `${Math.round(bd.preference * 100)}%` });
-      if (bd.industry != null) coTip.push({ k: "Industry", v: `${Math.round(bd.industry * 100)}%` });
-      coTip.push({ k: "Bands", v: "≥52% P1 · ≥38% P2 · else P3" });
+    if (co.company_score != null) {
+      coTip.push({ k: "Score", v: `${Math.round(co.company_score * 100)}%` });
+    }
+    Object.entries(bd.dimensions || {}).forEach(([key, value]) => {
+      if (typeof value === "number") {
+        coTip.push({ k: key.replaceAll("_", " "), v: `${Math.round(value * 100)}%` });
+      }
+    });
+    if (bd.method) coTip.push({ k: "Method", v: bd.method });
+    if (bd.confidence) coTip.push({ k: "Confidence", v: bd.confidence });
+    if (bd.avoid_hits?.length) {
+      coTip.push({ k: "Avoid", v: bd.avoid_hits[0] });
     }
     cells.push({
       val: `P${co.company_tier}`,
       lbl: "Company",
       tipTitle: "Company fit",
       tip: coTip,
+    });
+  } else {
+    cells.push({
+      val: "—",
+      lbl: "Company",
+      tipTitle: "Company fit",
+      tip: [{ k: "Status", v: co?.reason || "Company evidence unavailable" }],
     });
   }
 

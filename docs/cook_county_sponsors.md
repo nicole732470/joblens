@@ -8,7 +8,7 @@ Companies with H-1B LCA filings where the **worksite** is in **Cook County, Illi
 |-------|------------------:|-----------------:|
 | **Cook County only** | **9,708** | **2,635** |
 
-> Excludes DuPage, Lake, Will, Kane, McHenry and all non-IL worksites.  
+> Excludes DuPage, Lake, Will, Kane, McHenry and all non-IL worksites.
 > 2,635 is **not** every company in Cook County — only employers that filed at least one H-1B LCA with a Cook County worksite during FY2026 Q2.
 
 ## Data Files

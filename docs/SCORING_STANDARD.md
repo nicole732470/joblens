@@ -66,8 +66,7 @@ It must return:
 ```json
 {
   "track_id": "ai_eng or null",
-  "tier": 1,
-  "confidence": 0.0,
+  "avoid_track_id": "configured avoid id or null",
   "reason": "short explanation",
   "evidence": ["job-title or JD excerpts"]
 }
@@ -96,7 +95,7 @@ Rules:
 - Choose the closest configured track only above a calibrated minimum.
 - Compare avoid tracks independently.
 - Below the positive threshold, or when avoid wins, assign P4.
-- Embedding fallback must be labeled `method=embedding` in the report.
+- Fallback must be labeled `method=embedding/rules` in the debug record.
 - The production decision threshold is 0.55 cosine similarity. A lower nearest
   match remains unmatched P4; fallback must never force a track merely because
   it is the least-distant option.
@@ -263,15 +262,13 @@ scores.
 
 ### Primary method: AI classification
 
-For every configured item, AI returns:
+The combined classifier returns exact configured strings only:
 
 ```json
 {
-  "item": "unpaid internship",
-  "matched": true,
-  "confidence": 0.96,
-  "reason": "short explanation",
-  "evidence": ["source excerpt"]
+  "preference_hits": ["Python stack"],
+  "dealbreaker_hits": ["unpaid internship"],
+  "evidence": ["exact source excerpt"]
 }
 ```
 
@@ -291,9 +288,9 @@ For every configured item, AI returns:
 
 ## 7. Final recommendation
 
-The final verdict remains AI-generated from the independent dimensions and
-their evidence. The model may explain tradeoffs but may not rewrite dimension
-scores.
+Clear verdicts are rule-generated; boundary verdicts are AI-generated from the
+independent dimensions and their evidence. The model may explain tradeoffs but
+may not rewrite dimension scores.
 
 ### Deterministic guardrails
 
@@ -302,7 +299,8 @@ Apply guardrails in this order:
 1. An explicit applicable hard dealbreaker, including explicit no-sponsorship
    language when sponsorship is required, may force Skip.
 2. Otherwise, Role P1/P2 and Resume score > 50% forces Apply.
-3. Role P4 cannot produce Apply.
+3. An explicit avoid-track match may force Skip; an unmatched P4 is only a low
+   Role signal and must be judged with the other dimensions.
 4. Company unavailable is neutral, not a penalty.
 5. H-1B historical records do not change the verdict unless the JD itself
    explicitly states a visa restriction.
