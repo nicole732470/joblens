@@ -69,6 +69,7 @@ Use responsibilities, not title keywords alone. Return JSON only:
 {"track_id":"configured id or null","avoid_track_id":"configured avoid id or null",
 "reason":"short reason","evidence":["exact job excerpts"]}. Never invent an id.""",
             json.dumps(inputs, ensure_ascii=False),
+            max_attempts=1,
             max_tokens=700,
         )
         tid = raw.get("track_id")
@@ -125,6 +126,7 @@ when explicitly 100% remote; hybrid uses its physical location. Account for city
 rural rules. Outside configured targets is P4. Return JSON only:
 {"tier":1,"reason":"short geographic reason","evidence":["exact location excerpts"]}.""",
             json.dumps(inputs, ensure_ascii=False),
+            max_attempts=1,
             max_tokens=550,
         )
         tier = raw.get("tier")
@@ -171,6 +173,7 @@ def decide_profile_signals(title: str, jd_text: str, jd: JDParse, profile: Candi
 the job text. Return only exact configured strings. A missing fact is not a hit. JSON only:
 {"preference_hits":[],"dealbreaker_hits":[],"evidence":["exact job excerpts"]}.""",
             json.dumps(inputs, ensure_ascii=False),
+            max_attempts=1,
             max_tokens=700,
         )
         prefs = validate_hits(raw.get("preference_hits"), profile.preferences)

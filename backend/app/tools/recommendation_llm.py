@@ -266,6 +266,7 @@ Do not reclassify Role, Resume, Location, preferences, or dealbreakers. Return J
 {"decision":"Apply|Near apply|Consider|Skip","reasoning":"2-3 evidence-based sentences",
 "summary":"one concrete line under 100 characters"}.""",
                 json.dumps(final_input, ensure_ascii=False),
+                max_attempts=1,
                 max_tokens=650,
             )
             decision = _normalize_decision(raw_final.get("decision"))
