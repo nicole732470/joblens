@@ -36,6 +36,12 @@ a target job can still be a poor resume match.
 to `active` only after resolving the listed questions and running the labeled
 evaluation set.
 
+For a logged-in account, the database profile is authoritative. Editing the
+YAML does not silently overwrite it. After an active profile is approved,
+explicitly run `backend/scripts/seed_owner_account.py` in the deployed backend
+to synchronize the owner account; that operation also synchronizes the golden
+resume, so review the command scope before running it.
+
 ## Safe learning loop
 
 The system must not silently rewrite the profile from its own predictions.
