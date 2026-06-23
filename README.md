@@ -146,6 +146,9 @@ python3 run_eval.py
 Each label is optional; blank fields are skipped. See
 [evals/golden_set/README.md](evals/golden_set/README.md).
 
+The shared human-editable job-search intent and learning contract are documented
+in [docs/JOB_SEARCH_PROFILE.md](docs/JOB_SEARCH_PROFILE.md).
+
 ## Debugging
 
 Every analysis has a unique `run_id`. Compare different runs by their inputs,

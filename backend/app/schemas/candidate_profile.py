@@ -31,6 +31,28 @@ class Constraints(BaseModel):
     needs_sponsorship: bool = True
 
 
+class SeniorityPolicy(BaseModel):
+    preferred_levels: list[str] = []
+    maximum_level: str = ""
+    hard_exclude_levels: list[str] = []
+    ambiguous_title_tokens: list[str] = []
+
+
+class TechnicalScope(BaseModel):
+    target_domains: list[str] = []
+    hard_exclude_domains: list[str] = []
+    conditional_domains: list[str] = []
+    interpretation_notes: list[str] = []
+
+
+class LearningPolicy(BaseModel):
+    manual_labels_override: bool = True
+    proposed_rules_require_approval: bool = True
+    minimum_examples_for_auto_rule: int = Field(default=20, ge=1)
+    minimum_precision_for_auto_rule: float = Field(default=0.98, ge=0, le=1)
+    review_cadence: str = "weekly"
+
+
 class CompanyPreferences(BaseModel):
     industries: list[str] = []
     stages: list[str] = []
@@ -41,8 +63,14 @@ class CompanyPreferences(BaseModel):
 
 
 class CandidateProfile(BaseModel):
+    profile_version: str = ""
+    profile_status: str = "draft"
     tracks: list[Track] = []
     avoid_tracks: list[AvoidTrack] = []
+    seniority_policy: SeniorityPolicy = Field(default_factory=SeniorityPolicy)
+    technical_scope: TechnicalScope = Field(default_factory=TechnicalScope)
+    learning_policy: LearningPolicy = Field(default_factory=LearningPolicy)
+    open_questions: list[str] = []
     locations: Locations = Field(default_factory=Locations)
     dealbreakers: list[str] = []
     preferences: list[str] = []
