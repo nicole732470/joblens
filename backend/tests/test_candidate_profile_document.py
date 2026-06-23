@@ -15,11 +15,15 @@ def test_internal_document_fields_do_not_enter_public_profile() -> None:
     assert isinstance(public, CandidateProfile)
     assert document.profile_status == "draft"
     assert document.seniority_policy.maximum_level == "senior"
+    assert document.seniority_policy.maximum_years_required == 10
+    assert document.employment_policy.contract_ok is True
+    assert document.open_questions == []
     assert "profile_status" not in public.model_dump()
     assert "learning_policy" not in public.model_dump()
     assert "open_questions" not in public.model_dump()
     assert "seniority_policy" not in public.model_dump()
     assert "technical_scope" not in public.model_dump()
+    assert "employment_policy" not in public.model_dump()
 
 
 def test_default_loader_preserves_existing_public_user_format() -> None:

@@ -29,6 +29,7 @@ tracks:
       - Solution Engineer
       - Solutions Engineer
       - Product Engineer
+      - Developer Relations
 
   - id: ai_eng
     label: "Applied AI / LLM application engineer"
@@ -61,6 +62,9 @@ tracks:
       - Cloud Engineer
       - Data Engineer
       - Data Scientist (analytics-focused, not ML-model-focused)
+      - QA
+      - test
+      - cybersecurity
 
 
   - id: business_analyst
@@ -124,9 +128,11 @@ seniority_policy:
     - new graduate
     - junior
     - early career
+    - associate
     - mid level
     - senior
   maximum_level: senior
+  maximum_years_required: 10
   hard_exclude_levels:
     - lead
     - staff
@@ -141,7 +147,6 @@ seniority_policy:
   ambiguous_title_tokens:
     - manager       # Product/Program/Relationship Manager may be a role, not people leadership.
     - officer       # Often a bank title; inspect duties and years required.
-    - associate     # Can be entry-level or experienced depending on employer.
 
 # ---------------------------------------------------------------------------
 # TECHNICAL SCOPE — explicit capability boundaries shared by JobLens scoring
@@ -188,16 +193,15 @@ learning_policy:
   minimum_precision_for_auto_rule: 0.98
   review_cadence: weekly
 
-# Please edit these. They are intentionally questions, not active rules.
-open_questions:
-  - Are QA, test, validation, site reliability, DevOps, cloud, and cybersecurity roles all in scope?
-  - Are data scientist roles acceptable only when they are analytics-focused and not ML-model-focused?
-  - Is Associate always acceptable, or should banking/consulting Associate titles be handled separately?
-  - Should roles requiring more than a specific number of years be excluded even when the title says Senior or no level?
-  - Are contract, temporary, part-time, and travel-heavy roles acceptable?
-  # - id: <short_id>
-  #   label: "<category you never want>"
-  #   example_titles: ["..."]
+employment_policy:
+  contract_ok: true
+  temporary_ok: true
+  part_time_ok: true
+  travel_heavy_ok: true
+
+# All initial questions were resolved on 2026-06-23. Add new unresolved items
+# here; entries are documentation-only until converted into structured fields.
+open_questions: []
 
 # ---------------------------------------------------------------------------
 # LOCATIONS — tier lists are OPTIONAL; use summary for a vague overall stance.

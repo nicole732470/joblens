@@ -34,6 +34,7 @@ class Constraints(BaseModel):
 class SeniorityPolicy(BaseModel):
     preferred_levels: list[str] = []
     maximum_level: str = ""
+    maximum_years_required: int | None = Field(default=None, ge=0)
     hard_exclude_levels: list[str] = []
     ambiguous_title_tokens: list[str] = []
 
@@ -51,6 +52,13 @@ class LearningPolicy(BaseModel):
     minimum_examples_for_auto_rule: int = Field(default=20, ge=1)
     minimum_precision_for_auto_rule: float = Field(default=0.98, ge=0, le=1)
     review_cadence: str = "weekly"
+
+
+class EmploymentPolicy(BaseModel):
+    contract_ok: bool = True
+    temporary_ok: bool = True
+    part_time_ok: bool = True
+    travel_heavy_ok: bool = True
 
 
 class CompanyPreferences(BaseModel):
@@ -135,6 +143,7 @@ class CandidateProfileDocument(CandidateProfile):
     seniority_policy: SeniorityPolicy = Field(default_factory=SeniorityPolicy)
     technical_scope: TechnicalScope = Field(default_factory=TechnicalScope)
     learning_policy: LearningPolicy = Field(default_factory=LearningPolicy)
+    employment_policy: EmploymentPolicy = Field(default_factory=EmploymentPolicy)
     open_questions: list[str] = []
 
     def public_profile(self) -> CandidateProfile:
