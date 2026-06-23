@@ -63,14 +63,10 @@ class CompanyPreferences(BaseModel):
 
 
 class CandidateProfile(BaseModel):
-    profile_version: str = ""
-    profile_status: str = "draft"
+    """Public per-user profile accepted and returned by profile APIs."""
+
     tracks: list[Track] = []
     avoid_tracks: list[AvoidTrack] = []
-    seniority_policy: SeniorityPolicy = Field(default_factory=SeniorityPolicy)
-    technical_scope: TechnicalScope = Field(default_factory=TechnicalScope)
-    learning_policy: LearningPolicy = Field(default_factory=LearningPolicy)
-    open_questions: list[str] = []
     locations: Locations = Field(default_factory=Locations)
     dealbreakers: list[str] = []
     preferences: list[str] = []
@@ -129,3 +125,17 @@ class CandidateProfile(BaseModel):
             data["tracks"] = kept
             data["avoid_tracks"] = avoids
         return data
+
+
+class CandidateProfileDocument(CandidateProfile):
+    """Owner/golden YAML document; internal fields never enter public APIs."""
+
+    profile_version: str = ""
+    profile_status: str = "draft"
+    seniority_policy: SeniorityPolicy = Field(default_factory=SeniorityPolicy)
+    technical_scope: TechnicalScope = Field(default_factory=TechnicalScope)
+    learning_policy: LearningPolicy = Field(default_factory=LearningPolicy)
+    open_questions: list[str] = []
+
+    def public_profile(self) -> CandidateProfile:
+        return CandidateProfile.model_validate(self.model_dump())

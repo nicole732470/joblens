@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 from app.config import settings
-from app.schemas.candidate_profile import CandidateProfile
+from app.schemas.candidate_profile import CandidateProfile, CandidateProfileDocument
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _profile_override: ContextVar[CandidateProfile | None] = ContextVar("profile_override", default=None)
@@ -26,13 +26,18 @@ def _resolve_profile_path() -> Path:
     return Path.cwd() / raw
 
 
-def load_candidate_profile(path: Path | None = None) -> CandidateProfile:
+def load_candidate_profile_document(path: Path | None = None) -> CandidateProfileDocument:
     profile_path = path or _resolve_profile_path()
     if not profile_path.is_file():
         raise FileNotFoundError(f"candidate profile not found: {profile_path}")
     with profile_path.open(encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    return CandidateProfile.model_validate(data)
+    return CandidateProfileDocument.model_validate(data)
+
+
+def load_candidate_profile(path: Path | None = None) -> CandidateProfile:
+    """Load only the public/user-facing portion of the owner YAML."""
+    return load_candidate_profile_document(path).public_profile()
 
 
 @lru_cache(maxsize=1)
