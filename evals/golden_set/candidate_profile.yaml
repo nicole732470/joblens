@@ -60,6 +60,8 @@ tracks:
       - DevOps Engineer
       - Cloud Engineer
       - Data Engineer
+      - Data Scientist (analytics-focused, not ML-model-focused)
+
 
   - id: business_analyst
     label: "Analyst role"
@@ -68,6 +70,8 @@ tracks:
       - Data Analyst
       - Business Analyst
       - Consultant
+      - Business Intelligence Analyst
+      - Business Intelligence Engineer
 
 
   # Copy this block for more tracks:
