@@ -9,6 +9,31 @@ versioned, validated snapshot of the same profile when classifying titles from
 career sites. The YAML is the source of truth; do not maintain a second
 hand-edited copy in JobPush.
 
+## Public user profile versus owner document
+
+The shared YAML is Nicole's personal Golden Set document. It is not the
+onboarding template for every user.
+
+```mermaid
+flowchart LR
+    UI["All-user profile UI"] --> PUBLIC["CandidateProfile (public fields only)"]
+    PUBLIC --> DB["user_profiles JSONB"]
+    YAML["Nicole Golden Set YAML"] --> DOC["CandidateProfileDocument"]
+    DOC --> PROJECTION["Public profile projection"]
+    DOC --> PRIVATE["Private seniority, technical scope, learning metadata"]
+    PROJECTION --> SYNC["Explicit owner sync only"]
+    PRIVATE --> SNAPSHOT["Versioned JobPush rule snapshot after approval"]
+```
+
+`CandidateProfile` keeps the original ordinary-user format: tracks, avoid
+tracks, locations, preferences, dealbreakers, company preferences, technical
+penalties, alumni schools, and sponsorship constraints.
+
+`CandidateProfileDocument` is used only to validate the owner YAML. It adds
+profile status/version, seniority policy, technical scope, learning policy, and
+open questions. Those internal fields are stripped before `/me/profile` data is
+returned or saved, so they do not appear in normal onboarding or user JSON.
+
 ## What belongs in the profile
 
 - target role families and positive examples;
@@ -58,6 +83,34 @@ The system must not silently rewrite the profile from its own predictions.
 An automatic rule needs at least the configured example count and precision.
 Even after activation, sample 5–10% for continuing audit. Manual labels always
 override rules and are never overwritten by a refresh.
+
+```mermaid
+flowchart TD
+    RESULT["JobLens and JobPush results"] --> LABEL["Human labels and corrections"]
+    LABEL --> PROPOSE["Proposed rule with affected examples"]
+    PROPOSE --> EVAL["Evaluate against labeled holdout set"]
+    EVAL --> GATE{"At least 20 examples and 98% precision?"}
+    GATE -- "No" --> REVIEW["Keep cases in review"]
+    GATE -- "Yes" --> APPROVE["Nicole approves YAML diff"]
+    APPROVE --> VERSION["Publish new profile version"]
+    VERSION --> AUDIT["Audit 5–10% and monitor overrides"]
+    AUDIT --> LABEL
+```
+
+## Dates and review plan
+
+| Date | Event |
+|---|---|
+| 2026-06-23 | 171 HIGH JobPush titles labeled and imported: 37 target, 133 non-target, 1 review |
+| 2026-06-23 | Owner YAML draft expanded with seniority and technical boundaries |
+| 2026-06-23 | Owner-only document fields isolated from ordinary-user profile APIs |
+| 2026-06-30 | First title-rule audit: review false-positive clusters and open questions |
+| 2026-07-07 | Second weekly audit and drift comparison |
+| 2026-07-23 | Monthly readiness review: decide whether draft can become active |
+
+Weekly review continues while the profile is draft or the override rate is
+unstable. After two stable monthly reviews, the default cadence may move to
+monthly while keeping immediate review for critical regressions.
 
 ## Career-site discovery learning
 
