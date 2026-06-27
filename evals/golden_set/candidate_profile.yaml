@@ -9,7 +9,7 @@
 #
 # Lines starting with # are comments (ignored).
 
-profile_version: "2026-06-23-draft-1"
+profile_version: "2026-06-27-draft-2"
 profile_status: draft  # Change to active only after the open questions are reviewed.
 
 # ---------------------------------------------------------------------------
@@ -70,6 +70,9 @@ tracks:
   - id: sde_eng
     label: "SDE roles"
     priority: 3
+    seniority_override:
+      senior_and_sr_are_non_target: true
+      note: "Senior/Sr SDE-track roles are outside Nicole's current search scope; keep non-senior SDE, internship, new-grad, junior, associate, and mid-level variants."
     example_titles:
       - Software Engineer
       - Full Stack Engineer
@@ -136,6 +139,20 @@ seniority_policy:
     - associate
   maximum_level: senior
   maximum_years_required: 5
+  conditional_exclusions:
+    - track_id: sde_eng
+      excluded_levels:
+        - senior
+        - sr
+      examples:
+        - Senior Software Engineer
+        - Sr Backend Engineer
+        - Senior Data Engineer
+        - Senior Full Stack Developer
+        - Senior DevOps Engineer
+        - Senior Cloud Engineer
+        - Senior Security Engineer
+      note: "Senior remains possible for non-SDE tracks only when no other hard avoid signal applies."
   hard_exclude_levels:
     - lead
     - staff
@@ -183,7 +200,8 @@ technical_scope:
   interpretation_notes:
     - AI application engineering can be target while ML model engineering and research are excluded.
     - Do not reject solely because a title contains SoC, CPU, GPU, or hardware; duties must still be software-focused.
-    - Senior is allowed, but seniority never overrides a hard-excluded technical domain.
+    - Senior is allowed outside the SDE/software-engineering track, but seniority never overrides a hard-excluded technical domain.
+    - Senior/Sr SDE-track roles are non-target for the current search.
     - Product Manager and Program Manager are role families; the word manager alone is not a seniority veto.
 
 # ---------------------------------------------------------------------------
