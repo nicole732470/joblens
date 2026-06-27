@@ -41,6 +41,23 @@ tracks:
       - AI Builder
       - Agentic AI Engineer
       - LLM Application Engineer
+      
+  - id: data_eng
+    label: "data engineer/ data analyst"
+    priority: 2
+    example_titles:
+      - Data Engineer
+      - Data Analyst
+      - Business Intelligence Analyst
+      - Data Scientist (analytics-focused, not ML-model-focused)
+
+  - id: business_analyst
+    label: "Analyst role"
+    priority: 2
+    example_titles:
+      - Business Analyst
+      - Consultant
+      - Business Intelligence Analyst
 
   - id: customer_success
     label: "Customer Success / technical account"
@@ -60,22 +77,10 @@ tracks:
       - Frontend Engineer
       - DevOps Engineer
       - Cloud Engineer
-      - Data Engineer
-      - Data Scientist (analytics-focused, not ML-model-focused)
       - QA
       - test
       - cybersecurity
 
-
-  - id: business_analyst
-    label: "Analyst role"
-    priority: 3
-    example_titles:
-      - Data Analyst
-      - Business Analyst
-      - Consultant
-      - Business Intelligence Analyst
-      - Business Intelligence Engineer
 
 
   # Copy this block for more tracks:
@@ -107,7 +112,7 @@ avoid_tracks:
     example_titles:
       - Applied Research Engineer
       - Research Engineer
-      - Scientist
+      - AI research
 
   - id: machine_learning
     label: "machine learning model development / research"
@@ -129,10 +134,8 @@ seniority_policy:
     - junior
     - early career
     - associate
-    - mid level
-    - senior
   maximum_level: senior
-  maximum_years_required: 10
+  maximum_years_required: 5
   hard_exclude_levels:
     - lead
     - staff
@@ -231,6 +234,7 @@ dealbreakers:
 
 preferences:
   - Python stack
+  - SQL stack
 
 # Company-specific preferences. Evaluate only from company evidence, never JD wording.
 company_preferences:
