@@ -103,6 +103,7 @@ flowchart TD
 |---|---|
 | 2026-06-23 | 171 HIGH JobPush titles labeled and imported: 37 target, 133 non-target, 1 review |
 | 2026-06-23 | Owner YAML draft expanded with seniority and technical boundaries |
+| 2026-06-27 | Senior/Sr updated from SDE-only exclusion to global hard exclusion for Nicole's current search |
 | 2026-06-23 | Owner-only document fields isolated from ordinary-user profile APIs |
 | 2026-06-23 | All owner open questions resolved: QA/cloud/cybersecurity and analytics data science included; Associate, up to 10 years, contract/temp/part-time/travel accepted |
 | 2026-06-30 | First title-rule audit: review false-positive clusters and run the holdout report |
