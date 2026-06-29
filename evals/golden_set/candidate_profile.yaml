@@ -30,6 +30,12 @@ tracks:
       - Solutions Engineer
       - Product Engineer
       - Developer Relations
+      - AI Product
+      - Technical Product
+      - AI Implementation
+      - AI Automation
+      - AI Operations
+      - presale engineer
 
   - id: ai_eng
     label: "Applied AI / LLM application engineer"
@@ -41,6 +47,7 @@ tracks:
       - AI Builder
       - Agentic AI Engineer
       - LLM Application Engineer
+      - GTM Engineering
       
   - id: data_eng
     label: "data engineer/ data analyst"
@@ -81,6 +88,12 @@ tracks:
       - test
       - cybersecurity
 
+  - id: mkt_automation
+    label: "Marketing automation / technical marketing"
+    priority: 3
+    example_titles:
+      - Marketing Automation Engineer
+
 
 
   # Copy this block for more tracks:
@@ -106,6 +119,17 @@ avoid_tracks:
       - Mechanical Engineer
       - Civil Engineer
       - Electrical Engineer
+      - naval
+      - aerospace
+
+  - id: pure_sde
+    label: "not python"
+    example_titles:
+      - Java Developer
+      - C++ Developer
+      - Go Developer
+      - C# Developer
+      - Embedded Software Engineer
 
   - id: research_eng
     label: "Research Engineer"
@@ -113,12 +137,6 @@ avoid_tracks:
       - Applied Research Engineer
       - Research Engineer
       - AI research
-
-  - id: machine_learning
-    label: "machine learning model development / research"
-    example_titles:
-      - Machine Learning Engineer
-      - ML Engineer
       - Machine Learning Researcher
       - Applied Scientist
 
@@ -141,6 +159,7 @@ seniority_policy:
     - senior
     - sr
     - lead
+    - leader
     - staff
     - principal
     - director
@@ -168,6 +187,9 @@ technical_scope:
     - solutions engineering and solution architecture
     - customer success and technical account roles
     - applied AI, LLM application, agent, and workflow integration
+    - consulting
+    - marketing
+    - presale engineering and technical sales support
   hard_exclude_domains:
     - machine learning model development, training, infrastructure, or research
     - mechanical engineering
@@ -179,6 +201,7 @@ technical_scope:
     - CPU, GPU, SoC, silicon, semiconductor, or hardware architecture
     - manufacturing, enclosure, battery, touch, signal-integrity, or power-integrity engineering
     - pure scientific or algorithmic research
+    - Java, C++, or C# software engineering as a only focus
   conditional_domains:
     - software tools, automation, validation, or data roles inside a hardware organization
     - systems integration or performance-modeling software
@@ -189,6 +212,22 @@ technical_scope:
     - Senior/Sr titles are non-target across all tracks for the current search.
     - Product Manager and Program Manager are role families; the word manager alone is not a seniority veto.
 
+# ---------------------------------------------------------------------------
+# language SCOPE — explicit capability boundaries shared by JobLens scoring
+# and JobPush title classification. Do not use one keyword without context.
+# ---------------------------------------------------------------------------
+required_languages:
+  allowed:
+    - English
+    - Chinese
+    - Mandarin
+  excluded_if_required:
+    - Spanish
+    - Japanese
+    - Korean
+    - German
+    - French
+    - Portuguese
 # ---------------------------------------------------------------------------
 # LEARNING — controls how manual examples become reusable rules.
 # ---------------------------------------------------------------------------
