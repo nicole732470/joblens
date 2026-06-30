@@ -9,11 +9,11 @@
 #
 # Lines starting with # are comments (ignored).
 
-profile_version: "2026-06-30-draft-3"
+profile_version: "2026-06-30-draft-4"
 profile_status: draft  # Change to active only after the open questions are reviewed.
 
 # ---------------------------------------------------------------------------
-# TRACKS — role CATEGORIES you want. priority: 1 = strongest, 3 = lowest configured.
+# TRACKS — role CATEGORIES you want. priority: 1 = strongest; 4 = monitored, lower application priority.
 # Same number = same tier. Add as many tracks as you need.
 # ---------------------------------------------------------------------------
 tracks:
@@ -76,7 +76,7 @@ tracks:
 
   - id: sde_eng
     label: "SDE roles"
-    priority: 3
+    priority: 4
     example_titles:
       - Software Engineer
       - Full Stack Engineer
