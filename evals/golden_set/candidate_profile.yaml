@@ -140,6 +140,27 @@ avoid_tracks:
       - Machine Learning Researcher
       - Applied Scientist
 
+  - id: frontline_service_facilities_and_trades
+    label: "frontline service, facilities, trades, and store roles"
+    example_titles:
+      - Customer Service Representative
+      - Store Associate
+      - Store Manager
+      - Employee Benefits Representative
+      - Benefits Specialist
+      - Maintenance Technician
+      - Service Technician
+      - Field Service Technician
+      - Technician
+      - Supervisor
+      - Data Center Technician
+      - Data Center Engineer
+      - Networking Engineer
+      - Aircraft Engine Technician
+      - Aerospace Technician
+      - Electronics Technician
+      - Mathematician
+
 # ---------------------------------------------------------------------------
 # SENIORITY — desired career stage. Role nouns such as Product Manager are not
 # management seniority by themselves; interpret the full title and duties.
@@ -200,6 +221,11 @@ technical_scope:
     - analog, mixed-signal, circuit, ASIC, RTL, or physical design
     - CPU, GPU, SoC, silicon, semiconductor, or hardware architecture
     - manufacturing, enclosure, battery, touch, signal-integrity, or power-integrity engineering
+    - data center facilities, data center technician, or data center operations roles
+    - aerospace, aircraft, aviation, airplane, or engine maintenance roles
+    - electronics technician, networking engineer, field service, maintenance, repair, or skilled-trade technician roles
+    - store, retail floor, frontline customer service representative, supervisor, or employee benefits representative roles
+    - mathematician or pure scientist titles outside applied business/data/product/software roles
     - pure scientific or algorithmic research
     - Java, C++, or C# software engineering as a only focus
   conditional_domains:
