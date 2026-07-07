@@ -280,6 +280,15 @@ open_questions: []
 # ---------------------------------------------------------------------------
 locations:
   summary: "US major metros OK; prefer public transport; open to remote"              # one loose sentence, e.g. "US major metros OK; prefer hybrid; open to remote"
+  jobpush_apply_queue_scope:
+    include:
+      - United States
+      - Remote - United States
+      - US states and major US metros
+    exclude:
+      - not in the US
+      - unknown location
+    rule: "For JobPush Jobs to apply, include only postings with explicit US evidence; global career pages must be filtered per posting."
   tier_1: [Chicago]        # optional — most want
   tier_2:                  # optional — acceptable
     - Texas
