@@ -7,7 +7,7 @@
         "secretsmanager:GetSecretValue"
       ],
       "Resource": [
-        "arn:aws:secretsmanager:us-east-2:212537427803:secret:joblens/*"
+        "arn:aws:secretsmanager:us-east-2:314567759747:secret:joblens/*"
       ]
     },
     {

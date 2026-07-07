@@ -69,7 +69,7 @@ their different raw JD inputs.
 ```bash
 cd evals
 python3 run_eval.py
-BASE_URL=https://3-128-164-130.sslip.io python3 run_eval.py
+BASE_URL=https://3.143.247.202.sslip.io python3 run_eval.py
 ```
 
 Definitions and guardrails: [`../../docs/SCORING_STANDARD.md`](../../docs/SCORING_STANDARD.md).

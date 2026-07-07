@@ -2,7 +2,7 @@
   const BADGE_ID = "joblens-panel";
   const POSITION_KEY = "joblens-panel-position";
   // Production API on EC2 (elastic IP). Use localhost for local dev.
-  const BACKEND_URL = "https://3-128-164-130.sslip.io";
+  const BACKEND_URL = "https://3.143.247.202.sslip.io";
   // Official web app (Lovable production URL)
   const WEB_APP_URL = "https://job-lens-main.lovable.app";
   const WEB_LOGIN_URL = `${WEB_APP_URL}?from=extension`;

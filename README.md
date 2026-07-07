@@ -14,7 +14,7 @@ and return the same evidence-backed report:
 | Surface | Location |
 |---|---|
 | Web | https://job-lens-main.lovable.app |
-| API | https://3-128-164-130.sslip.io |
+| API | https://3.143.247.202.sslip.io |
 | Chrome extension | [`extension/`](extension/) — load unpacked |
 
 JobLens is split across two repositories:
@@ -140,7 +140,7 @@ truth for logged-in accounts. Production profiles are stored in Postgres.
 ```bash
 cd evals
 python3 run_eval.py
-# BASE_URL=https://3-128-164-130.sslip.io python3 run_eval.py
+# BASE_URL=https://3.143.247.202.sslip.io python3 run_eval.py
 ```
 
 Each label is optional; blank fields are skipped. See

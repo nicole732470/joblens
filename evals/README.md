@@ -6,7 +6,7 @@ Web and extension, then scores each independent dimension.
 ```bash
 cd evals
 python3 run_eval.py
-BASE_URL=https://3-128-164-130.sslip.io python3 run_eval.py
+BASE_URL=https://3.143.247.202.sslip.io python3 run_eval.py
 ```
 
 Assets:

@@ -8,13 +8,13 @@ Created during initial deploy. **Do not commit secrets.**
 | EC2 security group | `sg-0930a7bda9f30016e` (`joblens-ec2`) — 22, 443, 8000 |
 | RDS security group | `sg-0fea22f4c3f07b889` (`joblens-rds`) — 5432 from EC2 SG |
 | RDS instance | `joblens-db` — **available** |
-| RDS endpoint | `joblens-db.chu86icsovrl.us-east-2.rds.amazonaws.com` |
+| RDS endpoint | `joblens-db.cbsey8gqw0tx.us-east-2.rds.amazonaws.com` |
 | RDS secret | `joblens/rds` in Secrets Manager |
 | App secret | `joblens/app` |
-| EC2 instance | `i-0bdee6f611283586f` (`joblens-api`, t3.small) |
-| Elastic IP | `3.128.164.130` |
+| EC2 instance | `i-0fc6ca6a342fb0608` (`joblens-api`, t3.small) |
+| Public IP | `3.143.247.202` |
 | IAM role | `joblens-ec2` |
-| API (HTTP debug) | `http://3.128.164.130:8000/health` |
+| API | `https://3.143.247.202.sslip.io/health` |
 
 ## App secrets (`joblens/app`)
 

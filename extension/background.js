@@ -1,6 +1,6 @@
 /** MV3 background — proxy all analyze API calls (same paths as web /api proxy). */
 
-const BACKEND_URL = "https://3-128-164-130.sslip.io";
+const BACKEND_URL = "https://3.143.247.202.sslip.io";
 const API_TIMEOUT_MS = 180_000;
 
 function storageLocal() {

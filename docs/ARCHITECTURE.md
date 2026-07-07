@@ -13,7 +13,7 @@ This document describes the deployed system. Scoring behavior belongs only in
 | Data | `joblens/db`, `data-pipeline` | RDS Postgres + pgvector |
 
 Live web: https://job-lens-main.lovable.app
-Live API: https://3-128-164-130.sslip.io
+Live API: https://3.143.247.202.sslip.io
 
 ```mermaid
 flowchart TB

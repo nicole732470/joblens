@@ -8,8 +8,8 @@ old commits.
 - Main repo: `nicole732470/joblens`
 - Web repo: `nicole732470/vision-job-glow` (sibling directory)
 - Web: https://job-lens-main.lovable.app
-- API: https://3-128-164-130.sslip.io
-- EC2: `i-0bdee6f611283586f`, `/opt/joblens`
+- API: https://3.143.247.202.sslip.io
+- EC2: `i-0fc6ca6a342fb0608`, `/opt/joblens`
 
 ## Non-negotiable product rules
 
