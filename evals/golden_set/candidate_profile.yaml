@@ -9,7 +9,7 @@
 #
 # Lines starting with # are comments (ignored).
 
-profile_version: "2026-06-30-draft-4"
+profile_version: "2026-07-13-draft-5"
 profile_status: draft  # Change to active only after the open questions are reviewed.
 
 # ---------------------------------------------------------------------------
@@ -74,20 +74,6 @@ tracks:
       - Technical Customer Success Manager
       - CSM
 
-  - id: sde_eng
-    label: "SDE roles"
-    priority: 4
-    example_titles:
-      - Software Engineer
-      - Full Stack Engineer
-      - Backend Engineer
-      - Frontend Engineer
-      - DevOps Engineer
-      - Cloud Engineer
-      - QA
-      - test
-      - cybersecurity
-
   - id: mkt_automation
     label: "Marketing automation / technical marketing"
     priority: 3
@@ -123,13 +109,35 @@ avoid_tracks:
       - aerospace
 
   - id: pure_sde
-    label: "not python"
+    label: "software engineering, mobile, operations, testing, and security"
     example_titles:
+      - Software Engineer
+      - Full Stack Engineer
+      - Backend Engineer
+      - Frontend Engineer
+      - iOS Engineer
+      - Android Engineer
+      - Mobile Engineer
+      - DevOps Engineer
+      - Cloud Engineer
+      - IT Operations Management
+      - QA Engineer
+      - Test Engineer
+      - Cybersecurity Engineer
       - Java Developer
       - C++ Developer
       - Go Developer
       - C# Developer
       - Embedded Software Engineer
+
+  - id: project_program_management
+    label: "project and program management"
+    example_titles:
+      - Project Manager
+      - Program Manager
+      - Technical Project Manager
+      - Technical Program Manager
+      - Project Management Specialist
 
   - id: research_eng
     label: "Research Engineer"
@@ -200,11 +208,9 @@ seniority_policy:
 # ---------------------------------------------------------------------------
 technical_scope:
   target_domains:
-    - application software engineering
-    - full stack, backend, or frontend engineering
     - data engineering
     - business or data analytics
-    - product and technical program roles
+    - product management roles
     - solutions engineering and solution architecture
     - customer success and technical account roles
     - applied AI, LLM application, agent, and workflow integration
@@ -227,7 +233,9 @@ technical_scope:
     - store, retail floor, frontline customer service representative, supervisor, or employee benefits representative roles
     - mathematician or pure scientist titles outside applied business/data/product/software roles
     - pure scientific or algorithmic research
-    - Java, C++, or C# software engineering as a only focus
+    - software engineering, including mobile, frontend, backend, full-stack, Java, C++, Go, or C# roles
+    - project manager, program manager, project management, or program management roles
+    - DevOps, cloud operations, IT operations, QA, testing, or cybersecurity roles
   conditional_domains:
     - software tools, automation, validation, or data roles inside a hardware organization
     - systems integration or performance-modeling software
@@ -236,7 +244,7 @@ technical_scope:
     - AI application engineering can be target while ML model engineering and research are excluded.
     - Do not reject solely because a title contains SoC, CPU, GPU, or hardware; duties must still be software-focused.
     - Senior/Sr titles are non-target across all tracks for the current search.
-    - Product Manager and Program Manager are role families; the word manager alone is not a seniority veto.
+    - Product Manager remains a target role family; Project Manager and Program Manager are non-target.
 
 # ---------------------------------------------------------------------------
 # language SCOPE — explicit capability boundaries shared by JobLens scoring
