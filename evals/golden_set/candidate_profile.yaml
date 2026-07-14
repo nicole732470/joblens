@@ -9,7 +9,7 @@
 #
 # Lines starting with # are comments (ignored).
 
-profile_version: "2026-07-13-draft-6"
+profile_version: "2026-07-13-draft-7"
 profile_status: draft  # Change to active only after the open questions are reviewed.
 
 # ---------------------------------------------------------------------------
@@ -64,6 +64,12 @@ tracks:
     priority: 2
     example_titles:
       - Business Analyst
+      - Supply Chain Planner
+      - Supply Management Analyst
+      - Agriculture Sales Analyst
+      - Investment Analyst
+      - Deployment Strategist
+      - Technical Support Engineer
       - Consultant
       - Business Intelligence Analyst
 
